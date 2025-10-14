@@ -1,0 +1,12 @@
+node_modules/
+uploads/
+exports/
+*.db
+*.log
+.env
+transforms.json
+webhooks.json
+
+# Keep bin folder structure but ignore the actual ODA executable
+bin/*
+!bin/README.txt

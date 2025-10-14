@@ -1,0 +1,344 @@
+y
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>FloorPlan Pro Clean - Working System</title>
+    <script>
+        // Early stub: ensure any injected extension scripts that reference `content.query` do not throw
+        try {
+            (function () {
+                'use strict';
+
+                // Create content object before any extension loads
+                if (typeof window.content === 'undefined') {
+                    window.content = { query: function () { return null; } };
+                } else if (!window.content.query) {
+                    window.content.query = function () { return null; };
+                }
+
+                // Freeze to prevent extensions from breaking it
+                try {
+                    Object.freeze(window.content);
+                } catch (e) { /* ignore */ }
+            })();
+
+            // Suppress noisy errors coming from injected content scripts named content.js
+            // Capture both event-based errors and the older window.onerror to ensure
+            // we catch extension-injected errors that can run before DOMContentLoaded.
+            window.onerror = function (msg, url, lineNo, colNo, error) {
+                const src = (url || '').toLowerCase();
+                const errMsg = (msg || '').toLowerCase();
+                // Suppress all extension errors
+                if (src.includes('content.js') ||
+                    src.includes('chrome-extension://') ||
+                    src.includes('moz-extension://') ||
+                    errMsg.includes('content.query')) {
+                    return true; // suppress completely
+                }
+                return false;
+            };
+
+            window.addEventListener('error', function (ev) {
+                const src = ((ev && ev.filename) || '').toLowerCase();
+                const msg = ((ev && ev.message) || '').toLowerCase();
+                // Suppress all extension errors
+                if (src.includes('content.js') ||
+                    src.includes('extension://') ||
+                    msg.includes('content.query')) {
+                    ev.stopPropagation();
+                    ev.stopImmediatePropagation();
+                    ev.preventDefault();
+                    return true;
+                }
+            }, true);
+
+            // Wrap console methods to filter noisy extension messages (non-destructive)
+            try {
+                const FILTER_PATTERNS = [/content\.js/i, /Extension context invalidated/i, /^chrome-extension:\/\//i];
+                function shouldFilter(args) {
+                    try {
+                        const text = args.map(a => (typeof a === 'string' ? a : JSON.stringify(a))).join(' ');
+                        return FILTER_PATTERNS.some(p => p.test(text));
+                    } catch (e) { return false; }
+                }
+                ['log', 'warn', 'error', 'info', 'debug'].forEach((m) => {
+                    const orig = console[m] && console[m].bind(console);
+                    if (!orig) return;
+                    console[m] = function (...args) {
+                        if (shouldFilter(args)) return; // drop noisy messages
+                        orig(...args);
+                    };
+                });
+
+                // Suppress frequent unhandledRejection spam from extensions
+                window.addEventListener('unhandledrejection', (ev) => {
+                    try {
+                        const reason = ev && ev.reason ? (typeof ev.reason === 'string' ? ev.reason : JSON.stringify(ev.reason)) : '';
+                        if (FILTER_PATTERNS.some(p => p.test(reason))) {
+                            ev.preventDefault && ev.preventDefault();
+                            return true;
+                        }
+                    } catch (e) { /* ignore */ }
+                });
+            } catch (e) { /* ignore console wrapper errors */ }
+        } catch (e) { /* ignore any errors in the stub */ }
+    </script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet" />
+    <link rel="stylesheet" href="https://developer.api.autodesk.com/modelderivative/v2/viewers/7.*/style.min.css" />
+    <link rel="stylesheet" href="/styles.css">
+</head>
+
+<body>
+    <script>
+        // Ensure the frontend knows where the API server is (use Render origin by default)
+        window.__API_BASE__ = window.__API_BASE__ || window.location.origin || 'https://YOUR_RENDER_URL_HERE';
+        // Allow quick testing by passing ?urn=<base64-or-urn-string> in the URL
+        try {
+            const qp = new URLSearchParams(window.location.search || '');
+            if (qp.has('urn')) window.__AUTO_URN__ = qp.get('urn');
+        } catch (e) { /* ignore */ }
+        // Provide a minimal safe content.query stub early to avoid extension-injected content.js from breaking the app
+        try {
+            if (typeof window.content === 'undefined') {
+                Object.defineProperty(window, 'content', { configurable: true, enumerable: false, writable: true, value: { query: function () { return null; } } });
+            } else if (typeof window.content.query === 'undefined') {
+                Object.defineProperty(window.content, 'query', { configurable: true, enumerable: false, writable: true, value: function () { return null; } });
+            }
+        } catch (e) { /* ignore */ }
+    </script>
+    <div class="container" role="application" aria-label="FloorPlan Pro application">
+        <div class="panel">
+            <div class="logo"><i class="fas fa-cube"></i> FloorPlan Pro Clean</div>
+
+            <h3><i class="fas fa-tools"></i> CAD Tools</h3>
+            <button class="btn" id="uploadBtn" aria-label="Upload CAD file">
+                <i class="fas fa-upload"></i> Upload CAD File
+            </button>
+            <input type="file" id="fileInput" name="cadFile" accept=".dxf,.dwg" class="hidden"
+                aria-label="CAD file input" />
+
+            <h4>Generation</h4>
+            <button id="generateIlotsBtn" class="btn" title="Generate ilots" aria-label="Generate ilots">
+                <i class="fas fa-th-large"></i> Generate Îlots
+            </button>
+            <button id="generateCorridorsBtn" class="btn">
+                <i class="fas fa-route"></i> Generate Corridors
+            </button>
+
+            <h4>Configuration</h4>
+            <label for="corridorWidthSlider">Corridor Width (m):</label>
+            <input type="range" id="corridorWidthSlider" name="corridorWidth" class="corridor-slider" min="1" max="3"
+                step="0.1" value="1.2" aria-valuemin="1" aria-valuemax="3" aria-valuenow="1.2">
+            <span id="corridorWidthValue">1.2m</span>
+
+            <h4><i class="fas fa-chart-pie"></i> Îlot Distribution</h4>
+            <div class="distribution-help">
+                Define the percentage of îlots by size range. Total must equal 100%.
+            </div>
+            <div class="distribution-inputs" id="distributionInputs">
+                <div class="distribution-input-group">
+                    <label class="distribution-label">
+                        0-1 m²
+                        <span class="size-hint">(0-1 m²)</span>
+                    </label>
+                    <div class="input-with-unit">
+                        <input type="number" class="distribution-input" data-index="0" min="0" max="100" step="1"
+                            value="10" aria-label="Percentage for 0-1 m²" />
+                        <span class="unit">%</span>
+                    </div>
+                </div>
+                <div class="distribution-input-group">
+                    <label class="distribution-label">
+                        1-3 m²
+                        <span class="size-hint">(1-3 m²)</span>
+                    </label>
+                    <div class="input-with-unit">
+                        <input type="number" class="distribution-input" data-index="1" min="0" max="100" step="1"
+                            value="25" aria-label="Percentage for 1-3 m²" />
+                        <span class="unit">%</span>
+                    </div>
+                </div>
+                <div class="distribution-input-group">
+                    <label class="distribution-label">
+                        3-5 m²
+                        <span class="size-hint">(3-5 m²)</span>
+                    </label>
+                    <div class="input-with-unit">
+                        <input type="number" class="distribution-input" data-index="2" min="0" max="100" step="1"
+                            value="30" aria-label="Percentage for 3-5 m²" />
+                        <span class="unit">%</span>
+                    </div>
+                </div>
+                <div class="distribution-input-group">
+                    <label class="distribution-label">
+                        5-10 m²
+                        <span class="size-hint">(5-10 m²)</span>
+                    </label>
+                    <div class="input-with-unit">
+                        <input type="number" class="distribution-input" data-index="3" min="0" max="100" step="1"
+                            value="35" aria-label="Percentage for 5-10 m²" />
+                        <span class="unit">%</span>
+                    </div>
+                </div>
+            </div>
+            <div class="distribution-total">
+                <strong>Total: <span id="distributionTotal" class="total-value">100%</span></strong>
+                <span id="distributionError" class="error-message hidden">Must equal 100%</span>
+            </div>
+            <button id="applyDistributionBtn" class="btn" style="margin-top: 0.5rem;">
+                <i class="fas fa-check"></i> Apply Distribution
+            </button>
+
+            <h4>Viewer Controls</h4>
+            <button id="toggle3DBtn" class="btn">
+                <i class="fas fa-cube"></i> Toggle 3D View
+            </button>
+            <button id="resetCameraBtn" class="btn">
+                <i class="fas fa-video"></i> Reset Camera
+            </button>
+            <button id="measureBtn" class="btn">
+                <i class="fas fa-ruler"></i> Measure Distance
+            </button>
+            <button id="areaMeasureBtn" class="btn">
+                <i class="fas fa-draw-polygon"></i> Measure Area
+            </button>
+            <button id="angleMeasureBtn" class="btn">
+                <i class="fas fa-angle-right"></i> Measure Angle
+            </button>
+            <button id="clearMeasureBtn" class="btn">
+                <i class="fas fa-eraser"></i> Clear Measurements
+            </button>
+            <button id="gridToggleBtn" class="btn">
+                <i class="fas fa-border-all"></i> Toggle Grid
+            </button>
+
+            <h4>Export</h4>
+            <button id="exportPdfBtn" class="btn">
+                <i class="fas fa-file-pdf"></i> Export PDF
+            </button>
+            <button id="exportImageBtn" class="btn">
+                <i class="fas fa-image"></i> Export Image
+            </button>
+            <button id="export4kBtn" class="btn">
+                <i class="fas fa-image"></i> Export 4K Image
+            </button>
+            <button id="exportSvgBtn" class="btn">
+                <i class="fas fa-vector-square"></i> Export SVG
+            </button>
+            <button id="exportDxfBtn" class="btn">
+                <i class="fas fa-file-code"></i> Export DXF
+            </button>
+            <button id="exportGltfBtn" class="btn">
+                <i class="fas fa-cube"></i> Export 3D Model
+            </button>
+
+            <h4>Statistics</h4>
+            <div class="stats">
+                <div class="stat-card">
+                    <div id="roomCount" class="stat-value">0</div>
+                    <div class="stat-label">Rooms</div>
+                </div>
+                <div class="stat-card">
+                    <div id="ilotCount" class="stat-value">0</div>
+                    <div class="stat-label">Îlots</div>
+                </div>
+            </div>
+            <div class="stat-center" role="status" aria-live="polite">
+                <strong>Total Area: <span id="totalArea">0 m²</span></strong>
+            </div>
+
+            <h4>Processing Status</h4>
+            <div id="processingStatus" class="processing-status hidden">
+                <div class="circular-progress-small">
+                    <svg width="60" height="60">
+                        <circle cx="30" cy="30" r="27" class="progress-bg-small"></circle>
+                        <circle cx="30" cy="30" r="27" class="progress-bar-small" id="progressCircleSmall"></circle>
+                    </svg>
+                    <div class="progress-text-small" id="progressPercentSmall">0%</div>
+                </div>
+                <div id="progressMessageSmall" class="progress-message-small">Processing...</div>
+            </div>
+        </div>
+
+        <div class="panel main">
+            <button class="toggle-btn toggle-left"
+                onclick="document.querySelector('.container').classList.toggle('left-collapsed')"
+                title="Toggle left panel">
+                <i class="fas fa-chevron-left"></i>
+            </button>
+            <button class="toggle-btn toggle-right"
+                onclick="document.querySelector('.container').classList.toggle('right-collapsed')"
+                title="Toggle right panel">
+                <i class="fas fa-chevron-right"></i>
+            </button>
+            <div id="threeContainer" class="canvas-wrapper" aria-live="polite" aria-label="3D canvas container"></div>
+            <div class="top-controls" style="display: none;">
+                <button id="useThreeBtn" class="btn small active" aria-pressed="true"
+                    style="display: none;">Three.js</button>
+                <button id="useViewerBtn" class="btn small" aria-pressed="false" style="display: none;">Autodesk
+                    Viewer</button>
+            </div>
+        </div>
+
+        <div class="panel">
+            <h3><i class="fas fa-chart-bar"></i> Analysis Results</h3>
+
+            <h4>Detected Rooms</h4>
+            <div id="roomList">
+                <div class="list-item">No rooms detected yet</div>
+            </div>
+
+            <h4>Generated Îlots</h4>
+            <div id="ilotsList">
+                <div class="list-item">No îlots generated yet</div>
+            </div>
+
+            <h4>Corridor Network</h4>
+            <div id="corridorList">
+                <div class="list-item">No corridors generated yet</div>
+            </div>
+        </div>
+        <!-- Debug output for APS analysis (hidden by default) -->
+        <pre id="aps-debug" class="aps-debug" aria-hidden="true"></pre>
+    </div>
+
+    <!-- Global loader overlay -->
+    <div id="globalLoader" class="global-loader hidden" aria-hidden="true" role="status" aria-live="polite">
+        <div class="loader-box-advanced">
+            <div class="circular-progress">
+                <svg width="120" height="120">
+                    <circle cx="60" cy="60" r="54" class="progress-bg"></circle>
+                    <circle cx="60" cy="60" r="54" class="progress-bar" id="progressCircle"></circle>
+                </svg>
+                <div class="progress-text" id="loaderPercentage">0%</div>
+            </div>
+            <div id="loaderMessage" class="loader-message-advanced">Processing...</div>
+        </div>
+    </div>
+
+    <script src="https://developer.api.autodesk.com/modelderivative/v2/viewers/7.*/viewer3D.min.js"></script>
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "./libs/build/three.module.js",
+                "three/addons/": "./libs/package/examples/jsm/"
+            }
+        }
+        </script>
+    <script>
+        // small wiring to keep upload button accessible
+        document.addEventListener('DOMContentLoaded', function () {
+            const uploadBtn = document.getElementById('uploadBtn');
+            const fileInput = document.getElementById('fileInput');
+            if (uploadBtn && fileInput) {
+                uploadBtn.addEventListener('click', () => fileInput.click());
+            }
+        });
+    </script>
+    <script type="module" src="app.js?v=2"></script>
+</body>
+
+</html>

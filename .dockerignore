@@ -1,0 +1,15 @@
+node_modules
+uploads
+exports
+logs
+.git
+.github
+*.log
+dist
+build
+test
+test-output
+.env
+*.local
+*.pem
+*.key

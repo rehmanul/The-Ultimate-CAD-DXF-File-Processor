@@ -1,0 +1,18 @@
+version: "3.8"
+services:
+  app:
+    build: .
+    ports:
+      - "3001:3001"
+    environment:
+      - NODE_ENV=production
+      - APS_CLIENT_ID
+      - APS_CLIENT_SECRET
+      - APS_WEBHOOK_SECRET
+      - ADMIN_API_KEY
+      - MASTER_KEY
+    volumes:
+      - ./exports:/usr/src/app/exports
+      - ./webhooks.db:/usr/src/app/webhooks.db
+      - ./webhooks.json:/usr/src/app/webhooks.json
+    restart: unless-stopped

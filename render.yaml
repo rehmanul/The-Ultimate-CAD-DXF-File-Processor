@@ -1,0 +1,17 @@
+# Render service manifest for deploying FloorPlan Pro Clean (Docker runtime)
+# This manifest is minimal. Add secrets and other env vars in the Render dashboard.
+services:
+  - type: web
+    name: floorplan-pro-clean
+    runtime: docker
+    branch: render-deploy
+    region: oregon
+    plan: starter
+    buildCommand: "docker build -t floorplan-pro-clean ."
+    startCommand: "node server.js"
+    envVars:
+      - key: PORT
+        value: "3000"
+      - key: NODE_ENV
+        value: "production"
+
