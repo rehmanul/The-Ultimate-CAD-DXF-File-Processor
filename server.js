@@ -5,8 +5,6 @@ const path = require('path');
 const fs = require('fs');
 const axios = require('axios');
 const ProfessionalCADProcessor = require('./lib/professionalCADProcessor');
-const dwgConverter = require('./lib/dwgConverter');
-
 const GridIlotPlacer = require('./lib/gridIlotPlacer');
 const ProductionCorridorGenerator = require('./lib/productionCorridorGenerator');
 const ExportManager = require('./lib/exportManager');
@@ -369,22 +367,7 @@ app.post('/api/jobs', upload.single('file'), async (req, res) => {
         let fileToProcess = file.path;
 
         // DWG to DXF conversion using ODA with ASCII format
-        if (fileExtension === 'dwg') {
-            try {
-                console.log('Converting DWG to ASCII DXF:', file.originalname);
-                fileToProcess = await dwgConverter.convertDWGtoDXF(file.path, { format: 'ACAD2000', outputType: 'DXF' });
-                console.log('DWG conversion successful:', fileToProcess);
-            } catch (conversionError) {
-                console.error('DWG conversion failed:', conversionError.message);
-                return res.status(400).json({
-                    error: 'DWG file requires conversion to DXF',
-                    message: 'Please convert your DWG file to DXF format (R2000/ASCII) using ODA File Converter or AutoCAD before uploading.',
-                    guide: '/api/dwg-guide'
-                });
-            }
-        }
-
-        if (fileExtension === 'dxf' || fileExtension === 'dwg') {
+        if (fileExtension === 'dxf') {
             try {
                 const cadProcessor = new ProfessionalCADProcessor();
                 cadData = cadProcessor.processDXF(fileToProcess);
@@ -434,9 +417,6 @@ app.post('/api/jobs', upload.single('file'), async (req, res) => {
         setTimeout(() => {
             try {
                 if (fs.existsSync(file.path)) fs.unlinkSync(file.path);
-                if (fileExtension === 'dwg' && fileToProcess !== file.path && fs.existsSync(fileToProcess)) {
-                    fs.unlinkSync(fileToProcess);
-                }
             } catch (e) { /* ignore cleanup errors */ }
         }, 1000);
 
@@ -946,36 +926,6 @@ app.get('/health', (req, res) => {
     res.json({ status: 'ok', timestamp: new Date().toISOString(), sqlite: (webhookStore && typeof webhookStore.getHooks === 'function') });
 });
 
-// DWG conversion guide endpoint
-app.get('/api/dwg-guide', (req, res) => {
-    res.json({
-        message: 'DWG to DXF Conversion Guide',
-        recommended: {
-            tool: 'ODA File Converter',
-            url: 'https://www.opendesign.com/guestfiles/oda_file_converter',
-            cost: 'FREE',
-            platforms: ['Windows', 'Mac', 'Linux'],
-            features: ['Batch conversion', 'Maximum accuracy', 'Preserves all layers']
-        },
-        settings: {
-            format: 'R2000/LT2000 DXF',
-            options: ['Enable Audit', 'Enable Maintain visual fidelity', 'Disable Bind xrefs']
-        },
-        alternatives: [
-            { tool: 'LibreCAD', url: 'https://librecad.org/', best_for: 'Single file conversion' },
-            { tool: 'AutoCAD', best_for: 'Users with existing license' },
-            { tool: 'CloudConvert', url: 'https://cloudconvert.com/dwg-to-dxf', best_for: 'Quick online conversion (25/day free)' }
-        ],
-        validation: [
-            'Open DXF in CAD viewer to verify all walls are visible',
-            'Check that all layers are preserved',
-            'Verify file size is similar to original DWG (±20%)',
-            'Confirm walls form closed polygons for room detection'
-        ],
-        time: '30 seconds per file',
-        documentation: 'See DWG_SOLUTION.md for complete step-by-step instructions with screenshots'
-    });
-});
 
 // Rich healthcheck - reports persistence and APS health
 app.get('/healthz', async (req, res) => {
