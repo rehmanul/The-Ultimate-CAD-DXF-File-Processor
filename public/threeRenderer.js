@@ -297,17 +297,23 @@ export class FloorPlanRenderer {
 
             const points = corridor.polygon.map(pt => new THREE.Vector2(Array.isArray(pt) ? pt[0] : pt.x, Array.isArray(pt) ? pt[1] : pt.y));
 
-            // Only render the outline/border - no fill
-            const linePoints = points.map(p => new THREE.Vector3(p.x, p.y, 0));
-            linePoints.push(linePoints[0]); // Close the polygon
+            // Create a shape for filled rendering
+            const shape = new THREE.Shape(points);
 
-            // Create a reddish color for corridors (like in the sample image)
-            const corridorColor = 0xdc2626; // Reddish color
+            // Create a light pink/magenta color for corridors
+            const corridorColor = 0xff69b4; // Light pink/magenta
 
-            this.corridorsGroup.add(new THREE.Line(
-                new THREE.BufferGeometry().setFromPoints(linePoints),
-                new THREE.LineBasicMaterial({ color: corridorColor, linewidth: 3 })
-            ));
+            // Add filled shape with transparency
+            const mesh = new THREE.Mesh(
+                new THREE.ShapeGeometry(shape),
+                new THREE.MeshBasicMaterial({
+                    color: corridorColor,
+                    transparent: true,
+                    opacity: 0.3,
+                    side: THREE.DoubleSide
+                })
+            );
+            this.corridorsGroup.add(mesh);
         });
 
         this.render();
