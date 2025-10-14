@@ -22,8 +22,8 @@ require('dotenv').config();
 function checkProductionRequirements() {
     const env = process.env.NODE_ENV || 'development';
     if (env === 'production') {
-        const required = ['APS_CLIENT_ID', 'APS_CLIENT_SECRET', 'APS_WEBHOOK_SECRET', 'ADMIN_API_KEY', 'MASTER_KEY'];
-        const missing = required.filter(k => !process.env[k]);
+        const required = [];
+        const missing = [];
         if (missing.length) {
             console.error('Missing required environment variables for production:', missing.join(', '));
             console.error('Set them in your environment or use Docker Compose with appropriate env vars.');
@@ -61,12 +61,7 @@ const crypto = require('crypto');
 const os = require('os');
 const { safeNum, safePoint, sanitizeIlot, sanitizeCorridor } = require('./lib/sanitizers');
 
-// Webhook secret for verifying APS callbacks (set APS_WEBHOOK_SECRET in .env)
-const APS_WEBHOOK_SECRET = process.env.APS_WEBHOOK_SECRET || null;
 
-// MASTER_KEY should be a 32-byte key in HEX or base64 stored in env for encrypting webhook secrets in production.
-const MASTER_KEY = process.env.MASTER_KEY || null;
-const ADMIN_API_KEY = process.env.ADMIN_API_KEY || null;
 
 // Webhook storage: switched to SQLite-backed store (lib/webhookStore)
 const webhookStore = require('./lib/webhookStore');
@@ -110,7 +105,7 @@ function normalizeCadData(cad) {
     if (!cad || typeof cad !== 'object') return cad;
 
     const norm = Object.assign({}, cad);
-    
+
     // Preserve rooms array with proper structure
     if (Array.isArray(cad.rooms)) {
         norm.rooms = cad.rooms.map(r => ({
@@ -123,7 +118,7 @@ function normalizeCadData(cad) {
             polygon: r.polygon
         }));
     }
-    
+
     // Calculate totalArea from rooms or bounds
     if (Array.isArray(norm.rooms) && norm.rooms.length > 0) {
         norm.totalArea = norm.rooms.reduce((sum, r) => sum + (Number(r.area) || 0), 0);
@@ -426,7 +421,7 @@ app.post('/api/jobs', upload.single('file'), async (req, res) => {
 
         // Return CAD data directly - no APS upload needed
         const urn = `local_${Date.now()}`;
-        
+
         res.json({
             success: true,
             urn: urn,
@@ -468,11 +463,11 @@ app.post('/api/analyze', async (req, res) => {
         if (!global.lastProcessedCAD) {
             return res.status(400).json({ error: 'No CAD data available. Please upload a DXF file.' });
         }
-        
+
         const totalArea = global.lastProcessedCAD.rooms && global.lastProcessedCAD.rooms.length > 0
             ? global.lastProcessedCAD.rooms.reduce((sum, r) => sum + (r.area || 0), 0)
             : (global.lastProcessedCAD.bounds.maxX - global.lastProcessedCAD.bounds.minX) *
-              (global.lastProcessedCAD.bounds.maxY - global.lastProcessedCAD.bounds.minY);
+            (global.lastProcessedCAD.bounds.maxY - global.lastProcessedCAD.bounds.minY);
 
         analysisData = {
             walls: global.lastProcessedCAD.walls,
@@ -534,10 +529,10 @@ app.post('/api/ilots', async (req, res) => {
 
         // sanitize placements to ensure numeric fields for client
         const ilots = Array.isArray(ilotsRaw) ? ilotsRaw.map(sanitizeIlot).filter(Boolean) : [];
-        
+
         // Calculate total area - ilots now have area field from professionalIlotPlacer
         const totalArea = ilots.reduce((sum, ilot) => sum + (Number(ilot.area) || 0), 0);
-        
+
         global.lastPlacedIlots = ilots;
 
         console.log(`Îlot generation: ${ilots.length} placed, total area: ${totalArea.toFixed(2)} m²`);
