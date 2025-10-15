@@ -11,6 +11,7 @@ const ExportManager = require('./lib/exportManager');
 const sqliteAdapter = require('./lib/sqliteAdapter');
 const app = express();
 const transformStore = require('./lib/transformStore');
+const MLTrainer = require('./lib/mlTrainer');
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 5000;
 
 // Load environment variables
@@ -370,7 +371,7 @@ app.post('/api/jobs', upload.single('file'), async (req, res) => {
         if (fileExtension === 'dxf') {
             try {
                 const cadProcessor = new ProfessionalCADProcessor();
-                cadData = cadProcessor.processDXF(fileToProcess);
+                cadData = await cadProcessor.processDXF(fileToProcess);
 
                 // Run room detection on the processed CAD data
                 if (cadData && cadData.walls && cadData.walls.length > 0) {
@@ -619,7 +620,10 @@ app.post('/api/corridors', (req, res) => {
             return res.status(400).json({ error: 'Îlots data required (either provided or generated previously)' });
         }
 
-        const corridorGenerator = new ProductionCorridorGenerator(floorPlan, ilotsToUse, { corridorWidth });
+        // Force reload the module to pick up changes
+        delete require.cache[require.resolve('./lib/productionCorridorGenerator')];
+        const ProductionCorridorGeneratorReloaded = require('./lib/productionCorridorGenerator');
+        const corridorGenerator = new ProductionCorridorGeneratorReloaded(floorPlan, ilotsToUse, { corridorWidth });
         const corridors = corridorGenerator.generateCorridors();
 
         res.json({
