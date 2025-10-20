@@ -4,6 +4,10 @@ const tf = require('@tensorflow/tfjs');
 // Configure TensorFlow.js for testing
 tf.setBackend('cpu');
 
+// Set test environment variables
+process.env.NODE_ENV = 'test';
+process.env.SKIP_ML_BOOTSTRAP = '1'; // Skip ML training during tests
+
 // Mock console methods to reduce noise during tests
 const originalConsoleLog = console.log;
 const originalConsoleWarn = console.warn;
@@ -13,7 +17,8 @@ beforeAll(() => {
   // Silence console output during tests unless explicitly needed
   console.log = jest.fn();
   console.warn = jest.fn();
-  console.error = jest.fn();
+  // Keep console.error for debugging test failures
+  // console.error = jest.fn();
 });
 
 afterAll(() => {

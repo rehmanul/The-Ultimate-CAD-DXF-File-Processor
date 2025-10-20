@@ -1,65 +1,64 @@
-# FloorPlan Pro - Corridor Overlap Fix
+# FloorPlan Pro Clean - TODO List
 
-## Objective
-Fix corridor generation to create vertical corridors between columns (grouped by X-coordinate) instead of horizontal corridors between rows, preventing overlapping and matching the reference image layout.
+## Current Task: Fix Corridor Generation Overlapping Issue
 
-## Implementation Steps
+- [x] Analyze current corridor generation logic
+- [x] Identify issue: grouping by rows (Y-coordinate) creates horizontal corridors
+- [x] Fix: Change to group by columns (X-coordinate) for vertical corridors
+- [x] Update `groupIlotsByColumns()` method
+- [x] Update `generateCorridors()` to create vertical corridors between adjacent ilots in same column
+- [x] Use margin parameter to prevent overlap
+- [x] Test the changes with sample data
+- [x] Update tests to reflect new vertical corridor behavior
+- [x] Commit and push changes to repository
 
-1. **Create TODO.md** - Document the plan and track progress
-   - Status: ✅ Completed
+## Current Focus: Comprehensive Enhancements
 
-2. **Update lib/productionCorridorGenerator.js**
-   - Rename `groupIlotsByRows()` to `groupIlotsByColumns()` and change grouping to use X-coordinate (ilot.x)
-   - Update `generateCorridors()` method:
-     - Group ilots by columns
-     - Sort ilots within each column by Y-position
-     - Calculate vertical gaps between adjacent ilots in the same column
-     - Generate vertical corridors (rectangular polygons spanning the ilot width horizontally and the Y-gap vertically)
-     - Apply margin to prevent overlap with ilots
-     - Ensure corridor height fits within the gap minus margins
-   - Status: ⏳ Pending
+### Testing Framework Improvements
 
-3. **Test the updated corridor generator**
-   - Create sample ilot data simulating column-based layout
-   - Verify generated corridors are vertical (height > width typically)
-   - Check no overlap with ilots using geometry helpers
-   - Validate corridor properties (id, polygon, area, dimensions)
-   - Status: ⏳ Pending
+- [ ] Fix failing ML processor tests (NaN scores, incorrect feature extraction)
+- [ ] Add more comprehensive test coverage for edge cases
+- [ ] Implement integration tests for full workflow
+- [ ] Add performance benchmarks for ML models
+- [ ] Create automated CI/CD pipeline
 
-4. **Update unit tests**
-   - Modify `tests/unit/lib/productionCorridorGenerator.test.js` to test new vertical corridor logic
-   - Add tests for column grouping, vertical gap calculation, and polygon generation
-   - Ensure tests cover edge cases (insufficient gap, single ilot per column, varying ilot sizes)
-   - Status: ⏳ Pending
+### ML Model Enhancements
 
-5. **Integration testing**
-   - Test full workflow: DXF upload → ilot generation → corridor generation → export
-   - Verify corridors connect properly in the rendered output
-   - Check for visual overlap in browser preview
-   - Status: ⏳ Pending
+- [ ] Improve ML model accuracy with better training data
+- [ ] Add more sophisticated feature engineering
+- [ ] Implement model versioning and A/B testing
+- [ ] Add real-time model retraining capabilities
+- [ ] Create ML model monitoring and metrics
 
-6. **Parameter tuning**
-   - Adjust default margin (0.5) and corridorWidth (1.2) if needed based on test results
-   - Add configuration options for corridor orientation (vertical/horizontal toggle)
-   - Status: ⏳ Pending
+### Performance Optimizations
 
-7. **Documentation and cleanup**
-   - Update README.md with new corridor generation behavior
-   - Add JSDoc comments to updated methods
-   - Remove obsolete horizontal corridor code
-   - Status: ⏳ Pending
+- [ ] Implement caching layers for CAD processing
+- [ ] Add database indexing for better query performance
+- [ ] Optimize ML model inference speed
+- [ ] Implement background job processing for heavy computations
+- [ ] Add load balancing and horizontal scaling support
 
-8. **Commit and deploy**
-   - Commit changes with descriptive message
-   - Push to repository
-   - Run full test suite
-   - Status: ⏳ Pending
+### Code Quality
 
-## Reference
-- Expected layout: Vertical corridors between ilot columns to prevent overlap
-- Current issue: Horizontal corridors between rows causing overlap
-- Key files: lib/productionCorridorGenerator.js, tests/unit/lib/productionCorridorGenerator.test.js
+- [ ] Implement code linting and formatting standards
+- [ ] Add type checking with TypeScript migration
+- [ ] Implement design patterns and architectural improvements
+- [ ] Add code review processes and guidelines
+- [ ] Create modular architecture for better maintainability
 
-## Progress Tracking
-- Date started: Current session
-- Estimated completion: After testing and validation
+## Completed Tasks
+
+- [x] Set up Jest testing framework
+- [x] Add unit tests for ML processor
+- [x] Add integration tests for API endpoints
+- [x] Add end-to-end workflow tests
+- [x] Implement TensorFlow.js ML models
+- [x] Create ML training data generator
+- [x] Add CAD entity classifier
+- [x] Fix corridor generation overlapping issue
+- [x] Update server with ML initialization
+- [x] Add comprehensive error handling
+- [x] Implement SQLite database integration
+- [x] Add webhook processing capabilities
+- [x] Create export functionality (PDF/SVG)
+- [x] Add production readiness checks

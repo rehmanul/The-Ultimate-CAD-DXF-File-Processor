@@ -20,6 +20,31 @@ let textLabels = null;
 let collisionDetector = null;
 let undoManager = null;
 let professionalExport = null;
+let presetSelector = null;  // Phase 2: Preset selector instance
+let multiFloorStack = [];
+let multiFloorResult = null;
+let activeStackFloorId = null;
+let stackVisualizationEnabled = false;
+
+const deepClone = (data) => {
+    if (data === null || data === undefined) return data;
+    try {
+        if (typeof structuredClone === 'function') {
+            return structuredClone(data);
+        }
+        if (typeof window !== 'undefined' && typeof window.structuredClone === 'function') {
+            return window.structuredClone(data);
+        }
+    } catch (e) {
+        // Fallback below
+    }
+    try {
+        return JSON.parse(JSON.stringify(data));
+    } catch (err) {
+        console.warn('Deep clone fallback failed, returning original reference.', err);
+        return data;
+    }
+};
 
 
 document.addEventListener('DOMContentLoaded', function () {
@@ -86,6 +111,50 @@ function initializeModules() {
     effects = new AdvancedEffects(renderer);
     shortcuts = new KeyboardShortcuts(renderer, editor, effects, undoManager);
 
+    // Phase 2: Initialize preset selector
+    if (window.PresetSelector) {
+        const presetContainer = document.getElementById('presetSelectorContainer');
+        if (presetContainer) {
+            presetSelector = new window.PresetSelector(presetContainer);
+            presetSelector.onPresetSelected = (preset) => {
+                console.log('Preset selected:', preset);
+                applyPresetDistribution(preset);
+            };
+        }
+    }
+
+    // Phase 2: Distribution input event listeners
+    document.querySelectorAll('.distribution-input').forEach(input => {
+        input.addEventListener('input', () => {
+            updateDistributionTotal();
+        });
+    });
+
+    // Apply distribution button
+    const applyDistributionBtn = document.getElementById('applyDistributionBtn');
+    if (applyDistributionBtn) {
+        applyDistributionBtn.addEventListener('click', () => {
+            if (currentFloorPlan) {
+                showNotification('Distribution updated. Regenerate îlots to apply changes.', 'info');
+            } else {
+                showNotification('Please upload a floor plan first.', 'warning');
+            }
+        });
+    }
+
+    // Corridor width slider
+    const corridorWidthSlider = document.getElementById('corridorWidthSlider');
+    const corridorWidthValue = document.getElementById('corridorWidthValue');
+    if (corridorWidthSlider && corridorWidthValue) {
+        corridorWidthSlider.addEventListener('input', (e) => {
+            corridorWidthValue.textContent = e.target.value + 'm';
+        });
+    }
+
+    // Initialize distribution total on load
+    updateDistributionTotal();
+
+    initializeMultiFloorControls();
 
 
     // Setup editor callbacks with collision detection and undo/redo
@@ -713,32 +782,16 @@ async function handleFileUpload(e) {
             bounds: analysisData.bounds,
             totalArea: analysisData.totalArea || 0,
             rooms: analysisData.rooms || [],
-            placementTransform: analysisData.placementTransform || null
+            placementTransform: analysisData.placementTransform || null,
+            sourceFile: file.name,
+            name: file.name ? file.name.replace(/\.[^.]+$/, '') : result.urn,
+            uploadedAt: new Date().toISOString()
         };
 
         console.log('currentFloorPlan created:', currentFloorPlan);
 
-        // Update UI statistics
-        document.getElementById('roomCount').textContent = currentFloorPlan.rooms.length;
-        document.getElementById('totalArea').textContent = `${currentFloorPlan.totalArea} m²`;
-
-        console.log('UI updated - rooms:', currentFloorPlan.rooms.length, 'area:', currentFloorPlan.totalArea);
-
-        // Update room list
-        const roomList = document.getElementById('roomList');
-        if (roomList) {
-            roomList.innerHTML = '';
-            if (currentFloorPlan.rooms.length === 0) {
-                roomList.innerHTML = '<div class="list-item">No rooms detected yet</div>';
-            } else {
-                currentFloorPlan.rooms.forEach((room, index) => {
-                    const item = document.createElement('div');
-                    item.className = 'list-item';
-                    item.textContent = `Room ${index + 1} - Area: ${room.area ? room.area.toFixed(2) : 'N/A'} m²`;
-                    roomList.appendChild(item);
-                });
-            }
-        }
+        updateStats();
+        refreshRoomList();
 
         // Initialize collision detection
         collisionDetector = new CollisionDetection(currentFloorPlan);
@@ -762,6 +815,11 @@ async function handleFileUpload(e) {
 
         hideLoader();
         showNotification(`File processed successfully! ${currentFloorPlan.rooms.length} rooms detected.`, 'success');
+
+        activeStackFloorId = null;
+        multiFloorResult = null;
+        if (renderer) renderer.renderConnectors([]);
+        refreshMultiFloorUI();
 
     } catch (error) {
         hideLoader();
@@ -807,6 +865,770 @@ function renderCurrentState() {
     if (renderer) {
         renderer.renderIlots(generatedIlots);
         renderer.renderCorridors(corridorNetwork);
+        if (!stackVisualizationEnabled && renderer.clearCrossFloorRoutes) {
+            renderer.clearCrossFloorRoutes();
+        }
+    }
+    updateConnectorVisualization();
+}
+
+function initializeMultiFloorControls() {
+    const addBtn = document.getElementById('addFloorToStackBtn');
+    if (addBtn) addBtn.addEventListener('click', addCurrentFloorToStack);
+
+    const computeBtn = document.getElementById('computeMultiFloorBtn');
+    if (computeBtn) computeBtn.addEventListener('click', computeMultiFloorStack);
+
+    const clearBtn = document.getElementById('clearMultiFloorBtn');
+    if (clearBtn) clearBtn.addEventListener('click', clearMultiFloorStack);
+
+    const profileBtn = document.getElementById('profileStackBtn');
+    if (profileBtn) profileBtn.addEventListener('click', profileMultiFloorStack);
+
+    const previewBtn = document.getElementById('previewStackBtn');
+    if (previewBtn) previewBtn.addEventListener('click', toggleStackVisualization);
+
+    const reportBtn = document.getElementById('reportStackBtn');
+    if (reportBtn) reportBtn.addEventListener('click', generateMultiFloorReport);
+
+    const floorList = document.getElementById('multiFloorList');
+    if (floorList) {
+        floorList.addEventListener('click', (event) => {
+            const target = event.target.closest('[data-floor-id]');
+            if (!target) return;
+            selectStackFloor(target.getAttribute('data-floor-id'));
+        });
+    }
+
+    const floorHeightInput = document.getElementById('floorHeightInput');
+    if (floorHeightInput && !floorHeightInput.value) floorHeightInput.value = '3.2';
+    if (floorHeightInput) {
+        floorHeightInput.addEventListener('change', () => {
+            if (stackVisualizationEnabled) {
+                updateStackVisualization();
+            } else {
+                updateConnectorVisualization();
+            }
+        });
+    }
+
+    const toleranceInput = document.getElementById('connectorToleranceInput');
+    if (toleranceInput && !toleranceInput.value) toleranceInput.value = '1.25';
+
+    const egressInput = document.getElementById('egressLimitInput');
+    if (egressInput && !egressInput.value) egressInput.value = '45';
+
+    const accessibleInput = document.getElementById('accessibleEntrancesInput');
+    if (accessibleInput && !accessibleInput.value) accessibleInput.value = '1';
+
+    if (typeof document !== 'undefined') {
+        const requireElevator = document.getElementById('requireElevatorToggle');
+        if (requireElevator && requireElevator.checked === undefined) requireElevator.checked = true;
+    }
+
+    refreshMultiFloorUI();
+    updateStackPreviewButton();
+}
+
+function addCurrentFloorToStack() {
+    if (!currentFloorPlan) {
+        showNotification('Upload and process a floor plan before adding to the stack.', 'warning');
+        return;
+    }
+
+    const levelInput = document.getElementById('floorLevelInput');
+    const nameInput = document.getElementById('floorNameInput');
+
+    let level = levelInput ? parseInt(levelInput.value, 10) : multiFloorStack.length;
+    if (Number.isNaN(level)) level = multiFloorStack.length;
+
+    const floorName = nameInput && nameInput.value.trim() ? nameInput.value.trim() : (currentFloorPlan.name || `Floor ${level}`);
+
+    const existing = multiFloorStack.find(entry => entry.level === level);
+    const floorId = existing ? existing.id : `stack_${Date.now()}`;
+
+    const entry = {
+        id: floorId,
+        name: floorName,
+        level,
+        floorPlan: deepClone(currentFloorPlan),
+        ilots: deepClone(generatedIlots),
+        corridors: deepClone(corridorNetwork),
+        metadata: {
+            source: currentFloorPlan.sourceFile || currentFloorPlan.urn || floorName,
+            rooms: currentFloorPlan.rooms?.length || 0,
+            totalArea: currentFloorPlan.totalArea || 0
+        }
+    };
+
+    if (existing) {
+        const index = multiFloorStack.findIndex(item => item.id === existing.id);
+        multiFloorStack.splice(index, 1, entry);
+    } else {
+        multiFloorStack.push(entry);
+    }
+
+    activeStackFloorId = entry.id;
+    multiFloorResult = null;
+    stackVisualizationEnabled = false;
+    if (renderer) {
+        renderer.renderConnectors([]);
+        renderer.clearStackedFloors && renderer.clearStackedFloors();
+    }
+
+    refreshMultiFloorUI();
+    updateStackPreviewButton();
+    updateConnectorVisualization();
+    showNotification(`Floor "${floorName}" saved to stack (level ${level}).`, 'success');
+}
+
+async function computeMultiFloorStack() {
+    if (multiFloorStack.length === 0) {
+        showNotification('Add one or more floors to the stack first.', 'warning');
+        return;
+    }
+
+    try {
+        showLoader('Aligning stacked floors...', 25);
+        const API = (window.__API_BASE__) ? window.__API_BASE__ : 'http://localhost:3001';
+
+        const payload = {
+            floors: multiFloorStack.map(entry => ({
+                id: entry.id,
+                name: entry.name,
+                level: entry.level,
+                floorPlan: entry.floorPlan,
+                ilots: entry.ilots,
+                corridors: entry.corridors
+            })),
+            options: getMultiFloorOptions()
+        };
+
+        const response = await fetch(`${API}/api/multi-floor/stack`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+
+        const data = await response.json();
+        if (!response.ok || !data.success) {
+            throw new Error(data.error || 'Multi-floor stack failed');
+        }
+
+        multiFloorResult = data.result;
+        if (multiFloorResult && data.metrics) {
+            multiFloorResult.metrics = data.metrics;
+        }
+
+        try {
+            await fetchCrossFloorCorridors();
+        } catch (error) {
+            console.error('Cross-floor corridor computation failed:', error);
+            if (multiFloorResult) multiFloorResult.crossFloorCorridors = null;
+        }
+
+        if (multiFloorResult?.floors?.length) {
+            const floorIds = multiFloorResult.floors.map(f => f.id);
+            if (!activeStackFloorId || !floorIds.includes(activeStackFloorId)) {
+                activeStackFloorId = floorIds[0];
+            }
+        }
+
+        refreshMultiFloorUI();
+        updateStackPreviewButton();
+        if (stackVisualizationEnabled) {
+            updateStackVisualization(true);
+        } else {
+            updateConnectorVisualization();
+        }
+
+        const connectorCount = multiFloorResult.connectors?.length || 0;
+        showNotification(`Multi-floor stack computed: ${multiFloorStack.length} floors, ${connectorCount} connectors.`, 'success');
+    } catch (error) {
+        console.error('Multi-floor stack error', error);
+        showNotification('Multi-floor stack failed: ' + error.message, 'error');
+    } finally {
+        hideLoader();
+    }
+}
+
+function clearMultiFloorStack() {
+    multiFloorStack = [];
+    multiFloorResult = null;
+    activeStackFloorId = null;
+    stackVisualizationEnabled = false;
+    if (renderer) {
+        renderer.renderConnectors([]);
+        renderer.clearStackedFloors && renderer.clearStackedFloors();
+        renderer.clearCrossFloorRoutes && renderer.clearCrossFloorRoutes();
+    }
+    refreshMultiFloorUI();
+    updateStackPreviewButton();
+    updateConnectorVisualization();
+    renderCurrentState();
+    showNotification('Multi-floor stack cleared.', 'info');
+}
+
+function selectStackFloor(floorId) {
+    const entry = multiFloorStack.find(item => item.id === floorId);
+    if (!entry) return;
+
+    activeStackFloorId = entry.id;
+    currentFloorPlan = deepClone(entry.floorPlan);
+    generatedIlots = deepClone(entry.ilots || []);
+    corridorNetwork = deepClone(entry.corridors || []);
+
+    collisionDetector = new CollisionDetection(currentFloorPlan);
+    if (editor) editor.collisionDetector = collisionDetector;
+
+    if (renderer) {
+        renderer.loadFloorPlan(currentFloorPlan);
+        renderer.renderIlots(generatedIlots);
+        renderer.renderCorridors(corridorNetwork);
+    }
+
+    if (textLabels) {
+        textLabels.clear();
+        (currentFloorPlan.rooms || []).forEach((room, index) => textLabels.addRoomLabel(room, index));
+    }
+
+    const levelInput = document.getElementById('floorLevelInput');
+    if (levelInput) levelInput.value = entry.level;
+    const nameInput = document.getElementById('floorNameInput');
+    if (nameInput) nameInput.value = entry.name || '';
+
+    refreshRoomList();
+    updateStats();
+    updateConnectorVisualization();
+    refreshMultiFloorUI();
+    updateStackPreviewButton();
+    updateStackVisualization();
+}
+
+function refreshMultiFloorUI() {
+    const statusEl = document.getElementById('multiFloorStatus');
+    if (statusEl) {
+        if (!multiFloorStack.length) {
+            statusEl.textContent = 'No floors added to stack yet.';
+        } else {
+            const metrics = multiFloorResult?.metrics;
+            let summary = `${multiFloorStack.length} floor(s) staged for stacking`;
+            if (metrics) {
+                const duration = typeof metrics.durationMs === 'number' ? metrics.durationMs.toFixed(1) : metrics.durationMs;
+                summary += `<span class="stack-metric">Stack time: ${duration} ms • Connectors: ${metrics.connectorCount || 0} • Warnings: ${metrics.warningCount || 0}</span>`;
+            }
+            statusEl.innerHTML = summary;
+        }
+    }
+
+    const listEl = document.getElementById('multiFloorList');
+    if (listEl) {
+        listEl.innerHTML = '';
+        if (!multiFloorStack.length) {
+            listEl.innerHTML = '<div class="list-item muted">Add processed floors to build a stacked model.</div>';
+        } else {
+            multiFloorStack
+                .slice()
+                .sort((a, b) => a.level - b.level)
+                .forEach(entry => {
+                    const item = document.createElement('div');
+                    item.className = 'multi-floor-item' + (entry.id === activeStackFloorId ? ' active' : '');
+                    item.setAttribute('data-floor-id', entry.id);
+
+                    const connectorSummary = multiFloorResult
+                        ? (multiFloorResult.connectors || []).filter(conn => conn.floorId === entry.id)
+                        : [];
+
+                    item.innerHTML = `
+                        <div class="multi-floor-title">${entry.name || `Floor ${entry.level}`}</div>
+                        <div class="multi-floor-meta">
+                            Level ${entry.level} • Rooms: ${entry.metadata?.rooms ?? entry.floorPlan.rooms?.length ?? 0}
+                            ${connectorSummary.length ? ` • Connectors: ${connectorSummary.length}` : ''}
+                        </div>
+                    `;
+                    listEl.appendChild(item);
+                });
+        }
+    }
+
+    const warningEl = document.getElementById('multiFloorWarnings');
+    if (warningEl) {
+        warningEl.innerHTML = '';
+        const warnings = multiFloorResult?.warnings || [];
+        if (!warnings.length) {
+            warningEl.innerHTML = '<div class="list-item success">All floors aligned within tolerance.</div>';
+        } else {
+            warnings.forEach((warning) => {
+                const item = document.createElement('div');
+                item.className = 'list-item warning';
+                item.textContent = warning;
+                warningEl.appendChild(item);
+            });
+        }
+    }
+
+    const connectorListEl = document.getElementById('multiFloorConnectorList');
+    if (connectorListEl) {
+        connectorListEl.innerHTML = '';
+        if (!multiFloorResult?.connectors?.length) {
+            connectorListEl.innerHTML = '<div class="list-item muted">Stack to see vertical circulation summaries.</div>';
+        } else {
+            multiFloorStack
+                .slice()
+                .sort((a, b) => a.level - b.level)
+                .forEach(entry => {
+                    const connectors = (multiFloorResult.connectors || []).filter(conn => conn.floorId === entry.id);
+                    if (!connectors.length) return;
+                    const container = document.createElement('div');
+                    container.className = 'list-item';
+                    const stairCount = connectors.filter(c => c.type === 'stair' || c.type === 'escalator').length;
+                    const elevatorCount = connectors.filter(c => c.type === 'elevator').length;
+                    container.innerHTML = `
+                        <div class="connector-floor-label">${entry.name || `Floor ${entry.level}`}</div>
+                        <div class="connector-floor-stats">
+                            <span>Stairs: ${stairCount}</span>
+                            <span>Elevators: ${elevatorCount}</span>
+                            <span>Total connectors: ${connectors.length}</span>
+                        </div>
+                    `;
+                    connectorListEl.appendChild(container);
+                });
+        }
+    }
+
+    const routesEl = document.getElementById('multiFloorRoutes');
+    if (routesEl) {
+        routesEl.innerHTML = '';
+        const cross = multiFloorResult?.crossFloorCorridors;
+        if (!cross || !cross.routes || cross.routes.length === 0) {
+            routesEl.innerHTML = '<div class="list-item muted">Compute stack to generate cross-floor routes.</div>';
+        } else {
+            const unreachable = cross.summary?.unreachable?.length || 0;
+            const metrics = multiFloorResult?.crossFloorCorridorMetrics;
+            const item = document.createElement('div');
+            item.className = 'connector-floor-stats';
+            item.innerHTML = `
+                <span>Routes: ${cross.routes.length}</span>
+                <span>Segments: ${cross.segments?.length || 0}</span>
+                <span>Unreachable connectors: ${unreachable}</span>
+                ${metrics ? `<span>Duration: ${metrics.durationMs?.toFixed?.(1) || metrics.durationMs} ms</span>` : ''}
+            `;
+            routesEl.appendChild(item);
+        }
+    }
+
+    const profileEl = document.getElementById('multiFloorProfile');
+    if (profileEl) {
+        profileEl.innerHTML = '';
+        const profile = multiFloorResult?.profile;
+        if (!profile) {
+            profileEl.innerHTML = '<div class="list-item muted">Profile the stack to gather timing metrics.</div>';
+        } else {
+            const item = document.createElement('div');
+            item.className = 'connector-floor-stats';
+            const stackAvg = profile.stack?.averageMs;
+            const routeAvg = profile.routing?.averageMs;
+            item.innerHTML = `
+                <span>Iterations: ${profile.parameters?.iterations || 0}</span>
+                <span>Floors tested: ${profile.parameters?.floorCount || 0}</span>
+                <span>Avg stack: ${stackAvg !== undefined ? stackAvg.toFixed(1) : '0'} ms</span>
+                <span>Avg routing: ${routeAvg !== undefined ? routeAvg.toFixed(1) : '0'} ms</span>
+            `;
+            profileEl.appendChild(item);
+            if (profile.parameters?.autoExpanded) {
+                const note = document.createElement('div');
+                note.className = 'list-item muted';
+                note.textContent = 'Floor set auto-expanded to meet profiling target.';
+                profileEl.appendChild(note);
+            }
+        }
+    }
+
+    const reportEl = document.getElementById('multiFloorReport');
+    if (reportEl) {
+        reportEl.innerHTML = '';
+        const report = multiFloorResult?.report;
+        if (!report) {
+            reportEl.innerHTML = '<div class="list-item muted">Generate a report to capture current metrics.</div>';
+        } else {
+            const item = document.createElement('div');
+            item.className = 'connector-floor-stats';
+            item.innerHTML = `
+                <span>Generated: ${new Date(report.generatedAt).toLocaleString()}</span>
+                <span>Floors: ${report.summary?.floorCount || 0}</span>
+                <span>Connectors: ${report.summary?.connectors?.total || 0}</span>
+                <span>Routes: ${report.summary?.routes?.total || 0}</span>
+            `;
+            reportEl.appendChild(item);
+        }
+    }
+
+    const complianceEl = document.getElementById('multiFloorCompliance');
+    if (complianceEl) {
+        complianceEl.innerHTML = '';
+        if (!multiFloorResult?.compliance) {
+            complianceEl.innerHTML = '<div class="list-item muted">Run stacking to evaluate cross-floor compliance.</div>';
+        } else {
+            const { egress, accessibility } = multiFloorResult.compliance;
+            const summary = document.createElement('div');
+            summary.className = 'compliance-summary';
+            summary.innerHTML = `
+                <div>Egress: ${multiFloorResult.stats?.complianceSummary?.egress?.passCount || 0} pass / ${multiFloorResult.stats?.complianceSummary?.egress?.failCount || 0} fail</div>
+                <div>Accessibility: ${multiFloorResult.stats?.complianceSummary?.accessibility?.passCount || 0} pass / ${multiFloorResult.stats?.complianceSummary?.accessibility?.failCount || 0} fail</div>
+            `;
+            complianceEl.appendChild(summary);
+
+            const details = document.createElement('div');
+            details.className = 'compliance-details';
+
+            (egress?.floors || []).forEach(report => {
+                const item = document.createElement('div');
+                item.className = 'compliance-item ' + (report.pass ? 'pass' : 'fail');
+                item.innerHTML = `
+                    <div class="compliance-title">Floor ${report.floorLevel}</div>
+                    <div class="compliance-metrics">
+                        <span>Rooms evaluated: ${report.evaluatedRooms}</span>
+                        <span>Max egress: ${report.maxDistance ? report.maxDistance.toFixed(1) : 'N/A'} m</span>
+                        <span>Status: ${report.pass ? 'PASS' : 'FAIL'}</span>
+                    </div>
+                    ${report.violations && report.violations.length
+                        ? `<div class="compliance-notes">${report.violations.join('<br>')}</div>` : ''}
+                `;
+                details.appendChild(item);
+            });
+
+            (accessibility?.floors || []).forEach(report => {
+                const item = document.createElement('div');
+                item.className = 'compliance-item ' + (report.pass ? 'pass' : 'fail');
+                item.innerHTML = `
+                    <div class="compliance-title">Floor ${report.floorLevel}</div>
+                    <div class="compliance-metrics">
+                        <span>Elevator: ${report.hasElevator ? 'Yes' : 'No'}</span>
+                        <span>Stairs: ${report.stairCount}</span>
+                        <span>Accessible entrances: ${report.accessibleEntrances}</span>
+                        <span>Status: ${report.pass ? 'PASS' : 'FAIL'}</span>
+                    </div>
+                    ${report.notes && report.notes.length ? `<div class="compliance-notes">${report.notes.join('<br>')}</div>` : ''}
+                `;
+                details.appendChild(item);
+            });
+
+            complianceEl.appendChild(details);
+        }
+    }
+
+    updateStackPreviewButton();
+}
+
+function getMultiFloorOptions() {
+    const floorHeightInput = document.getElementById('floorHeightInput');
+    const toleranceInput = document.getElementById('connectorToleranceInput');
+    const egressInput = document.getElementById('egressLimitInput');
+    const elevatorToggle = document.getElementById('requireElevatorToggle');
+    const accessibleInput = document.getElementById('accessibleEntrancesInput');
+
+    return {
+        floorHeight: floorHeightInput ? parseFloat(floorHeightInput.value) || undefined : undefined,
+        connectorMatchTolerance: toleranceInput ? parseFloat(toleranceInput.value) || undefined : undefined,
+        egressDistanceLimit: egressInput ? parseFloat(egressInput.value) || undefined : undefined,
+        requireElevators: elevatorToggle ? elevatorToggle.checked : true,
+        minimumAccessibleEntrances: accessibleInput ? parseInt(accessibleInput.value, 10) || undefined : undefined
+    };
+}
+
+function updateConnectorVisualization() {
+    if (!renderer) return;
+
+    if (stackVisualizationEnabled && multiFloorResult) {
+        const options = getMultiFloorOptions();
+        const levelHeight = options.floorHeight || options.levelHeight || 3.2;
+        renderer.renderConnectors(multiFloorResult.connectors || [], {
+            levelElevation: levelHeight,
+            multiFloor: true
+        });
+        return;
+    }
+
+    if (!multiFloorResult || !activeStackFloorId) {
+        renderer.renderConnectors([]);
+        return;
+    }
+
+    const options = getMultiFloorOptions();
+    const levelHeight = options.floorHeight || options.levelHeight || 3.2;
+    const connectors = (multiFloorResult.connectors || []).filter(conn => conn.floorId === activeStackFloorId);
+    renderer.renderConnectors(connectors, { levelElevation: levelHeight });
+}
+
+function toggleStackVisualization() {
+    if (!multiFloorResult || !multiFloorResult.floors || multiFloorResult.floors.length === 0) {
+        showNotification('Compute the multi-floor stack first.', 'warning');
+        return;
+    }
+    stackVisualizationEnabled = !stackVisualizationEnabled;
+    updateStackVisualization(true);
+}
+
+function updateStackVisualization(force = false) {
+    updateStackPreviewButton();
+    if (!renderer) return;
+
+    if (!stackVisualizationEnabled || !multiFloorResult) {
+        if (renderer.clearStackedFloors) renderer.clearStackedFloors();
+        if (renderer.clearCrossFloorRoutes) renderer.clearCrossFloorRoutes();
+        if (force) {
+            renderCurrentState();
+        } else {
+            updateConnectorVisualization();
+        }
+        return;
+    }
+
+    const options = getMultiFloorOptions();
+    const levelHeight = options.floorHeight || options.levelHeight || 3.2;
+
+    if (force) {
+        renderCurrentState();
+    }
+
+    if (renderer.renderStackedFloors) {
+        renderer.renderStackedFloors(multiFloorResult.floors, {
+            activeFloorId: activeStackFloorId,
+            levelHeight
+        });
+    }
+
+    if (renderer.renderCrossFloorRoutes) {
+        const segments = multiFloorResult.crossFloorCorridors?.segments || [];
+        if (segments.length) {
+            renderer.renderCrossFloorRoutes(segments, { levelHeight });
+        } else if (renderer.clearCrossFloorRoutes) {
+            renderer.clearCrossFloorRoutes();
+        }
+    }
+
+    renderer.renderConnectors(multiFloorResult.connectors || [], {
+        levelElevation: levelHeight,
+        multiFloor: true
+    });
+}
+
+function updateStackPreviewButton() {
+    const btn = document.getElementById('previewStackBtn');
+    if (!btn) return;
+
+    const hasResult = !!(multiFloorResult && multiFloorResult.floors && multiFloorResult.floors.length);
+    btn.disabled = !hasResult;
+    btn.classList.toggle('stack-active', stackVisualizationEnabled && hasResult);
+
+    const profileBtn = document.getElementById('profileStackBtn');
+    if (profileBtn) {
+        profileBtn.disabled = !hasResult;
+        profileBtn.classList.toggle('stack-active', !!(multiFloorResult?.profile));
+    }
+
+    const reportBtn = document.getElementById('reportStackBtn');
+    if (reportBtn) {
+        reportBtn.disabled = !hasResult;
+        reportBtn.classList.toggle('stack-active', !!(multiFloorResult?.report));
+    }
+
+    if (!hasResult) {
+        btn.innerHTML = '<i class="fas fa-vr-cardboard"></i> Preview Stack';
+        return;
+    }
+
+    if (stackVisualizationEnabled) {
+        btn.innerHTML = '<i class="fas fa-eye-slash"></i> Exit Stack Preview';
+    } else {
+        btn.innerHTML = '<i class="fas fa-vr-cardboard"></i> Preview Stack';
+    }
+}
+
+async function fetchCrossFloorCorridors() {
+    if (!multiFloorResult || !multiFloorResult.floors || !multiFloorResult.connectors) {
+        return;
+    }
+
+    const API = (window.__API_BASE__) ? window.__API_BASE__ : 'http://localhost:3001';
+    const payload = {
+        floors: multiFloorResult.floors,
+        connectors: multiFloorResult.connectors,
+        edges: multiFloorResult.edges || [],
+        options: getMultiFloorOptions()
+    };
+
+    const response = await fetch(`${API}/api/multi-floor/corridors`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+    });
+
+    const data = await response.json().catch(() => null);
+    if (response.ok && data && data.success) {
+        if (multiFloorResult) {
+            multiFloorResult.crossFloorCorridors = data.routes || null;
+            multiFloorResult.crossFloorCorridorMetrics = data.metrics || null;
+        }
+    } else {
+        console.warn('Cross-floor corridors unavailable', data?.error);
+        if (multiFloorResult) {
+            multiFloorResult.crossFloorCorridors = null;
+            multiFloorResult.crossFloorCorridorMetrics = null;
+        }
+    }
+}
+
+async function profileMultiFloorStack() {
+    if (!multiFloorResult || !multiFloorResult.floors) {
+        showNotification('Compute the multi-floor stack first.', 'warning');
+        return;
+    }
+
+    try {
+        showLoader('Profiling multi-floor stack...', 35);
+        const API = (window.__API_BASE__) ? window.__API_BASE__ : 'http://localhost:3001';
+        const payload = {
+            floors: multiFloorResult.floors,
+            options: {
+                iterations: 5,
+                targetFloorCount: 6,
+                autoExpand: true,
+                stackOptions: getMultiFloorOptions()
+            }
+        };
+
+        const response = await fetch(`${API}/api/multi-floor/profile`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+
+        const data = await response.json();
+        if (!response.ok || !data.success) {
+            throw new Error(data.error || 'Profiling failed');
+        }
+
+        if (multiFloorResult) {
+            multiFloorResult.profile = data.profile;
+            multiFloorResult.profileMetrics = data.metrics || null;
+        }
+
+        refreshMultiFloorUI();
+        updateStackPreviewButton();
+        showNotification('Profiling complete.', 'success');
+    } catch (error) {
+        console.error('Profiling error', error);
+        showNotification('Profiling failed: ' + error.message, 'error');
+    } finally {
+        hideLoader();
+    }
+}
+
+async function generateMultiFloorReport() {
+    if (!multiFloorResult || !multiFloorResult.floors) {
+        showNotification('Compute the multi-floor stack first.', 'warning');
+        return;
+    }
+
+    try {
+        showLoader('Generating multi-floor report...', 40);
+        const API = (window.__API_BASE__) ? window.__API_BASE__ : 'http://localhost:3001';
+        const payload = {
+            floors: multiFloorResult.floors,
+            options: {
+                stackOptions: getMultiFloorOptions(),
+                routeOptions: getMultiFloorOptions(),
+                profile: multiFloorResult.profile || null
+            }
+        };
+
+        const response = await fetch(`${API}/api/multi-floor/report`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+
+        const data = await response.json();
+        if (!response.ok || !data.success) {
+            throw new Error(data.error || 'Report generation failed');
+        }
+
+        if (multiFloorResult) {
+            multiFloorResult.report = data.report;
+        }
+
+        refreshMultiFloorUI();
+        updateStackPreviewButton();
+
+        const jsonBlob = new Blob([JSON.stringify(data.report, null, 2)], { type: 'application/json' });
+        triggerDownload(jsonBlob, `multi-floor-report-${Date.now()}.json`);
+        if (data.report?.markdown) {
+            const mdBlob = new Blob([data.report.markdown], { type: 'text/markdown' });
+            triggerDownload(mdBlob, `multi-floor-report-${Date.now()}.md`);
+        }
+
+        showNotification('Report generated and downloaded.', 'success');
+    } catch (error) {
+        console.error('Report generation error', error);
+        showNotification('Report generation failed: ' + error.message, 'error');
+    } finally {
+        hideLoader();
+    }
+}
+
+function triggerDownload(blob, filename) {
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+}
+
+function refreshRoomList() {
+    const roomList = document.getElementById('roomList');
+    if (!roomList) return;
+
+    roomList.innerHTML = '';
+    const rooms = currentFloorPlan?.rooms || [];
+    if (!rooms.length) {
+        roomList.innerHTML = '<div class="list-item">No rooms detected yet</div>';
+        return;
+    }
+
+    rooms.forEach((room, index) => {
+        const item = document.createElement('div');
+        item.className = 'list-item';
+        const area = room.area ? room.area.toFixed(2) : 'N/A';
+        item.textContent = `Room ${index + 1} - Area: ${area} m²`;
+        roomList.appendChild(item);
+    });
+}
+
+function syncActiveStackFloor() {
+    if (!activeStackFloorId) return;
+    const index = multiFloorStack.findIndex(entry => entry.id === activeStackFloorId);
+    if (index === -1) return;
+
+    multiFloorStack[index] = {
+        ...multiFloorStack[index],
+        floorPlan: deepClone(currentFloorPlan),
+        ilots: deepClone(generatedIlots),
+        corridors: deepClone(corridorNetwork),
+        metadata: {
+            ...(multiFloorStack[index].metadata || {}),
+            rooms: currentFloorPlan?.rooms?.length || 0,
+            totalArea: currentFloorPlan?.totalArea || 0
+        }
+    };
+    refreshMultiFloorUI();
+    if (stackVisualizationEnabled) {
+        updateStackVisualization();
+    } else {
+        updateStackPreviewButton();
     }
 }
 
@@ -905,6 +1727,8 @@ async function generateIlots() {
         }
 
         updateStats();
+        syncActiveStackFloor();
+        refreshMultiFloorUI();
 
         // Wait for viewer to be ready before rendering
         setTimeout(() => {
@@ -964,6 +1788,8 @@ async function generateCorridors() {
         console.log('First corridor:', corridorNetwork[0]);
 
         updateStats();
+        syncActiveStackFloor();
+        refreshMultiFloorUI();
 
         setTimeout(() => {
             renderCurrentState();
@@ -1031,6 +1857,84 @@ async function exportToImage() {
         }
     } catch (e) {
         showNotification('Image export failed: ' + e.message, 'error');
+    }
+}
+
+// Phase 2: Apply preset distribution
+function applyPresetDistribution(preset) {
+    if (!preset || !preset.distribution) {
+        showNotification('Invalid preset', 'error');
+        return;
+    }
+
+    // Update distribution inputs
+    const distributionInputs = document.querySelectorAll('.distribution-input');
+    const ranges = Object.keys(preset.distribution).sort((a, b) => {
+        const aMin = parseFloat(a.split('-')[0]);
+        const bMin = parseFloat(b.split('-')[0]);
+        return aMin - bMin;
+    });
+
+    ranges.forEach((range, index) => {
+        if (distributionInputs[index]) {
+            distributionInputs[index].value = preset.distribution[range];
+        }
+    });
+
+    // Update corridor width
+    const corridorWidthSlider = document.getElementById('corridorWidthSlider');
+    const corridorWidthValue = document.getElementById('corridorWidthValue');
+    if (preset.corridorWidth && corridorWidthSlider) {
+        corridorWidthSlider.value = preset.corridorWidth;
+        if (corridorWidthValue) {
+            corridorWidthValue.textContent = preset.corridorWidth + 'm';
+        }
+    }
+
+    // Update distribution total display
+    updateDistributionTotal();
+
+    // Store preset ID for regeneration
+    window.currentPresetId = preset.id;
+
+    showNotification(`Preset "${preset.name}" applied successfully!`, 'success');
+
+    // If we have a floor plan, offer to regenerate
+    if (currentFloorPlan) {
+        const regenerate = confirm('Regenerate îlots with new preset?');
+        if (regenerate) {
+            generateIlots();
+        }
+    }
+}
+
+// Update distribution total display
+function updateDistributionTotal() {
+    const inputs = document.querySelectorAll('.distribution-input');
+    let total = 0;
+    inputs.forEach(input => {
+        total += parseFloat(input.value) || 0;
+    });
+
+    const totalDisplay = document.getElementById('distributionTotal');
+    const errorDisplay = document.getElementById('distributionError');
+    const applyBtn = document.getElementById('applyDistributionBtn');
+
+    if (totalDisplay) {
+        totalDisplay.textContent = total.toFixed(1) + '%';
+        totalDisplay.style.color = Math.abs(total - 100) < 0.1 ? '#4CAF50' : '#f44336';
+    }
+
+    if (errorDisplay) {
+        if (Math.abs(total - 100) < 0.1) {
+            errorDisplay.classList.add('hidden');
+        } else {
+            errorDisplay.classList.remove('hidden');
+        }
+    }
+
+    if (applyBtn) {
+        applyBtn.disabled = Math.abs(total - 100) > 0.1;
     }
 }
 

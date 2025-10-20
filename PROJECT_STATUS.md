@@ -66,17 +66,18 @@
 - **Features**: Bloom, SSAO, shadows with device-specific quality adjustment
 - **Mobile**: Touch controls and performance optimizations for mobile devices
 
+#### Multi-Floor Foundation
+- **Status**: Stage 1 complete with deterministic floor stacking
+- **Features**: Vertical circulation graph, connector matching (stairs/elevators), cross-floor pathfinding
+- **API**: `/api/multi-floor/stack` consolidates aligned floors into a stacked building model
+- **Output**: Provides connector metadata, adjacency graph, and building-level statistics
+
 ### ❌ MISSING - Not Implemented
 
 #### AI-Powered Features
 - **Machine Learning Detection** - Train models to detect doors/stairs from any DXF
 - **Layout Optimization** - Genetic algorithms for optimal ilot placement
 - **Furniture Recognition** - Detect existing furniture in floor plans
-
-#### Multi-Floor Support
-- **Floor Stacking** - Handle multi-story buildings
-- **Vertical Circulation** - Stair/elevator connections between floors
-- **3D Building View** - Complete building visualization
 
 #### Collaboration Features
 - **Real-Time Editing** - Multiple users editing simultaneously
@@ -87,6 +88,11 @@
 - **BIM Integration** - Export to Revit/ArchiCAD formats
 - **Cost Estimation** - Calculate construction/furniture costs
 - **Compliance Reports** - Building code validation
+
+### 🚧 IN PROGRESS - Multi-Floor Enhancements
+- **3D Building Visualization** - Stacked rendering and vertical navigation UI
+- **Cross-Floor Validation** - Fire code, accessibility, and occupancy checks across levels
+- **Automated Floor Alignment** - Tolerance-based snapping for misaligned CAD sources
 
 ## 🚀 Development Roadmap
 
@@ -111,7 +117,15 @@
 - [ ] Accessibility compliance checking
 - [ ] Fire safety validation
 
-### Phase 4: Collaboration (4-6 weeks)
+### Phase 4: Multi-Floor & Complex Buildings (3-4 weeks)
+- [x] Floor stacking alignment & vertical connector graph
+- [x] 3D building visualization & stacked navigation
+- [x] Cross-floor corridor routing (A* with floor transitions)
+- [x] Cross-floor egress & accessibility validation
+- [ ] Performance profiling on 6+ floor stacks
+- [x] Publication-quality reporting for multi-floor analytics
+
+### Phase 5: Collaboration (4-6 weeks)
 - [ ] User authentication system
 - [ ] Project management dashboard
 - [ ] Real-time WebSocket editing

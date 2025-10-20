@@ -7,15 +7,35 @@ const axios = require('axios');
 const ProfessionalCADProcessor = require('./lib/professionalCADProcessor');
 const GridIlotPlacer = require('./lib/gridIlotPlacer');
 const ProductionCorridorGenerator = require('./lib/productionCorridorGenerator');
+const AdvancedCorridorGenerator = require('./lib/advancedCorridorGenerator');
 const ExportManager = require('./lib/exportManager');
 const sqliteAdapter = require('./lib/sqliteAdapter');
+const presetRoutes = require('./lib/presetRoutes');
+const mlRoutes = require('./lib/mlRoutes');
 const app = express();
 const transformStore = require('./lib/transformStore');
-const MLTrainer = require('./lib/mlTrainer');
+const MLTrainer = require('./lib/completeMLTrainer');
+const CrossFloorRouter = require('./lib/crossFloorRouter');
+const MultiFloorProfiler = require('./lib/multiFloorProfiler');
+const MultiFloorReporter = require('./lib/multiFloorReporter');
+const { performance } = require('perf_hooks');
+const MultiFloorManager = require('./lib/multiFloorManager');
+const ML_BOOT_PREFIX = '[ML Bootstrap]';
+let mlBootstrapPromise = null;
+let mlBootstrapFinished = false;
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 5000;
+
+// In-memory CAD cache keyed by URN for request-scoped analysis
+const cadCache = new Map();
 
 // Load environment variables
 require('dotenv').config();
+
+const APS_BASE_URL = process.env.APS_BASE_URL || 'https://developer.api.autodesk.com';
+const APS_CLIENT_ID = process.env.APS_CLIENT_ID || '';
+const APS_CLIENT_SECRET = process.env.APS_CLIENT_SECRET || '';
+let cachedApsToken = null;
+let tokenExpiry = 0;
 
 // Production readiness checks
 function checkProductionRequirements() {
@@ -200,6 +220,32 @@ function normalizeCadData(cad) {
     return norm;
 }
 
+async function getAPSToken(scopes = 'data:read data:write') {
+    if (!APS_CLIENT_ID || !APS_CLIENT_SECRET) {
+        throw new Error('APS_NOT_CONFIGURED');
+    }
+
+    if (cachedApsToken && tokenExpiry && (Date.now() < tokenExpiry - 60000)) {
+        return cachedApsToken;
+    }
+
+    const params = new URLSearchParams();
+    params.append('client_id', APS_CLIENT_ID);
+    params.append('client_secret', APS_CLIENT_SECRET);
+    params.append('grant_type', 'client_credentials');
+    params.append('scope', scopes);
+
+    const response = await axios.post(`${APS_BASE_URL}/authentication/v2/token`, params, {
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
+    });
+
+    const expiresIn = Number(response.data.expires_in) || 1800;
+    cachedApsToken = response.data.access_token;
+    tokenExpiry = Date.now() + expiresIn * 1000;
+
+    return cachedApsToken;
+}
+
 
 // If there is an existing webhooks.json (dev store), migrate entries into SQLite on first run
 function migrateJsonStoreToSqlite() {
@@ -347,6 +393,123 @@ app.use(express.urlencoded({
 }));
 app.use(express.static('public'));
 
+// Phase 2: Register preset management routes
+app.use('/api', presetRoutes);
+
+// Phase 3: Register ML training and optimization routes
+app.use('/api/ml', mlRoutes);
+
+// Phase 4 foundation: stack multiple floors and compute vertical circulation
+app.post('/api/multi-floor/stack', (req, res) => {
+    try {
+        const { floors, options = {} } = req.body || {};
+
+        if (!Array.isArray(floors) || floors.length === 0) {
+            return res.status(400).json({
+                success: false,
+                error: 'Request must include a non-empty floors array'
+            });
+        }
+
+        const manager = new MultiFloorManager(options);
+        const startedAt = performance.now();
+        const result = manager.stackFloors(floors);
+        const durationMs = performance.now() - startedAt;
+
+        res.json({
+            success: true,
+            result,
+            metrics: {
+                durationMs,
+                floorCount: result.floors?.length || 0,
+                connectorCount: result.connectors?.length || 0,
+                edgeCount: result.edges?.length || 0,
+                warningCount: result.warnings?.length || 0
+            }
+        });
+    } catch (error) {
+        console.error('Multi-floor stacking error:', error && error.stack ? error.stack : error);
+        res.status(500).json({
+            success: false,
+            error: error.message || 'Failed to stack floors'
+        });
+    }
+});
+
+app.post('/api/multi-floor/corridors', (req, res) => {
+    try {
+        const { floors = [], connectors = [], edges = [], options = {} } = req.body || {};
+
+        if (!Array.isArray(connectors) || connectors.length === 0) {
+            return res.status(400).json({
+                success: false,
+                error: 'Connector data required'
+            });
+        }
+
+        const startedAt = performance.now();
+        const routes = CrossFloorRouter.computeRoutes(floors, connectors, edges, options);
+        const durationMs = performance.now() - startedAt;
+        res.json({
+            success: true,
+            routes,
+            metrics: {
+                durationMs,
+                connectorCount: connectors.length,
+                edgeCount: edges.length,
+                routeCount: routes.routes?.length || 0,
+                segmentCount: routes.segments?.length || 0,
+                unreachable: routes.summary?.unreachable?.length || 0
+            }
+        });
+    } catch (error) {
+        console.error('Cross-floor routing error:', error && error.stack ? error.stack : error);
+        res.status(500).json({
+            success: false,
+            error: error.message || 'Failed to compute cross-floor corridors'
+        });
+    }
+});
+
+app.post('/api/multi-floor/profile', (req, res) => {
+    try {
+        const { floors = [], options = {} } = req.body || {};
+        const startedAt = performance.now();
+        const profile = MultiFloorProfiler.profileMultiFloor(floors, options);
+        const durationMs = performance.now() - startedAt;
+        res.json({
+            success: true,
+            profile,
+            metrics: {
+                durationMs
+            }
+        });
+    } catch (error) {
+        console.error('Multi-floor profiling error:', error && error.stack ? error.stack : error);
+        res.status(500).json({
+            success: false,
+            error: error.message || 'Failed to profile multi-floor stack'
+        });
+    }
+});
+
+app.post('/api/multi-floor/report', (req, res) => {
+    try {
+        const { floors = [], options = {} } = req.body || {};
+        const report = MultiFloorReporter.buildReport(floors, options);
+        res.json({
+            success: true,
+            report
+        });
+    } catch (error) {
+        console.error('Multi-floor report error:', error && error.stack ? error.stack : error);
+        res.status(500).json({
+            success: false,
+            error: error.message || 'Failed to generate multi-floor report'
+        });
+    }
+});
+
 const upload = multer({ dest: 'uploads/' });
 
 // No APS functions needed - using local DXF processing only
@@ -391,26 +554,32 @@ app.post('/api/jobs', upload.single('file'), async (req, res) => {
                     }
                 }
 
-                global.lastProcessedCAD = cadData;
                 console.log(`CAD processing: ${cadData.walls.length} walls, ${cadData.forbiddenZones.length} forbidden zones, ${cadData.entrances.length} entrances, ${cadData.rooms.length} rooms`);
             } catch (e) {
                 console.warn('CAD processing failed:', e.message);
                 cadData = null;
-                global.lastProcessedCAD = null;
             }
         } else {
             cadData = null;
-            global.lastProcessedCAD = null;
         }
 
         // Return CAD data directly - no APS upload needed
         const urn = `local_${Date.now()}`;
 
+        const normalizedCadData = normalizeCadData(cadData);
+        if (normalizedCadData) {
+            cadCache.set(urn, normalizedCadData);
+            global.lastProcessedCAD = normalizedCadData;
+        } else {
+            cadCache.delete(urn);
+            global.lastProcessedCAD = null;
+        }
+
         res.json({
             success: true,
             urn: urn,
             processing: false,
-            cadData: normalizeCadData(cadData),
+            cadData: normalizedCadData,
             message: 'File processed locally with Three.js'
         });
 
@@ -438,33 +607,29 @@ app.post('/api/analyze', async (req, res) => {
 
         console.log('Analyzing:', urn);
 
-        let analysisData;
-
-        // Use local DXF processing only
-        if (!global.lastProcessedCAD) {
+        // Retrieve cached CAD data for this URN
+        const cachedCad = cadCache.get(urn);
+        if (!cachedCad) {
             return res.status(400).json({ error: 'No CAD data available. Please upload a DXF file.' });
         }
 
-        const totalArea = global.lastProcessedCAD.rooms && global.lastProcessedCAD.rooms.length > 0
-            ? global.lastProcessedCAD.rooms.reduce((sum, r) => sum + (r.area || 0), 0)
-            : (global.lastProcessedCAD.bounds.maxX - global.lastProcessedCAD.bounds.minX) *
-            (global.lastProcessedCAD.bounds.maxY - global.lastProcessedCAD.bounds.minY);
+        const totalArea = Array.isArray(cachedCad.rooms) && cachedCad.rooms.length > 0
+            ? cachedCad.rooms.reduce((sum, r) => sum + (r.area || 0), 0)
+            : cachedCad.bounds
+                ? (cachedCad.bounds.maxX - cachedCad.bounds.minX) *
+                (cachedCad.bounds.maxY - cachedCad.bounds.minY)
+                : 0;
 
-        analysisData = {
-            walls: global.lastProcessedCAD.walls,
-            forbiddenZones: global.lastProcessedCAD.forbiddenZones,
-            entrances: global.lastProcessedCAD.entrances,
-            bounds: global.lastProcessedCAD.bounds,
-            rooms: global.lastProcessedCAD.rooms,
-            totalArea: totalArea,
-            urn: urn
-        };
-        console.log(`Analysis using local CAD: ${analysisData.rooms.length} rooms, ${analysisData.walls.length} walls, ${totalArea.toFixed(2)} m²`);
-        analysisData = normalizeCadData(analysisData);
+        const analysisData = normalizeCadData({
+            ...cachedCad,
+            totalArea,
+            urn
+        });
+        console.log(`Analysis using cached CAD: ${analysisData.rooms?.length || 0} rooms, ${analysisData.walls?.length || 0} walls, ${totalArea.toFixed(2)} m²`);
 
         res.json({
             success: true,
-            ...normalizeCadData(analysisData),
+            ...analysisData,
             message: 'Analysis completed successfully'
         });
 
@@ -520,6 +685,7 @@ app.post('/api/ilots', async (req, res) => {
         if (ilots.length > 0) console.log('First ilot sample:', JSON.stringify(ilots[0]));
 
         res.json({
+            success: true,
             ilots: ilots,
             totalArea: totalArea,
             count: ilots.length,
@@ -606,30 +772,46 @@ app.post('/api/optimize/paths', (req, res) => {
     }
 });
 
-// Advanced corridor generation endpoint
+// Advanced corridor generation endpoint with facing row detection
 app.post('/api/corridors', (req, res) => {
     try {
-        const { floorPlan, ilots, corridorWidth = 1.2 } = req.body;
+        const { floorPlan, ilots, corridorWidth = 1.5, options = {} } = req.body;
 
         if (!floorPlan) {
             return res.status(400).json({ error: 'Floor plan data required' });
         }
 
-        const ilotsToUse = ilots || global.lastPlacedIlots || [];
-        if (!ilotsToUse || ilotsToUse.length === 0) {
-            return res.status(400).json({ error: 'Îlots data required (either provided or generated previously)' });
+        if (!Array.isArray(ilots) || ilots.length === 0) {
+            return res.status(400).json({ error: 'Îlots data required (provide an array of îlots).' });
         }
 
-        // Force reload the module to pick up changes
-        delete require.cache[require.resolve('./lib/productionCorridorGenerator')];
-        const ProductionCorridorGeneratorReloaded = require('./lib/productionCorridorGenerator');
-        const corridorGenerator = new ProductionCorridorGeneratorReloaded(floorPlan, ilotsToUse, { corridorWidth });
-        const corridors = corridorGenerator.generateCorridors();
+        const ilotsToUse = ilots.map(sanitizeIlot).filter(Boolean);
+        global.lastPlacedIlots = ilotsToUse;
+
+        // Use Advanced Corridor Generator with facing row detection
+        const advancedOptions = {
+            corridorWidth,
+            margin: options.margin || 0.5,
+            rowTolerance: options.rowTolerance || 3.0,
+            minRowDistance: options.minRowDistance || 2.0,
+            maxRowDistance: options.maxRowDistance || 8.0,
+            minOverlap: options.minOverlap || 0.6,
+            horizontalPriority: options.horizontalPriority || 1.5,
+            verticalPriority: options.verticalPriority || 1.0
+        };
+        
+        const corridorGenerator = new AdvancedCorridorGenerator(floorPlan, ilotsToUse, advancedOptions);
+        const result = corridorGenerator.generate();
+
+        console.log(`[Corridor API] Generated ${result.corridors.length} corridors (${result.statistics.vertical}V + ${result.statistics.horizontal}H)`);
 
         res.json({
-            corridors: corridors,
-            totalArea: corridors.reduce((sum, corridor) => sum + corridor.area, 0),
-            count: corridors.length
+            success: true,
+            corridors: result.corridors.map(sanitizeCorridor).filter(Boolean),
+            totalArea: result.totalArea,
+            count: result.corridors.length,
+            statistics: result.statistics,
+            message: `Generated ${result.corridors.length} corridors (${result.statistics.vertical} vertical, ${result.statistics.horizontal} horizontal)`
         });
 
     } catch (error) {
@@ -1228,40 +1410,97 @@ app.use('/exports', express.static('exports'));
 // Bind address - default to 0.0.0.0 so cloud hosts (Render, Docker) can detect the port
 const BIND_ADDRESS = process.env.BIND_ADDRESS || '0.0.0.0';
 
-try {
-    const server = app.listen(PORT, BIND_ADDRESS, () => {
-        const host = BIND_ADDRESS === '0.0.0.0' ? '0.0.0.0' : BIND_ADDRESS;
-        console.log(`FloorPlan Pro Clean with Three.js running on http://${host}:${PORT}`);
+function startServer(port = PORT, bindAddress = BIND_ADDRESS) {
+    const server = app.listen(port, bindAddress, () => {
+        const host = bindAddress === '0.0.0.0' ? '0.0.0.0' : bindAddress;
+        console.log(`FloorPlan Pro Clean with Three.js running on http://${host}:${port}`);
         console.log('✅ Local DXF Processing Ready');
         console.log('✅ Three.js 2D Rendering Ready');
         console.log('✅ Intelligent Îlot Placement Ready');
         console.log('✅ Corridor Network Generation Ready');
         console.log('✅ PDF/Image Export Ready');
-        if (BIND_ADDRESS === '127.0.0.1') {
+        if (bindAddress === '127.0.0.1') {
             console.log('This instance is bound to localhost (127.0.0.1). It is suitable for single-PC personal use.');
         } else {
-            console.log('This instance is bound to', BIND_ADDRESS);
+            console.log('This instance is bound to', bindAddress);
         }
         // Note: admin-only simulate endpoints/scripts were removed to avoid demo/fake behaviors.
         console.log('Pure Three.js - No Autodesk APS required');
     });
+
+    setImmediate(() => scheduleMLBootstrap());
+
     server.on('error', (err) => {
         if (err && err.code === 'EADDRINUSE') {
-            console.error(`Port ${PORT} is already in use. If you have another instance running, stop it or set PORT to a different value.`);
-            process.exit(1);
+            console.error(`Port ${port} is already in use. If you have another instance running, stop it or set PORT to a different value.`);
+        } else {
+            console.error('Server error:', err && err.stack ? err.stack : err);
         }
-        console.error('Server error:', err && err.stack ? err.stack : err);
-        process.exit(1);
     });
-} catch (e) {
-    console.error('Failed to start server:', e && e.stack ? e.stack : e);
-    process.exit(1);
+
+    return server;
 }
 
-// Export automation helper for worker scripts
-module.exports.runAutomationForUrn = runAutomationForUrn;
+// Start server automatically only when run directly
+if (require.main === module) {
+    try {
+        const server = startServer();
+        server.on('error', (err) => {
+            // Already handled in startServer; retain exit for CLI usage
+            if (err && err.code === 'EADDRINUSE') {
+                process.exit(1);
+            } else {
+                process.exit(1);
+            }
+        });
+    } catch (e) {
+        console.error('Failed to start server:', e && e.stack ? e.stack : e);
+        process.exit(1);
+    }
+}
 
-// If required as a module, do not start a second server
-if (require.main !== module) {
-    // do not start listening when required
+// Export automation helper and server controls for tests/worker scripts
+app.startServer = startServer;
+app.runAutomationForUrn = runAutomationForUrn;
+
+module.exports = app;
+
+function scheduleMLBootstrap(reason = 'server-start') {
+    if (process.env.SKIP_ML_BOOTSTRAP === '1') {
+        if (!mlBootstrapFinished) {
+            console.log(`${ML_BOOT_PREFIX} Skipped (SKIP_ML_BOOTSTRAP=1)`);
+        }
+        return;
+    }
+
+    const env = (process.env.NODE_ENV || '').toLowerCase();
+    if (env === 'test' && !process.env.FORCE_ML_BOOTSTRAP) {
+        if (!mlBootstrapFinished) {
+            console.log(`${ML_BOOT_PREFIX} Skipped (NODE_ENV=test)`);
+        }
+        return;
+    }
+
+    if (mlBootstrapFinished) return;
+
+    if (!mlBootstrapPromise) {
+        mlBootstrapPromise = (async () => {
+            const startedAt = Date.now();
+            console.log(`${ML_BOOT_PREFIX} Starting (${reason})...`);
+            try {
+                const success = await MLTrainer.initializeML();
+                const duration = Date.now() - startedAt;
+                if (success) {
+                    mlBootstrapFinished = true;
+                    console.log(`${ML_BOOT_PREFIX} Ready in ${duration}ms`);
+                } else {
+                    console.warn(`${ML_BOOT_PREFIX} Completed with fallback after ${duration}ms`);
+                }
+            } catch (error) {
+                console.error(`${ML_BOOT_PREFIX} Failed:`, error && error.stack ? error.stack : error);
+            }
+        })().finally(() => {
+            mlBootstrapPromise = null;
+        });
+    }
 }

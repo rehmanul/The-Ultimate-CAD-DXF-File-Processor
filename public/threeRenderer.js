@@ -68,8 +68,31 @@ export class FloorPlanRenderer {
         this.corridorsGroup = new THREE.Group();
         this.measurementsGroup = new THREE.Group();
         this.labelsGroup = new THREE.Group();
+        this.connectorsGroup = new THREE.Group();
+        this.connectorHighlights = new THREE.Group();
+        this.stackGroup = new THREE.Group();
+        this.crossFloorPathsGroup = new THREE.Group();
+        this.stackGroup.visible = false;
+        this.currentConnectors = [];
+        this.currentConnectorOptions = {};
+        this.currentStackFloors = null;
+        this.currentStackOptions = {};
+        this.currentCrossFloorRoutes = [];
+        this.crossFloorOptions = {};
 
-        this.scene.add(this.wallsGroup, this.entrancesGroup, this.forbiddenGroup, this.ilotsGroup, this.corridorsGroup, this.measurementsGroup, this.labelsGroup);
+        this.scene.add(
+            this.wallsGroup,
+            this.entrancesGroup,
+            this.forbiddenGroup,
+            this.ilotsGroup,
+            this.corridorsGroup,
+            this.measurementsGroup,
+            this.labelsGroup,
+            this.connectorsGroup,
+            this.connectorHighlights,
+            this.stackGroup,
+            this.crossFloorPathsGroup
+        );
 
         const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
         const directionalLight = new THREE.DirectionalLight(0xffffff, 0.4);
@@ -135,7 +158,24 @@ export class FloorPlanRenderer {
     }
 
     clear() {
-        [this.wallsGroup, this.entrancesGroup, this.forbiddenGroup, this.ilotsGroup, this.corridorsGroup].forEach(g => g.clear());
+        [
+            this.wallsGroup,
+            this.entrancesGroup,
+            this.forbiddenGroup,
+            this.ilotsGroup,
+            this.corridorsGroup,
+            this.connectorsGroup,
+            this.connectorHighlights,
+            this.stackGroup,
+            this.crossFloorPathsGroup
+        ].forEach(g => g.clear());
+        this.stackGroup.visible = false;
+        this.currentConnectors = [];
+        this.currentConnectorOptions = {};
+        this.currentStackFloors = null;
+        this.currentStackOptions = {};
+        this.currentCrossFloorRoutes = [];
+        this.crossFloorOptions = {};
         this.render();
     }
 
@@ -420,6 +460,15 @@ export class FloorPlanRenderer {
         const currentIlots = this.ilotMeshes.map(m => m.userData.ilot).filter(Boolean);
         if (currentIlots.length > 0) {
             this.renderIlots(currentIlots);
+        }
+        if (this.currentConnectors && this.currentConnectors.length > 0) {
+            this.renderConnectors(this.currentConnectors, this.currentConnectorOptions || {});
+        }
+        if (this.stackGroup.visible && this.currentStackFloors) {
+            this.renderStackedFloors(this.currentStackFloors, this.currentStackOptions || {});
+        }
+        if (this.currentCrossFloorRoutes && this.currentCrossFloorRoutes.length > 0) {
+            this.renderCrossFloorRoutes(this.currentCrossFloorRoutes, this.crossFloorOptions || {});
         }
 
         this.render();
@@ -713,6 +762,281 @@ export class FloorPlanRenderer {
             link.click();
             URL.revokeObjectURL(url);
         }).catch(err => console.error('GLTF export failed:', err));
+    }
+
+    renderConnectors(connectors = [], options = {}) {
+        this.connectorsGroup.clear();
+        this.connectorHighlights.clear();
+        this.currentConnectors = Array.isArray(connectors) ? connectors.slice() : [];
+        this.currentConnectorOptions = Object.assign({}, options);
+
+        if (!Array.isArray(connectors) || connectors.length === 0) {
+            this.render();
+            return;
+        }
+
+        const colorMap = {
+            stair: 0xf97316,
+            escalator: 0xfacc15,
+            elevator: 0x0ea5e9,
+            shaft: 0xa855f7,
+            default: 0x22c55e
+        };
+
+        const baseElevation = this.is3DMode ? (options.levelElevation || 0) : 0.05;
+        const thickness = this.is3DMode ? (options.thickness || 2.5) : 0.01;
+
+        connectors.forEach((connector) => {
+            const color = colorMap[connector.type] || colorMap.default;
+            const mesh = this._createConnectorMesh(connector, color, thickness);
+            if (!mesh) return;
+
+            const zOffset = this.is3DMode
+                ? baseElevation + (connector.floorLevel || 0) * thickness
+                : baseElevation;
+
+            mesh.position.z = zOffset;
+            mesh.userData.connector = connector;
+            mesh.renderOrder = 15;
+            this.connectorsGroup.add(mesh);
+        });
+
+        this.render();
+    }
+
+    _createConnectorMesh(connector, color, thickness) {
+        const geometry = this._createConnectorGeometry(connector, thickness);
+        if (!geometry) return null;
+
+        const material = this.is3DMode
+            ? new THREE.MeshLambertMaterial({ color, transparent: true, opacity: 0.82 })
+            : new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.65, depthWrite: false });
+
+        return new THREE.Mesh(geometry, material);
+    }
+
+    _createConnectorGeometry(connector, thickness) {
+        const polygon = this._connectorPolygon(connector);
+        if (polygon && polygon.length >= 3) {
+            const shape = new THREE.Shape(polygon.map(pt => new THREE.Vector2(pt.x, pt.y)));
+            if (this.is3DMode) {
+                return new THREE.ExtrudeGeometry(shape, { depth: thickness, bevelEnabled: false });
+            }
+            return new THREE.ShapeGeometry(shape);
+        }
+
+        const bbox = connector.boundingBox;
+        if (bbox && typeof bbox.minX === 'number' && typeof bbox.minY === 'number' &&
+            typeof bbox.maxX === 'number' && typeof bbox.maxY === 'number') {
+            const shape = new THREE.Shape([
+                new THREE.Vector2(bbox.minX, bbox.minY),
+                new THREE.Vector2(bbox.maxX, bbox.minY),
+                new THREE.Vector2(bbox.maxX, bbox.maxY),
+                new THREE.Vector2(bbox.minX, bbox.maxY)
+            ]);
+            if (this.is3DMode) {
+                return new THREE.ExtrudeGeometry(shape, { depth: thickness, bevelEnabled: false });
+            }
+            return new THREE.ShapeGeometry(shape);
+        }
+
+        const radius = connector.metadata?.radius || connector.metadata?.approxRadius || 1;
+        if (this.is3DMode) {
+            const cylinder = new THREE.CylinderGeometry(radius, radius, thickness, 24, 1, true);
+            cylinder.rotateX(Math.PI / 2);
+            return cylinder;
+        }
+        return new THREE.CircleGeometry(radius, 24);
+    }
+
+    _connectorPolygon(connector) {
+        if (!connector) return null;
+        const polygon = connector.polygon || connector.points;
+        if (!Array.isArray(polygon) || polygon.length === 0) return null;
+        return polygon.map(pt => {
+            const x = typeof pt.x === 'number' ? pt.x : pt[0];
+            const y = typeof pt.y === 'number' ? pt.y : pt[1];
+            return { x, y };
+        });
+    }
+
+    renderStackedFloors(floors = [], options = {}) {
+        this.stackGroup.clear();
+
+        if (!Array.isArray(floors) || floors.length === 0) {
+            this.stackGroup.visible = false;
+            this.currentStackFloors = null;
+            this.currentStackOptions = {};
+            this.render();
+            return;
+        }
+
+        this.stackGroup.visible = true;
+        const activeFloorId = options.activeFloorId;
+        const levelHeight = typeof options.levelHeight === 'number'
+            ? options.levelHeight
+            : (typeof options.floorHeight === 'number' ? options.floorHeight : 3.2);
+        const spacing2D = typeof options.spacing2D === 'number' ? options.spacing2D : 0.05;
+        const passiveColor = options.passiveColor || 0x9ca3af;
+        const activeColor = options.activeColor || 0x2563eb;
+
+        const sortedFloors = floors.slice().sort((a, b) => {
+            const levelA = a.level ?? 0;
+            const levelB = b.level ?? 0;
+            return levelA - levelB;
+        });
+
+        sortedFloors.forEach((floor, index) => {
+            const highlight = activeFloorId ? floor.id === activeFloorId : index === sortedFloors.length - 1;
+            const color = highlight ? activeColor : passiveColor;
+            const floorGroup = new THREE.Group();
+
+            if (this.is3DMode) {
+                const zBase = typeof floor.translation?.z === 'number'
+                    ? floor.translation.z
+                    : (typeof floor.z === 'number' ? floor.z : (floor.level ?? index) * levelHeight);
+                floorGroup.position.z = zBase;
+            } else {
+                floorGroup.position.z = (floor.level ?? index) * spacing2D;
+            }
+
+            if (typeof floor.translation?.x === 'number') floorGroup.position.x = floor.translation.x;
+            if (typeof floor.translation?.y === 'number') floorGroup.position.y = floor.translation.y;
+
+            this._drawStackFloor(floorGroup, floor.floorPlan, {
+                color,
+                highlight,
+                entranceColor: options.entranceColor,
+                forbiddenColor: options.forbiddenColor
+            });
+
+            this.stackGroup.add(floorGroup);
+        });
+
+        this.currentStackFloors = floors;
+        this.currentStackOptions = Object.assign({}, options, {
+            levelHeight,
+            spacing2D
+        });
+
+        this.render();
+    }
+
+    clearStackedFloors() {
+        this.stackGroup.clear();
+        this.stackGroup.visible = false;
+        this.currentStackFloors = null;
+        this.currentStackOptions = {};
+        this.render();
+    }
+
+    renderCrossFloorRoutes(routes = [], options = {}) {
+        this.crossFloorPathsGroup.clear();
+        this.currentCrossFloorRoutes = Array.isArray(routes) ? routes.slice() : [];
+        this.crossFloorOptions = Object.assign({}, options);
+
+        if (!Array.isArray(routes) || routes.length === 0) {
+            this.render();
+            return;
+        }
+
+        const horizontalColor = options.horizontalColor || 0xfacc15;
+        const verticalColor = options.verticalColor || 0x22d3ee;
+
+        routes.forEach((segment) => {
+            if (!segment || !segment.start || !segment.end) return;
+
+            const startPoint = new THREE.Vector3(
+                Number(segment.start.x) || 0,
+                Number(segment.start.y) || 0,
+                Number(segment.start.z) || 0
+            );
+            const endPoint = new THREE.Vector3(
+                Number(segment.end.x) || 0,
+                Number(segment.end.y) || 0,
+                Number(segment.end.z) || 0
+            );
+
+            if (!this.is3DMode) {
+                const baseZ = segment.type === 'vertical' ? 0.9 : 0.7;
+                startPoint.z = baseZ;
+                endPoint.z = baseZ;
+            }
+
+            const geometry = new THREE.BufferGeometry().setFromPoints([startPoint, endPoint]);
+            const color = segment.type === 'vertical' ? verticalColor : horizontalColor;
+            const material = new THREE.LineBasicMaterial({
+                color,
+                linewidth: segment.type === 'vertical' ? 3 : 2,
+                transparent: true,
+                opacity: segment.type === 'vertical' ? 0.95 : 0.75,
+                depthTest: false
+            });
+
+            const line = new THREE.Line(geometry, material);
+            line.renderOrder = 7;
+            this.crossFloorPathsGroup.add(line);
+        });
+
+        this.render();
+    }
+
+    clearCrossFloorRoutes() {
+        this.crossFloorPathsGroup.clear();
+        this.currentCrossFloorRoutes = [];
+        this.crossFloorOptions = {};
+        this.render();
+    }
+
+    _drawStackFloor(group, floorPlan, options = {}) {
+        if (!group || !floorPlan) return;
+
+        const wallColor = options.color || 0x9ca3af;
+        const highlight = !!options.highlight;
+        const entranceColor = options.entranceColor || (highlight ? 0xef4444 : 0xf87171);
+        const forbiddenColor = options.forbiddenColor || (highlight ? 0x0ea5e9 : 0x38bdf8);
+
+        const drawEntities = (entities, color, fill = false) => {
+            if (!Array.isArray(entities)) return;
+            entities.forEach(entity => {
+                if (!entity) return;
+                if (entity.polygon && entity.polygon.length) {
+                    this.drawPolygon(entity.polygon, color, group, fill);
+                } else if (entity.points && entity.points.length) {
+                    this.drawPolygon(entity.points, color, group, fill);
+                } else if (entity.start && entity.end) {
+                    this.drawLine(entity.start, entity.end, color, group);
+                } else if (entity.center && typeof entity.radius === 'number') {
+                    const segments = 24;
+                    const pts = [];
+                    for (let i = 0; i <= segments; i++) {
+                        const angle = (i / segments) * Math.PI * 2;
+                        pts.push({
+                            x: entity.center.x + Math.cos(angle) * entity.radius,
+                            y: entity.center.y + Math.sin(angle) * entity.radius
+                        });
+                    }
+                    this.drawPolygon(pts, color, group, fill);
+                }
+            });
+        };
+
+        drawEntities(floorPlan.walls, wallColor, highlight);
+        drawEntities(floorPlan.forbiddenZones, forbiddenColor, highlight);
+        drawEntities(floorPlan.entrances, entranceColor, false);
+
+        if (floorPlan.bounds) {
+            const { minX, minY, maxX, maxY } = floorPlan.bounds;
+            if ([minX, minY, maxX, maxY].every(v => typeof v === 'number')) {
+                const rect = [
+                    { x: minX, y: minY },
+                    { x: maxX, y: minY },
+                    { x: maxX, y: maxY },
+                    { x: minX, y: maxY }
+                ];
+                this.drawPolygon(rect, wallColor, group, false);
+            }
+        }
     }
 
     measureDistance(point1, point2) {
