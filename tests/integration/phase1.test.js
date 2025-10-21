@@ -17,7 +17,8 @@ describe('Phase 1 Integration Tests', () => {
         process.env.SKIP_ML_BOOTSTRAP = '1'; // Skip ML training in tests
         
         // Require app after env vars are set
-        app = require('../../../server');
+        const serverPath = path.resolve(__dirname, '../../server');
+        app = require(serverPath);
     });
 
     afterAll((done) => {

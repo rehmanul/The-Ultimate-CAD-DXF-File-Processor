@@ -25,6 +25,7 @@ let multiFloorStack = [];
 let multiFloorResult = null;
 let activeStackFloorId = null;
 let stackVisualizationEnabled = false;
+let activePresetConfig = null;
 
 const deepClone = (data) => {
     if (data === null || data === undefined) return data;
@@ -265,24 +266,8 @@ function initializeModules() {
 
     // Top buttons already hidden in HTML
 
-    // Sidebar toggle buttons
-    const leftToggleBtn = document.getElementById('leftToggle');
-    const rightToggleBtn = document.getElementById('rightToggle');
-    const containerDiv = document.querySelector('.container');
-
-    if (leftToggleBtn && containerDiv) {
-        leftToggleBtn.addEventListener('click', () => {
-            containerDiv.classList.toggle('left-collapsed');
-            console.log('Left toggle clicked, classes:', containerDiv.className);
-        });
-    }
-
-    if (rightToggleBtn && containerDiv) {
-        rightToggleBtn.addEventListener('click', () => {
-            containerDiv.classList.toggle('right-collapsed');
-            console.log('Right toggle clicked, classes:', containerDiv.className);
-        });
-    }
+    initializeLayoutChrome();
+    initializeHeaderActions();
 
     // Attach event listeners to UI elements
     const fileInput = document.getElementById('fileInput');
@@ -298,32 +283,10 @@ function initializeModules() {
 
     // Distribution inputs handling
     const distributionInputs = document.querySelectorAll('.distribution-input');
-    const distributionTotal = document.getElementById('distributionTotal');
-    const distributionError = document.getElementById('distributionError');
     const applyDistributionBtn = document.getElementById('applyDistributionBtn');
 
-    function updateDistributionTotal() {
-        let total = 0;
-        distributionInputs.forEach(input => {
-            total += parseInt(input.value) || 0;
-        });
-
-        if (distributionTotal) {
-            distributionTotal.textContent = total + '%';
-            if (total === 100) {
-                distributionTotal.style.color = '#4caf50';
-                if (distributionError) distributionError.classList.add('hidden');
-                if (applyDistributionBtn) applyDistributionBtn.disabled = false;
-            } else {
-                distributionTotal.style.color = '#f44336';
-                if (distributionError) distributionError.classList.remove('hidden');
-                if (applyDistributionBtn) applyDistributionBtn.disabled = true;
-            }
-        }
-    }
-
     distributionInputs.forEach(input => {
-        input.addEventListener('input', updateDistributionTotal);
+        input.addEventListener('input', () => updateDistributionTotal());
     });
 
     if (applyDistributionBtn) {
@@ -334,21 +297,41 @@ function initializeModules() {
             }
 
             const distribution = {};
+            const ranges = ['0-1', '1-3', '3-5', '5-10'];
             distributionInputs.forEach(input => {
-                const index = input.dataset.index;
-                const value = parseInt(input.value) || 0;
-                // Map index to size range
-                const ranges = ['0-1', '1-3', '3-5', '5-10'];
-                distribution[ranges[index]] = value / 100; // Convert to decimal
+                const index = Number(input.dataset.index);
+                const percentage = parseFloat(input.value) || 0;
+                distribution[ranges[index]] = percentage;
             });
 
-            // Update the hidden distribution editor
+            const normalized = normalizePresetDistribution(distribution);
+            const normalizedPercentages = {};
+            Object.entries(normalized).forEach(([range, weight]) => {
+                normalizedPercentages[range] = +(weight * 100).toFixed(2);
+            });
+            activePresetConfig = {
+                id: 'custom-manual',
+                name: 'Manual mix',
+                rawDistribution: { ...normalizedPercentages },
+                normalizedDistribution: normalized,
+                corridorWidth: getActiveCorridorWidth(),
+                options: {},
+                metadata: { custom: true }
+            };
+
             const distributionEditor = document.getElementById('distributionEditor');
             if (distributionEditor) {
-                distributionEditor.value = JSON.stringify(distribution, null, 2);
+                distributionEditor.value = JSON.stringify(normalized, null, 2);
             }
 
-            showNotification('Distribution updated. Regenerate îlots to apply changes.', 'info');
+            updateActivePresetSummary(activePresetConfig);
+            showNotification('Distribution updated.', 'info', {
+                description: 'Regenerate îlots to apply the custom mix.',
+                action: currentFloorPlan ? {
+                    label: 'Regenerate now',
+                    callback: () => generateIlots()
+                } : null
+            });
         });
     }
 
@@ -767,6 +750,7 @@ async function handleFileUpload(e) {
 
         console.log('currentFloorPlan created:', currentFloorPlan);
 
+        updateActivePlanSummary(currentFloorPlan);
         updateStats();
         refreshRoomList();
 
@@ -931,6 +915,7 @@ function addCurrentFloorToStack() {
         floorPlan: deepClone(currentFloorPlan),
         ilots: deepClone(generatedIlots),
         corridors: deepClone(corridorNetwork),
+        presetConfig: activePresetConfig ? deepClone(activePresetConfig) : null,
         metadata: {
             source: currentFloorPlan.sourceFile || currentFloorPlan.urn || floorName,
             rooms: currentFloorPlan.rooms?.length || 0,
@@ -1054,6 +1039,12 @@ function selectStackFloor(floorId) {
     currentFloorPlan = deepClone(entry.floorPlan);
     generatedIlots = deepClone(entry.ilots || []);
     corridorNetwork = deepClone(entry.corridors || []);
+    activePresetConfig = entry.presetConfig ? deepClone(entry.presetConfig) : activePresetConfig;
+    if (entry.presetConfig) {
+        syncPresetUIFromConfig(activePresetConfig);
+    } else {
+        updateActivePresetSummary(activePresetConfig);
+    }
 
     collisionDetector = new CollisionDetection(currentFloorPlan);
     if (editor) editor.collisionDetector = collisionDetector;
@@ -1074,6 +1065,7 @@ function selectStackFloor(floorId) {
     const nameInput = document.getElementById('floorNameInput');
     if (nameInput) nameInput.value = entry.name || '';
 
+    updateActivePlanSummary(entry.name || currentFloorPlan);
     refreshRoomList();
     updateStats();
     updateConnectorVisualization();
@@ -1657,13 +1649,7 @@ async function generateIlots() {
             body: JSON.stringify({
                 floorPlan: floorPlan,
                 distribution: distribution,
-                options: {
-                    totalIlots: targetIlots,
-                    seed: Date.now(),
-                    minEntranceDistance: 1.0,
-                    minIlotDistance: 0.5,
-                    maxAttemptsPerIlot: 800
-                }
+                options: buildIlotOptions(targetIlots)
             })
         });
 
@@ -1723,6 +1709,9 @@ async function generateIlots() {
 
 
 function parseDistribution() {
+    if (activePresetConfig?.normalizedDistribution) {
+        return activePresetConfig.normalizedDistribution;
+    }
     const txt = document.getElementById('distributionEditor')?.value;
     if (!txt) return { '1-3': 0.25, '3-5': 0.35, '5-10': 0.40 };
     try {
@@ -1750,7 +1739,7 @@ async function generateCorridors() {
             body: JSON.stringify({
                 floorPlan: currentFloorPlan,
                 ilots: generatedIlots,
-                corridorWidth: parseFloat(document.getElementById('corridorWidthSlider').value || '1.2')
+                corridorWidth: getActiveCorridorWidth()
             })
         });
 
@@ -1861,21 +1850,35 @@ function applyPresetDistribution(preset) {
     // Update corridor width
     setupCorridorWidthSlider(preset.corridorWidth);
 
+    const normalized = normalizePresetDistribution(preset.distribution);
+    if (document.getElementById('distributionEditor')) {
+        document.getElementById('distributionEditor').value = JSON.stringify(normalized, null, 2);
+    }
+
+    activePresetConfig = {
+        id: preset.id,
+        name: preset.name,
+        rawDistribution: { ...preset.distribution },
+        normalizedDistribution: normalized,
+        corridorWidth: typeof preset.corridorWidth === 'number' ? preset.corridorWidth : parseFloat(document.getElementById('corridorWidthSlider')?.value || '1.2'),
+        options: preset.options || {}
+    };
+
     // Update distribution total display
     updateDistributionTotal();
 
     // Store preset ID for regeneration
     window.currentPresetId = preset.id;
 
-    showNotification(`Preset "${preset.name}" applied successfully!`, 'success');
+    updateActivePresetSummary(activePresetConfig);
 
-    // If we have a floor plan, offer to regenerate
-    if (currentFloorPlan) {
-        const regenerate = confirm('Regenerate îlots with new preset?');
-        if (regenerate) {
-            generateIlots();
-        }
-    }
+    showNotification(`Preset "${preset.name}" ready`, 'success', {
+        description: 'Regenerate îlots to apply the updated distribution.',
+        action: currentFloorPlan ? {
+            label: 'Regenerate now',
+            callback: () => generateIlots()
+        } : null
+    });
 }
 
 function setupCorridorWidthSlider(initialWidth) {
@@ -1892,9 +1895,80 @@ function setupCorridorWidthSlider(initialWidth) {
     if (!slider.dataset.bound) {
         slider.addEventListener('input', () => {
             valueEl.textContent = `${slider.value}m`;
+            if (activePresetConfig) {
+                activePresetConfig.corridorWidth = parseFloat(slider.value) || activePresetConfig.corridorWidth;
+            }
         });
         slider.dataset.bound = '1';
     }
+}
+
+function normalizePresetDistribution(distribution) {
+    const fallback = { '1-3': 0.25, '3-5': 0.35, '5-10': 0.40 };
+    if (!distribution || typeof distribution !== 'object') return fallback;
+
+    const ordered = Object.entries(distribution).map(([range, value]) => {
+        let weight = Number(value);
+        if (Number.isNaN(weight) || weight < 0) weight = 0;
+        if (weight > 1.01) weight = weight / 100;
+        return [range, weight];
+    }).sort((a, b) => {
+        const aMin = parseFloat(a[0].split('-')[0]);
+        const bMin = parseFloat(b[0].split('-')[0]);
+        return aMin - bMin;
+    });
+
+    const total = ordered.reduce((sum, [, weight]) => sum + weight, 0);
+    if (total <= 0) return fallback;
+
+    const normalized = {};
+    ordered.forEach(([range, weight]) => {
+        normalized[range] = weight / total;
+    });
+
+    return normalized;
+}
+
+function buildIlotOptions(targetIlots) {
+    const corridorWidth = getActiveCorridorWidth();
+    const presetOptions = activePresetConfig?.options || {};
+    return {
+        totalIlots: targetIlots,
+        seed: computeDeterministicSeed(currentFloorPlan, activePresetConfig),
+        minEntranceDistance: 1.0,
+        minIlotDistance: 0.5,
+        maxAttemptsPerIlot: 800,
+        margin: typeof presetOptions.margin === 'number' ? presetOptions.margin : (presetOptions.minRowDistance || 1.0),
+        spacing: typeof presetOptions.spacing === 'number' ? presetOptions.spacing : 0.3,
+        corridorWidth
+    };
+}
+
+function computeDeterministicSeed(floorPlan, presetConfig) {
+    const bounds = floorPlan?.bounds || {};
+    const source = [
+        presetConfig?.id || 'default',
+        bounds.minX ?? 0,
+        bounds.minY ?? 0,
+        bounds.maxX ?? 0,
+        bounds.maxY ?? 0,
+        floorPlan?.urn || ''
+    ].join('|');
+
+    let hash = 2166136261;
+    for (let i = 0; i < source.length; i++) {
+        hash ^= source.charCodeAt(i);
+        hash = (hash * 16777619) >>> 0;
+    }
+    return hash;
+}
+
+function getActiveCorridorWidth() {
+    if (typeof activePresetConfig?.corridorWidth === 'number') {
+        return activePresetConfig.corridorWidth;
+    }
+    const slider = document.getElementById('corridorWidthSlider');
+    return slider ? parseFloat(slider.value || '1.2') : 1.2;
 }
 
 // Update distribution total display
@@ -1927,14 +2001,256 @@ function updateDistributionTotal() {
     }
 }
 
-function showNotification(message, type) {
+const LAYOUT_STATE_STORAGE_KEY = 'fp-layout-state-v2';
+const NOTIFICATION_ICONS = {
+    success: 'fa-circle-check',
+    error: 'fa-circle-exclamation',
+    warning: 'fa-triangle-exclamation',
+    info: 'fa-circle-info'
+};
+
+function initializeLayoutChrome() {
+    const layoutRoot = document.querySelector('.app-layout');
+    if (!layoutRoot) return;
+
+    const toggleButtons = Array.from(document.querySelectorAll('[data-toggle-panel]'));
+    const state = loadLayoutState();
+    applyLayoutState(layoutRoot, state);
+    syncToggleButtons(toggleButtons, state);
+
+    toggleButtons.forEach((button) => {
+        button.addEventListener('click', (event) => {
+            event?.preventDefault();
+            const panel = button.dataset.togglePanel;
+            if (!panel) return;
+            state[panel] = !state[panel];
+            applyLayoutState(layoutRoot, state);
+            syncToggleButtons(toggleButtons, state);
+            persistLayoutState(state);
+        });
+    });
+}
+
+function initializeHeaderActions() {
+    const uploadBtn = document.getElementById('uploadBtn');
+    const fileInput = document.getElementById('fileInput');
+    if (uploadBtn && fileInput) {
+        uploadBtn.addEventListener('click', (event) => {
+            event?.preventDefault();
+            fileInput.click();
+        });
+    }
+    const uploadTriggers = document.querySelectorAll('[data-trigger="upload"]');
+    uploadTriggers.forEach(trigger => {
+        trigger.addEventListener('click', (event) => {
+            event?.preventDefault();
+            if (fileInput) fileInput.click();
+        });
+    });
+
+    updateActivePlanSummary(currentFloorPlan);
+    updateActivePresetSummary(activePresetConfig);
+}
+
+function loadLayoutState() {
+    try {
+        const stored = localStorage.getItem(LAYOUT_STATE_STORAGE_KEY);
+        if (stored) {
+            const parsed = JSON.parse(stored);
+            return {
+                left: !!parsed.left,
+                right: !!parsed.right
+            };
+        }
+    } catch (error) {
+        console.warn('Failed to load layout state', error);
+    }
+    return { left: false, right: false };
+}
+
+function persistLayoutState(state) {
+    try {
+        localStorage.setItem(LAYOUT_STATE_STORAGE_KEY, JSON.stringify({
+            left: !!state.left,
+            right: !!state.right
+        }));
+    } catch (error) {
+        console.warn('Failed to persist layout state', error);
+    }
+}
+
+function applyLayoutState(root, state) {
+    if (!root) return;
+    const normalized = {
+        left: !!state.left,
+        right: !!state.right
+    };
+    root.classList.toggle('left-collapsed', normalized.left);
+    root.classList.toggle('right-collapsed', normalized.right);
+    root.dataset.leftCollapsed = normalized.left ? 'true' : 'false';
+    root.dataset.rightCollapsed = normalized.right ? 'true' : 'false';
+}
+
+function syncToggleButtons(buttons, state) {
+    const friendlyNames = {
+        left: 'configuration panel',
+        right: 'insights panel'
+    };
+
+    buttons.forEach((button) => {
+        const panel = button.dataset.togglePanel;
+        if (!panel) return;
+        const collapsed = !!state[panel];
+        button.setAttribute('aria-pressed', collapsed ? 'true' : 'false');
+        button.classList.toggle('is-active', collapsed);
+        button.dataset.state = collapsed ? 'collapsed' : 'expanded';
+        const label = button.querySelector('span');
+        if (label && button.classList.contains('header-btn')) {
+            if (!label.dataset.baseLabel) {
+                label.dataset.baseLabel = label.textContent;
+            }
+            label.textContent = collapsed ? `Show ${label.dataset.baseLabel}` : label.dataset.baseLabel;
+        }
+        const targetLabel = friendlyNames[panel] || `${panel} panel`;
+        button.setAttribute('aria-label', collapsed ? `Expand ${targetLabel}` : `Collapse ${targetLabel}`);
+    });
+}
+
+function updateActivePlanSummary(plan) {
+    const nameTarget = document.getElementById('activePlanName');
+    const pill = document.getElementById('activePlanPill');
+    const planName = typeof plan === 'string'
+        ? plan
+        : (plan && plan.name) || null;
+    if (nameTarget) {
+        nameTarget.textContent = planName || 'No file';
+        nameTarget.title = planName || 'No plan loaded';
+    }
+    if (pill) {
+        pill.classList.toggle('is-active', !!planName);
+    }
+}
+
+function updateActivePresetSummary(preset) {
+    const nameTarget = document.getElementById('activePresetName');
+    const pill = document.getElementById('activePresetPill');
+    const presetName = preset && preset.name ? preset.name : null;
+    if (nameTarget) {
+        nameTarget.textContent = presetName || 'Not selected';
+        nameTarget.title = presetName || 'No preset selected';
+    }
+    if (pill) {
+        pill.classList.toggle('is-active', !!presetName);
+        pill.dataset.custom = preset?.metadata?.custom ? 'true' : 'false';
+    }
+}
+
+function syncPresetUIFromConfig(config) {
+    if (!config) {
+        updateActivePresetSummary(null);
+        return;
+    }
+    const distributionInputs = document.querySelectorAll('.distribution-input');
+    const ranges = ['0-1', '1-3', '3-5', '5-10'];
+    const source = config.rawDistribution || {};
+    ranges.forEach((range, index) => {
+        const input = distributionInputs[index];
+        if (!input) return;
+        let value = source[range];
+        if (typeof value === 'number' && value <= 1.05) {
+            value = Math.round(value * 100);
+        }
+        if (typeof value === 'number' && !Number.isNaN(value)) {
+            input.value = value;
+        }
+    });
+    updateDistributionTotal();
+    setupCorridorWidthSlider(config.corridorWidth);
+    updateActivePresetSummary(config);
+    if (presetSelector && typeof presetSelector.hydrateSelection === 'function' && config.id) {
+        presetSelector.hydrateSelection(config.id);
+    }
+}
+
+function showNotification(message, type = 'info', options = {}) {
+    if (typeof type === 'object' && type !== null) {
+        options = type;
+        type = options.type || 'info';
+    }
+
+    const host = document.getElementById('notificationHost') || document.body;
     const notification = document.createElement('div');
     notification.className = `notification notification-${type}`;
-    notification.textContent = message;
-    document.body.appendChild(notification);
-    setTimeout(() => {
-        notification.remove();
-    }, 5000);
+    notification.setAttribute('role', 'alert');
+    notification.dataset.type = type;
+    if (options.sticky) notification.classList.add('notification-sticky');
+    if (options.compact) notification.classList.add('notification-compact');
+
+    const iconWrapper = document.createElement('span');
+    iconWrapper.className = 'notification-icon';
+    iconWrapper.innerHTML = `<i class="fas ${options.icon || NOTIFICATION_ICONS[type] || NOTIFICATION_ICONS.info}"></i>`;
+    notification.appendChild(iconWrapper);
+
+    const content = document.createElement('div');
+    content.className = 'notification-content';
+
+    const titleEl = document.createElement('div');
+    titleEl.className = 'notification-title';
+    titleEl.textContent = options.title || message;
+    content.appendChild(titleEl);
+
+    if (options.description) {
+        const descriptionEl = document.createElement('div');
+        descriptionEl.className = 'notification-description';
+        descriptionEl.textContent = options.description;
+        content.appendChild(descriptionEl);
+    } else if (options.title) {
+        const descriptionEl = document.createElement('div');
+        descriptionEl.className = 'notification-description';
+        descriptionEl.textContent = message;
+        content.appendChild(descriptionEl);
+    }
+
+    notification.appendChild(content);
+
+    if (options.action && typeof options.action.callback === 'function') {
+        const actionBtn = document.createElement('button');
+        actionBtn.type = 'button';
+        actionBtn.className = 'notification-action';
+        actionBtn.textContent = options.action.label || 'View';
+        actionBtn.addEventListener('click', () => {
+            try {
+                options.action.callback();
+            } finally {
+                dismiss();
+            }
+        });
+        notification.appendChild(actionBtn);
+    }
+
+    const closeBtn = document.createElement('button');
+    closeBtn.type = 'button';
+    closeBtn.className = 'notification-close';
+    closeBtn.setAttribute('aria-label', 'Dismiss notification');
+    closeBtn.innerHTML = '<i class="fas fa-times"></i>';
+    closeBtn.addEventListener('click', dismiss);
+    notification.appendChild(closeBtn);
+
+    host.appendChild(notification);
+
+    const duration = typeof options.duration === 'number' ? options.duration : 5000;
+    let timer = null;
+    if (duration > 0 && !options.sticky) {
+        timer = setTimeout(dismiss, duration);
+    }
+
+    function dismiss() {
+        if (timer) clearTimeout(timer);
+        notification.classList.add('notification-dismiss');
+        setTimeout(() => notification.remove(), 220);
+    }
+
+    return dismiss;
 }
 
 // No polling needed - local processing is instant

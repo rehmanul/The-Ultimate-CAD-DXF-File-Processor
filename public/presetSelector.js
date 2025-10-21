@@ -11,6 +11,18 @@ class PresetSelector {
         this.selectedPreset = null;
         this.customPresets = this.loadCustomPresetsFromStorage();
         this.onPresetSelected = null;
+        this.preferencesKey = 'fp-preset-preferences';
+        this.preferences = this.loadPreferences();
+        this.sortOption = this.preferences.sortOption || 'recommended';
+        this.activeCategory = this.preferences.activeCategory || 'all';
+        this.lastUsedPresetId = this.preferences.lastUsedPresetId || null;
+        this.usageHistory = this.preferences.usageHistory || {};
+        this.searchQuery = '';
+        this.gridEl = null;
+        this.searchInput = null;
+        this.sortSelect = null;
+        this.countEl = null;
+        this.tabEls = [];
         this.init();
     }
 
@@ -18,6 +30,7 @@ class PresetSelector {
         await this.loadPresets();
         this.render();
         this.attachEventListeners();
+        this.updatePresetGrid();
     }
 
     async loadPresets() {
@@ -35,36 +48,62 @@ class PresetSelector {
     }
 
     render() {
+        this.ensureValidCategory();
+        const sortOptions = [
+            { value: 'recommended', label: 'Recommended' },
+            { value: 'name', label: 'Name (A-Z)' },
+            { value: 'category', label: 'Category' },
+            { value: 'usage', label: 'Recently used' }
+        ];
+
         this.container.innerHTML = `
             <div class="preset-selector-panel">
                 <div class="preset-header">
-                    <h3><i class="fas fa-layer-group"></i> Distribution Presets</h3>
-                    <button class="btn-icon" id="refreshPresets" title="Refresh">
-                        <i class="fas fa-sync-alt"></i>
-                    </button>
+                    <div class="preset-header-title">
+                        <h3><i class="fas fa-layer-group"></i> Distribution Presets</h3>
+                        <p>Dial in deterministic îlot mixes, corridor widths, and layout heuristics by program type.</p>
+                    </div>
+                    <div class="preset-header-actions">
+                        <span class="preset-count" id="presetCount">0 presets</span>
+                        <div class="preset-header-buttons">
+                            <button class="btn-icon" id="refreshPresets" title="Refresh presets">
+                                <i class="fas fa-sync-alt"></i>
+                            </button>
+                        </div>
+                    </div>
                 </div>
 
-                <div class="preset-tabs">
-                    <button class="preset-tab active" data-category="all">
+                <div class="preset-tabs" role="tablist">
+                    <button class="preset-tab ${this.activeCategory === 'all' ? 'active' : ''}" data-category="all" role="tab">
                         <i class="fas fa-th"></i> All
                     </button>
                     ${this.categories.map(cat => `
-                        <button class="preset-tab" data-category="${cat}">
+                        <button class="preset-tab ${this.activeCategory === cat ? 'active' : ''}" data-category="${cat}" role="tab">
                             <i class="${this.getCategoryIcon(cat)}"></i> ${cat}
                         </button>
                     `).join('')}
-                    <button class="preset-tab" data-category="custom">
+                    <button class="preset-tab ${this.activeCategory === 'custom' ? 'active' : ''}" data-category="custom" role="tab">
                         <i class="fas fa-star"></i> Custom
                     </button>
                 </div>
 
-                <div class="preset-search">
-                    <input type="text" id="presetSearch" placeholder="Search presets...">
-                    <i class="fas fa-search"></i>
+                <div class="preset-toolbar">
+                    <div class="preset-search">
+                        <input type="text" id="presetSearch" placeholder="Search presets..." value="${this.escapeHtml(this.searchQuery)}">
+                        <i class="fas fa-search"></i>
+                    </div>
+                    <div class="preset-sort">
+                        <label for="presetSort">Sort</label>
+                        <select id="presetSort">
+                            ${sortOptions.map(option => `
+                                <option value="${option.value}" ${this.sortOption === option.value ? 'selected' : ''}>${option.label}</option>
+                            `).join('')}
+                        </select>
+                    </div>
                 </div>
 
-                <div class="preset-grid" id="presetGrid">
-                    ${this.renderPresetCards()}
+                <div class="preset-viewport">
+                    <div class="preset-grid" id="presetGrid"></div>
                 </div>
 
                 <div class="preset-actions">
@@ -91,198 +130,442 @@ class PresetSelector {
                 </div>
             </div>
         `;
+
+        this.cacheDomReferences();
     }
 
-    renderPresetCards() {
-        const allPresets = { ...this.presets, ...this.customPresets };
-        return Object.values(allPresets).map(preset => `
-            <div class="preset-card" data-preset-id="${preset.id}">
-                <div class="preset-card-header">
-                    <div class="preset-icon">
-                        <i class="${this.getPresetIcon(preset.category)}"></i>
+    renderPresetCards(presets = []) {
+        if (!Array.isArray(presets) || presets.length === 0) {
+            return this.renderEmptyState();
+        }
+
+        return presets.map(preset => {
+            const isSelected = this.selectedPreset?.id === preset.id;
+            const isCustom = !!preset.metadata?.custom;
+            const isLastUsed = this.lastUsedPresetId === preset.id;
+            const usageTimestamp = this.usageHistory?.[preset.id];
+            const usageLabel = usageTimestamp ? this.formatRelativeTime(usageTimestamp) : null;
+            const distributionStats = Object.keys(preset.distribution || {}).length;
+            const corridorWidth = typeof preset.corridorWidth === 'number' ? `${preset.corridorWidth}m corridor` : 'Corridor tuned';
+
+            return `
+                <div class="preset-card${isSelected ? ' selected' : ''}${isCustom ? ' preset-card--custom' : ''}${isLastUsed ? ' preset-card--recent' : ''}" data-preset-id="${preset.id}">
+                    <div class="preset-card-badges">
+                        ${isLastUsed ? `<span class="preset-tag preset-tag--active"><i class="fas fa-clock"></i> Last used ${usageLabel || 'just now'}</span>` : ''}
+                        ${isCustom ? `<span class="preset-tag preset-tag--custom"><i class="fas fa-star"></i> Custom</span>` : ''}
+                        ${isSelected ? `<span class="preset-tag preset-tag--selected"><i class="fas fa-check"></i> Active</span>` : ''}
                     </div>
-                    <div class="preset-category">${preset.category}</div>
-                </div>
-                <h4 class="preset-name">${preset.name}</h4>
-                <p class="preset-description">${preset.description}</p>
-                <div class="preset-stats">
-                    <div class="preset-stat">
-                        <i class="fas fa-cubes"></i>
-                        <span>${Object.keys(preset.distribution).length} ranges</span>
+                    <div class="preset-card-header">
+                        <div class="preset-icon">
+                            <i class="${this.getPresetIcon(preset.category)}"></i>
+                        </div>
+                        <div class="preset-card-title">
+                            <h4 class="preset-name">${preset.name}</h4>
+                            <span class="preset-category">${preset.category}</span>
+                        </div>
                     </div>
-                    <div class="preset-stat">
-                        <i class="fas fa-road"></i>
-                        <span>${preset.corridorWidth}m corridor</span>
+                    <p class="preset-description">${preset.description}</p>
+                    <div class="preset-stats">
+                        <div class="preset-stat">
+                            <i class="fas fa-cubes"></i>
+                            <span>${distributionStats} ranges</span>
+                        </div>
+                        <div class="preset-stat">
+                            <i class="fas fa-road"></i>
+                            <span>${corridorWidth}</span>
+                        </div>
                     </div>
-                </div>
-                <div class="preset-distribution-preview">
-                    ${this.renderDistributionBars(preset.distribution)}
-                </div>
-                <div class="preset-actions">
-                    <button class="btn-small btn-primary select-preset" data-preset-id="${preset.id}">
-                        <i class="fas fa-check"></i> Select
-                    </button>
-                    <button class="btn-small btn-secondary view-details" data-preset-id="${preset.id}">
-                        <i class="fas fa-info-circle"></i> Details
-                    </button>
-                    ${preset.metadata?.custom ? `
-                        <button class="btn-small btn-danger delete-preset" data-preset-id="${preset.id}">
-                            <i class="fas fa-trash"></i>
+                    <div class="preset-distribution-preview">
+                        ${this.renderDistributionBars(preset.distribution)}
+                    </div>
+                    <div class="preset-meta">
+                        ${usageLabel ? `<span class="preset-meta-item"><i class="fas fa-history"></i> ${usageLabel}</span>` : ''}
+                        ${preset.metadata?.author ? `<span class="preset-meta-item"><i class="fas fa-user"></i> ${preset.metadata.author}</span>` : ''}
+                    </div>
+                    <div class="preset-actions">
+                        <button class="btn-small btn-primary select-preset" data-preset-id="${preset.id}">
+                            <i class="fas fa-check"></i> Select
                         </button>
-                    ` : ''}
+                        <button class="btn-small btn-secondary view-details" data-preset-id="${preset.id}">
+                            <i class="fas fa-info-circle"></i> Details
+                        </button>
+                        ${isCustom ? `
+                            <button class="btn-small btn-danger delete-preset" data-preset-id="${preset.id}">
+                                <i class="fas fa-trash"></i>
+                            </button>
+                        ` : ''}
+                    </div>
                 </div>
-            </div>
-        `).join('');
+            `;
+        }).join('');
     }
 
-    renderDistributionBars(distribution) {
-        return Object.entries(distribution).map(([range, percentage]) => `
-            <div class="distribution-bar" title="${range} m²: ${percentage}%">
-                <div class="distribution-fill" style="width: ${percentage}%"></div>
-                <span class="distribution-label">${range}m²</span>
-                <span class="distribution-value">${percentage}%</span>
-            </div>
-        `).join('');
+    renderDistributionBars(distribution = {}) {
+        const entries = Object.entries(distribution);
+        if (!entries.length) {
+            return `<div class="distribution-empty">No ranges defined</div>`;
+        }
+
+        const normalized = entries.map(([range, value]) => {
+            let percentage = Number(value);
+            if (Number.isNaN(percentage)) percentage = 0;
+            if (percentage <= 1.05) {
+                percentage = percentage * 100;
+            }
+            return {
+                range,
+                percentage: Math.max(0, Math.round(percentage))
+            };
+        }).sort((a, b) => {
+            const aMin = parseFloat(a.range.split('-')[0]);
+            const bMin = parseFloat(b.range.split('-')[0]);
+            return aMin - bMin;
+        });
+
+        const maxValue = normalized.reduce((max, item) => Math.max(max, item.percentage), 0);
+
+        return normalized.map(({ range, percentage }) => {
+            const width = Math.min(Math.max(percentage, 4), 100);
+            const dominantClass = percentage === maxValue ? ' dominant' : '';
+            return `
+                <div class="distribution-bar${dominantClass}" title="${range} m²: ${percentage}%">
+                    <div class="distribution-bar-track">
+                        <div class="distribution-fill${dominantClass}" style="width: ${width}%"></div>
+                    </div>
+                    <span class="distribution-label">${range} m²</span>
+                    <span class="distribution-value">${percentage}%</span>
+                </div>
+            `;
+        }).join('');
+    }
+
+    cacheDomReferences() {
+        this.gridEl = this.container.querySelector('#presetGrid');
+        this.searchInput = this.container.querySelector('#presetSearch');
+        this.sortSelect = this.container.querySelector('#presetSort');
+        this.countEl = this.container.querySelector('#presetCount');
+        this.tabEls = Array.from(this.container.querySelectorAll('.preset-tab'));
     }
 
     attachEventListeners() {
-        // Tab switching
-        document.querySelectorAll('.preset-tab').forEach(tab => {
-            tab.addEventListener('click', (e) => {
-                document.querySelectorAll('.preset-tab').forEach(t => t.classList.remove('active'));
-                e.currentTarget.classList.add('active');
-                this.filterByCategory(e.currentTarget.dataset.category);
+        this.tabEls.forEach(tab => {
+            tab.addEventListener('click', (event) => {
+                event.preventDefault();
+                const category = event.currentTarget.dataset.category;
+                this.filterByCategory(category);
             });
         });
 
-        // Search
-        document.getElementById('presetSearch')?.addEventListener('input', (e) => {
-            this.filterBySearch(e.target.value);
+        if (this.searchInput) {
+            this.searchInput.addEventListener('input', (event) => {
+                this.filterBySearch(event.target.value || '');
+            });
+        }
+
+        if (this.sortSelect) {
+            this.sortSelect.addEventListener('change', (event) => {
+                this.sortOption = event.target.value || 'recommended';
+                this.savePreferences({ sortOption: this.sortOption });
+                this.updatePresetGrid();
+            });
+        }
+
+        const refreshBtn = this.container.querySelector('#refreshPresets');
+        if (refreshBtn) {
+            refreshBtn.addEventListener('click', async () => {
+                refreshBtn.classList.add('is-rotating');
+                try {
+                    await this.loadPresets();
+                    this.render();
+                    this.attachEventListeners();
+                    this.updatePresetGrid();
+                } finally {
+                    setTimeout(() => refreshBtn.classList.remove('is-rotating'), 600);
+                }
+            });
+        }
+
+        this.container.querySelector('#createCustomPreset')?.addEventListener('click', () => {
+            this.showCustomPresetForm();
         });
 
-        // Preset selection
-        document.querySelectorAll('.select-preset').forEach(btn => {
-            btn.addEventListener('click', (e) => {
-                e.stopPropagation();
-                const presetId = e.currentTarget.dataset.presetId;
+        this.container.querySelector('#importPreset')?.addEventListener('click', () => {
+            this.showImportDialog();
+        });
+
+        this.container.querySelectorAll('.modal-close').forEach(btn => {
+            btn.addEventListener('click', (event) => {
+                event.preventDefault();
+                event.currentTarget.closest('.modal')?.classList.add('hidden');
+            });
+        });
+    }
+
+    updatePresetGrid() {
+        if (!this.gridEl) return;
+        const presets = this.getVisiblePresets();
+        this.gridEl.innerHTML = this.renderPresetCards(presets);
+        this.updatePresetMetrics(presets.length);
+        this.bindCardEventHandlers();
+    }
+
+    getVisiblePresets() {
+        const allPresets = { ...(this.presets || {}), ...(this.customPresets || {}) };
+        let list = Object.values(allPresets);
+
+        if (this.activeCategory === 'custom') {
+            list = list.filter(preset => preset.metadata?.custom);
+        } else if (this.activeCategory !== 'all') {
+            list = list.filter(preset => preset.category === this.activeCategory);
+        }
+
+        const normalizedQuery = (this.searchQuery || '').trim().toLowerCase();
+        if (normalizedQuery) {
+            list = list.filter(preset => {
+                const haystack = `${preset.name} ${preset.description} ${preset.category}`.toLowerCase();
+                return haystack.includes(normalizedQuery);
+            });
+        }
+
+        return this.sortPresets(list);
+    }
+
+    sortPresets(presets) {
+        const list = Array.isArray(presets) ? [...presets] : [];
+        const categoryOrder = this.categories || [];
+        switch (this.sortOption) {
+            case 'name':
+                return list.sort((a, b) => a.name.localeCompare(b.name));
+            case 'category':
+                return list.sort((a, b) => {
+                    const aIndex = categoryOrder.indexOf(a.category);
+                    const bIndex = categoryOrder.indexOf(b.category);
+                    if (aIndex !== bIndex) {
+                        if (aIndex === -1) return 1;
+                        if (bIndex === -1) return -1;
+                        return aIndex - bIndex;
+                    }
+                    return a.name.localeCompare(b.name);
+                });
+            case 'usage':
+                return list.sort((a, b) => {
+                    const usageA = this.usageHistory?.[a.id] || 0;
+                    const usageB = this.usageHistory?.[b.id] || 0;
+                    if (usageA === usageB) {
+                        return a.name.localeCompare(b.name);
+                    }
+                    return usageB - usageA;
+                });
+            case 'recommended':
+            default:
+                return list.sort((a, b) => {
+                    const lastUsedA = a.id === this.lastUsedPresetId ? 1 : 0;
+                    const lastUsedB = b.id === this.lastUsedPresetId ? 1 : 0;
+                    if (lastUsedA !== lastUsedB) return lastUsedB - lastUsedA;
+
+                    const customA = a.metadata?.custom ? 1 : 0;
+                    const customB = b.metadata?.custom ? 1 : 0;
+                    if (customA !== customB) return customA - customB;
+
+                    const priorityA = a.metadata?.priority ?? 999;
+                    const priorityB = b.metadata?.priority ?? 999;
+                    if (priorityA !== priorityB) return priorityA - priorityB;
+
+                    const updatedA = Date.parse(a.metadata?.updated || a.metadata?.created || 0) || 0;
+                    const updatedB = Date.parse(b.metadata?.updated || b.metadata?.created || 0) || 0;
+                    if (updatedA !== updatedB) return updatedB - updatedA;
+
+                    return a.name.localeCompare(b.name);
+                });
+        }
+    }
+
+    updatePresetMetrics(count) {
+        if (!this.countEl) return;
+        const noun = count === 1 ? 'preset' : 'presets';
+        const label = this.getSortLabel();
+        this.countEl.textContent = `${count} ${noun} · ${label}`;
+    }
+
+    getSortLabel() {
+        switch (this.sortOption) {
+            case 'name':
+                return 'Name A–Z';
+            case 'category':
+                return 'Grouped by category';
+            case 'usage':
+                return 'Recently used';
+            case 'recommended':
+            default:
+                return 'Recommended';
+        }
+    }
+
+    bindCardEventHandlers() {
+        this.container.querySelectorAll('.select-preset').forEach(btn => {
+            btn.addEventListener('click', (event) => {
+                event.stopPropagation();
+                const presetId = event.currentTarget.dataset.presetId;
                 this.selectPreset(presetId);
             });
         });
 
-        // View details
-        document.querySelectorAll('.view-details').forEach(btn => {
-            btn.addEventListener('click', (e) => {
-                e.stopPropagation();
-                const presetId = e.currentTarget.dataset.presetId;
+        this.container.querySelectorAll('.view-details').forEach(btn => {
+            btn.addEventListener('click', (event) => {
+                event.stopPropagation();
+                const presetId = event.currentTarget.dataset.presetId;
                 this.showPresetDetails(presetId);
             });
         });
 
-        // Delete custom preset
-        document.querySelectorAll('.delete-preset').forEach(btn => {
-            btn.addEventListener('click', (e) => {
-                e.stopPropagation();
-                const presetId = e.currentTarget.dataset.presetId;
+        this.container.querySelectorAll('.delete-preset').forEach(btn => {
+            btn.addEventListener('click', (event) => {
+                event.stopPropagation();
+                const presetId = event.currentTarget.dataset.presetId;
                 this.deleteCustomPreset(presetId);
-            });
-        });
-
-        // Create custom preset
-        document.getElementById('createCustomPreset')?.addEventListener('click', () => {
-            this.showCustomPresetForm();
-        });
-
-        // Import preset
-        document.getElementById('importPreset')?.addEventListener('click', () => {
-            this.showImportDialog();
-        });
-
-        // Refresh
-        document.getElementById('refreshPresets')?.addEventListener('click', () => {
-            this.init();
-        });
-
-        // Modal close
-        document.querySelectorAll('.modal-close').forEach(btn => {
-            btn.addEventListener('click', (e) => {
-                e.target.closest('.modal').classList.add('hidden');
             });
         });
     }
 
     filterByCategory(category) {
-        const cards = document.querySelectorAll('.preset-card');
-        cards.forEach(card => {
-            const presetId = card.dataset.presetId;
-            const preset = this.presets[presetId] || this.customPresets[presetId];
-            
-            if (category === 'all') {
-                card.style.display = 'block';
-            } else if (category === 'custom') {
-                card.style.display = preset.metadata?.custom ? 'block' : 'none';
-            } else {
-                card.style.display = preset.category === category ? 'block' : 'none';
-            }
-        });
+        this.activeCategory = category || 'all';
+        this.savePreferences({ activeCategory: this.activeCategory });
+        this.updateActiveTab();
+        this.updatePresetGrid();
     }
 
     filterBySearch(query) {
-        const lowerQuery = query.toLowerCase();
-        const cards = document.querySelectorAll('.preset-card');
-        
-        cards.forEach(card => {
-            const presetId = card.dataset.presetId;
-            const preset = this.presets[presetId] || this.customPresets[presetId];
-            const searchText = `${preset.name} ${preset.description} ${preset.category}`.toLowerCase();
-            card.style.display = searchText.includes(lowerQuery) ? 'block' : 'none';
+        this.searchQuery = query;
+        this.updatePresetGrid();
+    }
+
+    updateActiveTab() {
+        this.tabEls.forEach(tab => {
+            const isActive = tab.dataset.category === this.activeCategory;
+            tab.classList.toggle('active', isActive);
         });
     }
 
+    renderEmptyState() {
+        return `
+            <div class="preset-empty">
+                <i class="fas fa-inbox"></i>
+                <h4>No presets match the current filters</h4>
+                <p>Try a different category or clear the search to see more options.</p>
+            </div>
+        `;
+    }
+
+    formatRelativeTime(timestamp) {
+        if (!timestamp) return '';
+        const diff = Date.now() - timestamp;
+        if (diff <= 0) return 'just now';
+        const minutes = Math.round(diff / 60000);
+        if (minutes < 1) return 'just now';
+        if (minutes < 60) return `${minutes} min ago`;
+        const hours = Math.round(minutes / 60);
+        if (hours < 24) return `${hours} h ago`;
+        const days = Math.round(hours / 24);
+        if (days < 30) return `${days} day${days > 1 ? 's' : ''} ago`;
+        const months = Math.round(days / 30);
+        if (months < 12) return `${months} mo ago`;
+        const years = Math.round(months / 12);
+        return `${years} yr${years > 1 ? 's' : ''} ago`;
+    }
+
+    ensureValidCategory() {
+        if (
+            this.activeCategory !== 'all' &&
+            this.activeCategory !== 'custom' &&
+            !this.categories.includes(this.activeCategory)
+        ) {
+            this.activeCategory = 'all';
+        }
+    }
+
+    escapeHtml(value) {
+        if (typeof value !== 'string') return '';
+        return value.replace(/[&<>"']/g, (char) => {
+            const map = {
+                '&': '&amp;',
+                '<': '&lt;',
+                '>': '&gt;',
+                '"': '&quot;',
+                '\'': '&#039;'
+            };
+            return map[char] || char;
+        });
+    }
+
+    loadPreferences() {
+        if (typeof window === 'undefined') {
+            return {};
+        }
+        try {
+            const raw = window.localStorage.getItem(this.preferencesKey);
+            if (!raw) return {};
+            const parsed = JSON.parse(raw);
+            return typeof parsed === 'object' && parsed !== null ? parsed : {};
+        } catch (error) {
+            console.warn('Failed to load preset preferences', error);
+            return {};
+        }
+    }
+
+    savePreferences(patch) {
+        this.preferences = {
+            ...(this.preferences || {}),
+            ...(patch || {})
+        };
+        if (typeof window === 'undefined') return;
+        try {
+            window.localStorage.setItem(this.preferencesKey, JSON.stringify(this.preferences));
+        } catch (error) {
+            console.warn('Failed to persist preset preferences', error);
+        }
+    }
+
+    recordPresetUsage(presetId) {
+        if (!presetId) return;
+        const usageHistory = { ...(this.preferences?.usageHistory || {}) };
+        usageHistory[presetId] = Date.now();
+        this.lastUsedPresetId = presetId;
+        this.usageHistory = usageHistory;
+        this.savePreferences({
+            lastUsedPresetId: presetId,
+            usageHistory
+        });
+    }
+
+    hydrateSelection(presetId) {
+        if (!presetId) return;
+        const preset = (this.presets && this.presets[presetId]) || this.customPresets[presetId];
+        if (!preset) return;
+        this.selectedPreset = preset;
+        this.updatePresetGrid();
+    }
+
+    }
+
     async selectPreset(presetId) {
-        const preset = this.presets[presetId] || this.customPresets[presetId];
+        const preset = (this.presets && this.presets[presetId]) || this.customPresets[presetId];
         if (!preset) return;
 
         this.selectedPreset = preset;
-        
-        // Highlight selected card
-        document.querySelectorAll('.preset-card').forEach(card => {
-            card.classList.remove('selected');
-        });
-        document.querySelector(`[data-preset-id="${presetId}"]`)?.classList.add('selected');
+        this.recordPresetUsage(preset.id);
+        this.updatePresetGrid();
 
-        // Notify parent component
         if (this.onPresetSelected) {
             this.onPresetSelected(preset);
         }
 
-        // Apply preset to current floor plan
         await this.applyPreset(preset);
     }
 
-    async applyPreset(preset) {
-        try {
-            const response = await fetch('/api/apply-preset', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    preset: preset,
-                    floorPlanId: window.currentFloorPlanId
-                })
-            });
-
-            if (!response.ok) throw new Error('Failed to apply preset');
-            
-            const result = await response.json();
-            console.log('Preset applied:', result);
-            
-            // Trigger UI update
-            if (window.updateVisualization) {
-                window.updateVisualization(result.layout);
-            }
-        } catch (error) {
-            console.error('Error applying preset:', error);
-            alert('Failed to apply preset. Please try again.');
-        }
+    async applyPreset() {
+        // API-based preset application is not wired yet; local regeneration handles the change.
+        console.info('[PresetSelector] Preset applied locally (server sync skipped).');
+        return;
     }
 
     showPresetDetails(presetId) {
@@ -560,10 +843,19 @@ class PresetSelector {
 
         // Close modal and refresh
         document.getElementById('customPresetModal').classList.add('hidden');
+        this.activeCategory = 'custom';
+        this.selectedPreset = preset;
+        this.recordPresetUsage(presetId);
+        this.savePreferences({ activeCategory: 'custom' });
         this.render();
         this.attachEventListeners();
-        
-        alert('Custom preset saved successfully!');
+        this.updatePresetGrid();
+
+        if (typeof window !== 'undefined' && typeof window.showNotification === 'function') {
+            window.showNotification(`Preset "${preset.name}" saved`, 'success');
+        } else {
+            alert('Custom preset saved successfully!');
+        }
     }
 
     clonePreset(presetId) {
@@ -616,9 +908,19 @@ class PresetSelector {
                 
                 this.render();
                 this.attachEventListeners();
-                alert('Preset imported successfully!');
+                this.updatePresetGrid();
+                if (typeof window !== 'undefined' && typeof window.showNotification === 'function') {
+                    window.showNotification(`Preset "${preset.name}" imported`, 'success');
+                } else {
+                    alert('Preset imported successfully!');
+                }
             } catch (error) {
-                alert('Failed to import preset: ' + error.message);
+                const message = 'Failed to import preset: ' + error.message;
+                if (typeof window !== 'undefined' && typeof window.showNotification === 'function') {
+                    window.showNotification(message, 'error');
+                } else {
+                    alert(message);
+                }
             }
         };
         input.click();
@@ -631,15 +933,23 @@ class PresetSelector {
         this.saveCustomPresetsToStorage();
         this.render();
         this.attachEventListeners();
+        this.updatePresetGrid();
+        if (typeof window !== 'undefined' && typeof window.showNotification === 'function') {
+            window.showNotification('Custom preset removed.', 'info');
+        }
     }
 
     saveCustomPresetsToStorage() {
-        localStorage.setItem('floorplan-custom-presets', JSON.stringify(this.customPresets));
+        if (typeof window === 'undefined' || !window.localStorage) return;
+        window.localStorage.setItem('floorplan-custom-presets', JSON.stringify(this.customPresets));
     }
 
     loadCustomPresetsFromStorage() {
+        if (typeof window === 'undefined' || !window.localStorage) {
+            return {};
+        }
         try {
-            const stored = localStorage.getItem('floorplan-custom-presets');
+            const stored = window.localStorage.getItem('floorplan-custom-presets');
             return stored ? JSON.parse(stored) : {};
         } catch (error) {
             console.error('Failed to load custom presets:', error);

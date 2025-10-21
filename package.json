@@ -8,6 +8,7 @@
     "test": "jest --runInBand",
     "dev": "nodemon server.js",
     "vite-dev": "vite",
+    "build": "npm run vite-build",
     "vite-build": "vite build",
     "vite-preview": "vite preview"
   },

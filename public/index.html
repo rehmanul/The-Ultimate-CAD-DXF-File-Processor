@@ -90,10 +90,9 @@ y
     <link rel="stylesheet" href="https://developer.api.autodesk.com/modelderivative/v2/viewers/7.*/style.min.css" />
     <link rel="stylesheet" href="/styles.css">
     <link rel="stylesheet" href="/presetStyles.css">
-    <link rel="stylesheet" href="/presetStyles.css">
 </head>
 
-<body>
+<body class="app-body">
     <script>
         // Ensure the frontend knows where the API server is (use Render origin by default)
         window.__API_BASE__ = window.__API_BASE__ || window.location.origin || 'https://YOUR_RENDER_URL_HERE';
@@ -111,8 +110,43 @@ y
             }
         } catch (e) { /* ignore */ }
     </script>
-    <div class="container" role="application" aria-label="FloorPlan Pro application">
-        <div class="panel">
+    <div class="app-shell">
+        <header class="app-header" role="banner">
+            <div class="header-brand">
+                <span class="brand-icon"><i class="fas fa-cube"></i></span>
+                <div class="brand-copy">
+                    <span class="brand-title">FloorPlan Pro</span>
+                    <span class="brand-subtitle">Spatial Intelligence Console</span>
+                </div>
+            </div>
+            <div class="header-status">
+                <div class="status-pill" id="activePlanPill">
+                    <span class="pill-label">Plan</span>
+                    <span class="pill-value" id="activePlanName">No file</span>
+                </div>
+                <div class="status-pill" id="activePresetPill">
+                    <span class="pill-label">Preset</span>
+                    <span class="pill-value" id="activePresetName">Not selected</span>
+                </div>
+            </div>
+            <div class="header-actions">
+                <button class="header-btn" data-toggle-panel="left" aria-pressed="false">
+                    <i class="fas fa-sliders-h"></i>
+                    <span>Config</span>
+                </button>
+                <button class="header-btn" data-toggle-panel="right" aria-pressed="false">
+                    <i class="fas fa-chart-bar"></i>
+                    <span>Insights</span>
+                </button>
+                <button class="header-btn header-btn--primary" data-trigger="upload">
+                    <i class="fas fa-upload"></i>
+                    <span>Upload Plan</span>
+                </button>
+            </div>
+        </header>
+        <main class="app-main" role="main">
+            <div class="container app-layout" role="application" aria-label="FloorPlan Pro application" data-left-collapsed="false" data-right-collapsed="false">
+        <div class="panel sidebar-panel sidebar-panel--left">
             <div class="logo"><i class="fas fa-cube"></i> FloorPlan Pro Clean</div>
 
             <h3><i class="fas fa-tools"></i> CAD Tools</h3>
@@ -345,14 +379,12 @@ y
             </div>
         </div>
 
-        <div class="panel main">
-            <button class="toggle-btn toggle-left"
-                onclick="document.querySelector('.container').classList.toggle('left-collapsed')"
+        <div class="panel main-panel">
+            <button class="toggle-btn toggle-left" data-toggle-panel="left" aria-pressed="false"
                 title="Toggle left panel">
                 <i class="fas fa-chevron-left"></i>
             </button>
-            <button class="toggle-btn toggle-right"
-                onclick="document.querySelector('.container').classList.toggle('right-collapsed')"
+            <button class="toggle-btn toggle-right" data-toggle-panel="right" aria-pressed="false"
                 title="Toggle right panel">
                 <i class="fas fa-chevron-right"></i>
             </button>
@@ -365,7 +397,7 @@ y
             </div>
         </div>
 
-        <div class="panel">
+        <div class="panel sidebar-panel sidebar-panel--right">
             <h3><i class="fas fa-chart-bar"></i> Analysis Results</h3>
 
             <h4>Detected Rooms</h4>
@@ -385,6 +417,9 @@ y
         </div>
         <!-- Debug output for APS analysis (hidden by default) -->
         <pre id="aps-debug" class="aps-debug" aria-hidden="true"></pre>
+            </div>
+            <div id="notificationHost" class="notification-host" aria-live="polite" aria-atomic="true"></div>
+        </main>
     </div>
 
     <!-- Global loader overlay -->
@@ -411,16 +446,6 @@ y
             }
         }
         </script>
-    <script>
-        // small wiring to keep upload button accessible
-        document.addEventListener('DOMContentLoaded', function () {
-            const uploadBtn = document.getElementById('uploadBtn');
-            const fileInput = document.getElementById('fileInput');
-            if (uploadBtn && fileInput) {
-                uploadBtn.addEventListener('click', () => fileInput.click());
-            }
-        });
-    </script>
     <script type="module" src="app.js?v=2"></script>
 </body>
 

@@ -1,7 +1,7 @@
 const request = require('supertest');
-const app = require('../../../server');
-const fs = require('fs');
 const path = require('path');
+const app = require(path.resolve(__dirname, '../../../server'));
+const fs = require('fs');
 
 describe('API /api/jobs', () => {
   describe('POST /api/jobs', () => {

@@ -5,6 +5,7 @@ services:
     plan: starter
     region: oregon
     autoDeploy: true
+    healthCheckPath: /health
     envVars:
       - key: NODE_ENV
         value: production

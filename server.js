@@ -12,7 +12,14 @@ const ExportManager = require('./lib/exportManager');
 const sqliteAdapter = require('./lib/sqliteAdapter');
 const presetRoutes = require('./lib/presetRoutes');
 const mlRoutes = require('./lib/mlRoutes');
+const PUBLIC_DIR = path.join(__dirname, 'public');
+const DIST_DIR = path.join(PUBLIC_DIR, 'dist');
+const STATIC_ROOT = fs.existsSync(path.join(DIST_DIR, 'index.html')) ? DIST_DIR : PUBLIC_DIR;
+const USING_DIST_BUILD = STATIC_ROOT === DIST_DIR;
+const SERVER_BOOT_TIME = new Date();
 const app = express();
+app.locals.staticRoot = STATIC_ROOT;
+app.locals.bootTime = SERVER_BOOT_TIME.toISOString();
 const transformStore = require('./lib/transformStore');
 const MLTrainer = require('./lib/completeMLTrainer');
 const CrossFloorRouter = require('./lib/crossFloorRouter');
@@ -20,6 +27,7 @@ const MultiFloorProfiler = require('./lib/multiFloorProfiler');
 const MultiFloorReporter = require('./lib/multiFloorReporter');
 const { performance } = require('perf_hooks');
 const MultiFloorManager = require('./lib/multiFloorManager');
+const floorPlanStore = require('./lib/floorPlanStore');
 const ML_BOOT_PREFIX = '[ML Bootstrap]';
 let mlBootstrapPromise = null;
 let mlBootstrapFinished = false;
@@ -125,6 +133,10 @@ function normalizeCadData(cad) {
 
     const norm = Object.assign({}, cad);
 
+    if (!norm.urn && cad && (cad.urn || cad.id)) {
+        norm.urn = cad.urn || cad.id;
+    }
+
     // Preserve rooms array with proper structure
     if (Array.isArray(cad.rooms)) {
         norm.rooms = cad.rooms.map(r => ({
@@ -218,6 +230,32 @@ function normalizeCadData(cad) {
     }
 
     return norm;
+}
+
+function normalizeDistribution(distribution) {
+    const fallback = { '1-3': 0.25, '3-5': 0.35, '5-10': 0.40 };
+    if (!distribution || typeof distribution !== 'object') return fallback;
+
+    const ordered = Object.entries(distribution).map(([range, value]) => {
+        let weight = Number(value);
+        if (Number.isNaN(weight) || weight < 0) weight = 0;
+        if (weight > 1.01) weight = weight / 100;
+        return [range, weight];
+    }).sort((a, b) => {
+        const aMin = parseFloat(a[0].split('-')[0]);
+        const bMin = parseFloat(b[0].split('-')[0]);
+        return aMin - bMin;
+    });
+
+    const total = ordered.reduce((sum, [, weight]) => sum + weight, 0);
+    if (total <= 0) return fallback;
+
+    const normalized = {};
+    ordered.forEach(([range, weight]) => {
+        normalized[range] = weight / total;
+    });
+
+    return normalized;
 }
 
 async function getAPSToken(scopes = 'data:read data:write') {
@@ -391,7 +429,15 @@ app.use(express.urlencoded({
         req.rawBody = buf;
     }
 }));
-app.use(express.static('public'));
+const staticCacheMaxAge = USING_DIST_BUILD ? '1h' : 0;
+app.use(express.static(STATIC_ROOT, { maxAge: staticCacheMaxAge }));
+if (USING_DIST_BUILD) {
+    app.use('/libs', express.static(path.join(PUBLIC_DIR, 'libs'), { maxAge: staticCacheMaxAge }));
+    app.get('/presetSelector.js', (req, res) => {
+        res.sendFile(path.join(PUBLIC_DIR, 'presetSelector.js'));
+    });
+}
+app.use('/exports', express.static(path.join(__dirname, 'exports')));
 
 // Phase 2: Register preset management routes
 app.use('/api', presetRoutes);
@@ -568,8 +614,10 @@ app.post('/api/jobs', upload.single('file'), async (req, res) => {
 
         const normalizedCadData = normalizeCadData(cadData);
         if (normalizedCadData) {
+            normalizedCadData.urn = urn;
             cadCache.set(urn, normalizedCadData);
             global.lastProcessedCAD = normalizedCadData;
+            floorPlanStore.saveFloorPlan(normalizedCadData);
         } else {
             cadCache.delete(urn);
             global.lastProcessedCAD = null;
@@ -625,6 +673,8 @@ app.post('/api/analyze', async (req, res) => {
             totalArea,
             urn
         });
+        analysisData.urn = urn;
+        floorPlanStore.saveFloorPlan(analysisData);
         console.log(`Analysis using cached CAD: ${analysisData.rooms?.length || 0} rooms, ${analysisData.walls?.length || 0} walls, ${totalArea.toFixed(2)} m²`);
 
         res.json({
@@ -659,19 +709,30 @@ app.post('/api/ilots', async (req, res) => {
             entrances: floorPlan.entrances || [],
             bounds: floorPlan.bounds || { minX: 0, minY: 0, maxX: 100, maxY: 100 },
             rooms: floorPlan.rooms || [],
-            urn: floorPlan.urn
+            urn: floorPlan.urn || floorPlan.id
         };
 
-        // Ensure deterministic seed when not provided
-        if (typeof options.seed === 'undefined' || options.seed === null) {
-            const seedSource = normalizedFloorPlan.urn || `${normalizedFloorPlan.bounds.minX},${normalizedFloorPlan.bounds.minY},${normalizedFloorPlan.bounds.maxX},${normalizedFloorPlan.bounds.maxY}`;
+        const planId = normalizedFloorPlan.urn || floorPlan.urn || floorPlan.id;
+        normalizedFloorPlan.urn = planId;
+
+        const normalizedDistribution = normalizeDistribution(distribution);
+
+        const generatorOptions = Object.assign({}, options);
+
+        if (typeof generatorOptions.seed === 'undefined' || generatorOptions.seed === null) {
+            const seedSource = planId || `${normalizedFloorPlan.bounds.minX},${normalizedFloorPlan.bounds.minY},${normalizedFloorPlan.bounds.maxX},${normalizedFloorPlan.bounds.maxY}`;
             let h = 5381;
             for (let i = 0; i < seedSource.length; i++) { h = ((h << 5) + h) + seedSource.charCodeAt(i); }
-            options.seed = Math.abs(h) % 1000000000;
+            generatorOptions.seed = Math.abs(h) % 1000000000;
         }
 
-        const ilotPlacer = new GridIlotPlacer(normalizedFloorPlan, options);
-        const ilotsRaw = ilotPlacer.generateIlots(distribution, options.totalIlots || 50);
+        generatorOptions.totalIlots = generatorOptions.totalIlots || 50;
+        generatorOptions.corridorWidth = typeof generatorOptions.corridorWidth === 'number' ? generatorOptions.corridorWidth : 1.2;
+        generatorOptions.margin = typeof generatorOptions.margin === 'number' ? generatorOptions.margin : (generatorOptions.minRowDistance || 1.0);
+        generatorOptions.spacing = typeof generatorOptions.spacing === 'number' ? generatorOptions.spacing : 0.3;
+
+        const ilotPlacer = new GridIlotPlacer(normalizedFloorPlan, generatorOptions);
+        const ilotsRaw = ilotPlacer.generateIlots(normalizedDistribution, generatorOptions.totalIlots);
 
         // sanitize placements to ensure numeric fields for client
         const ilots = Array.isArray(ilotsRaw) ? ilotsRaw.map(sanitizeIlot).filter(Boolean) : [];
@@ -680,6 +741,14 @@ app.post('/api/ilots', async (req, res) => {
         const totalArea = ilots.reduce((sum, ilot) => sum + (Number(ilot.area) || 0), 0);
 
         global.lastPlacedIlots = ilots;
+        if (planId) {
+            floorPlanStore.saveFloorPlan(normalizedFloorPlan);
+            floorPlanStore.updateLayout(planId, {
+                ilots,
+                distribution: normalizedDistribution,
+                options: generatorOptions
+            });
+        }
 
         console.log(`Îlot generation: ${ilots.length} placed, total area: ${totalArea.toFixed(2)} m²`);
         if (ilots.length > 0) console.log('First ilot sample:', JSON.stringify(ilots[0]));
@@ -689,6 +758,8 @@ app.post('/api/ilots', async (req, res) => {
             ilots: ilots,
             totalArea: totalArea,
             count: ilots.length,
+            distribution: normalizedDistribution,
+            options: generatorOptions,
             message: `Generated ${ilots.length} ilots with ${totalArea.toFixed(2)} m² total area`
         });
 
@@ -797,7 +868,9 @@ app.post('/api/corridors', (req, res) => {
             maxRowDistance: options.maxRowDistance || 8.0,
             minOverlap: options.minOverlap || 0.6,
             horizontalPriority: options.horizontalPriority || 1.5,
-            verticalPriority: options.verticalPriority || 1.0
+            verticalPriority: options.verticalPriority || 1.0,
+            generateVertical: options.generateVertical !== false,
+            generateHorizontal: options.generateHorizontal !== false
         };
         
         const corridorGenerator = new AdvancedCorridorGenerator(floorPlan, ilotsToUse, advancedOptions);
@@ -811,6 +884,8 @@ app.post('/api/corridors', (req, res) => {
             totalArea: result.totalArea,
             count: result.corridors.length,
             statistics: result.statistics,
+            metadata: result.metadata,
+            invalid: result.invalid || [],
             message: `Generated ${result.corridors.length} corridors (${result.statistics.vertical} vertical, ${result.statistics.horizontal} horizontal)`
         });
 
@@ -1109,7 +1184,20 @@ app.get('/api/auth/token', async (req, res) => {
 
 // Health endpoint
 app.get('/health', (req, res) => {
-    res.json({ status: 'ok', timestamp: new Date().toISOString(), sqlite: (webhookStore && typeof webhookStore.getHooks === 'function') });
+    const summaries = floorPlanStore.listSummaries();
+    res.json({
+        status: 'ok',
+        environment: process.env.NODE_ENV || 'development',
+        timestamp: new Date().toISOString(),
+        bootTime: app.locals.bootTime,
+        uptimeSeconds: Math.round(process.uptime()),
+        usingDist: USING_DIST_BUILD,
+        staticRoot: path.relative(__dirname, STATIC_ROOT),
+        cachedFloorPlans: summaries.length,
+        sqliteReady: Boolean(sqliteAdapter && typeof sqliteAdapter.dbFilePath === 'function' && sqliteAdapter.dbFilePath()),
+        sqlite: Boolean(sqliteAdapter && typeof sqliteAdapter.dbFilePath === 'function' && sqliteAdapter.dbFilePath()),
+        mlBootstrapFinished
+    });
 });
 
 
@@ -1404,8 +1492,24 @@ app.post('/api/export/image', async (req, res) => {
     }
 });
 
-// Serve exported files
-app.use('/exports', express.static('exports'));
+const SPA_EXCLUDE_PATTERNS = [
+    /^\/api\//,
+    /^\/health/,
+    /^\/healthz/,
+    /^\/metrics/,
+    /^\/viewer\//,
+    /^\/exports\//,
+    /^\/uploads\//
+];
+
+app.get('*', (req, res, next) => {
+    if (req.method !== 'GET') return next();
+    if (SPA_EXCLUDE_PATTERNS.some((pattern) => pattern.test(req.path))) return next();
+    const targetIndex = USING_DIST_BUILD ? path.join(STATIC_ROOT, 'index.html') : path.join(PUBLIC_DIR, 'index.html');
+    res.sendFile(targetIndex, (err) => {
+        if (err) next(err);
+    });
+});
 
 // Bind address - default to 0.0.0.0 so cloud hosts (Render, Docker) can detect the port
 const BIND_ADDRESS = process.env.BIND_ADDRESS || '0.0.0.0';
