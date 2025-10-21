@@ -130,27 +130,6 @@ function initializeModules() {
         });
     });
 
-    // Apply distribution button
-    const applyDistributionBtn = document.getElementById('applyDistributionBtn');
-    if (applyDistributionBtn) {
-        applyDistributionBtn.addEventListener('click', () => {
-            if (currentFloorPlan) {
-                showNotification('Distribution updated. Regenerate îlots to apply changes.', 'info');
-            } else {
-                showNotification('Please upload a floor plan first.', 'warning');
-            }
-        });
-    }
-
-    // Corridor width slider
-    const corridorWidthSlider = document.getElementById('corridorWidthSlider');
-    const corridorWidthValue = document.getElementById('corridorWidthValue');
-    if (corridorWidthSlider && corridorWidthValue) {
-        corridorWidthSlider.addEventListener('input', (e) => {
-            corridorWidthValue.textContent = e.target.value + 'm';
-        });
-    }
-
     // Initialize distribution total on load
     updateDistributionTotal();
 
@@ -318,14 +297,7 @@ function initializeModules() {
     const generateCorridorsBtn = document.getElementById('generateCorridorsBtn');
     if (generateCorridorsBtn) generateCorridorsBtn.onclick = generateCorridors;
 
-    const corridorWidthSlider = document.getElementById('corridorWidthSlider');
-    const corridorWidthValue = document.getElementById('corridorWidthValue');
-    if (corridorWidthSlider && corridorWidthValue) {
-        corridorWidthValue.textContent = corridorWidthSlider.value + 'm';
-        corridorWidthSlider.addEventListener('input', () => {
-            corridorWidthValue.textContent = corridorWidthSlider.value + 'm';
-        });
-    }
+    setupCorridorWidthSlider();
 
     // Distribution inputs handling
     const distributionInputs = document.querySelectorAll('.distribution-input');
@@ -359,6 +331,11 @@ function initializeModules() {
 
     if (applyDistributionBtn) {
         applyDistributionBtn.addEventListener('click', () => {
+            if (!currentFloorPlan) {
+                showNotification('Please upload a floor plan first.', 'warning');
+                return;
+            }
+
             const distribution = {};
             distributionInputs.forEach(input => {
                 const index = input.dataset.index;
@@ -374,7 +351,7 @@ function initializeModules() {
                 distributionEditor.value = JSON.stringify(distribution, null, 2);
             }
 
-            showNotification('Distribution configuration applied', 'success');
+            showNotification('Distribution updated. Regenerate îlots to apply changes.', 'info');
         });
     }
 
@@ -1882,14 +1859,7 @@ function applyPresetDistribution(preset) {
     });
 
     // Update corridor width
-    const corridorWidthSlider = document.getElementById('corridorWidthSlider');
-    const corridorWidthValue = document.getElementById('corridorWidthValue');
-    if (preset.corridorWidth && corridorWidthSlider) {
-        corridorWidthSlider.value = preset.corridorWidth;
-        if (corridorWidthValue) {
-            corridorWidthValue.textContent = preset.corridorWidth + 'm';
-        }
-    }
+    setupCorridorWidthSlider(preset.corridorWidth);
 
     // Update distribution total display
     updateDistributionTotal();
@@ -1905,6 +1875,25 @@ function applyPresetDistribution(preset) {
         if (regenerate) {
             generateIlots();
         }
+    }
+}
+
+function setupCorridorWidthSlider(initialWidth) {
+    const slider = document.getElementById('corridorWidthSlider');
+    const valueEl = document.getElementById('corridorWidthValue');
+    if (!slider || !valueEl) return;
+
+    if (typeof initialWidth === 'number' && !Number.isNaN(initialWidth)) {
+        slider.value = initialWidth;
+    }
+
+    valueEl.textContent = `${slider.value}m`;
+
+    if (!slider.dataset.bound) {
+        slider.addEventListener('input', () => {
+            valueEl.textContent = `${slider.value}m`;
+        });
+        slider.dataset.bound = '1';
     }
 }
 
