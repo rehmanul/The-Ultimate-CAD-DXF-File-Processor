@@ -130,9 +130,6 @@ function initializeModules() {
         });
     });
 
-    // Initialize distribution total on load
-    updateDistributionTotal();
-
     initializeMultiFloorControls();
 
 
@@ -354,6 +351,9 @@ function initializeModules() {
             showNotification('Distribution updated. Regenerate îlots to apply changes.', 'info');
         });
     }
+
+    // Apply distribution button was handled above. Now initialize totals.
+    updateDistributionTotal();
 
     // Distribution editor (hidden, used internally)
     const distributionEditor = document.createElement('textarea');
