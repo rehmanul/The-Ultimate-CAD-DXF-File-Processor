@@ -98,7 +98,7 @@ EOF`;
 
     // Clean up temp file
     fs.unlinkSync(tempFilePath);
-    fs.rmdirSync(tempDir);
+    fs.rmSync(tempDir, { recursive: true });
   }, 30000);
 
   test('Step 1: File upload should return valid CAD data', () => {

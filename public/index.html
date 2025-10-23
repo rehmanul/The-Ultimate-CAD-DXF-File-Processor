@@ -1,4 +1,3 @@
-y
 <!DOCTYPE html>
 <html lang="en">
 
@@ -145,283 +144,313 @@ y
             </div>
         </header>
         <main class="app-main" role="main">
-            <div class="container app-layout" role="application" aria-label="FloorPlan Pro application" data-left-collapsed="false" data-right-collapsed="false">
-        <div class="panel sidebar-panel sidebar-panel--left">
-            <div class="logo"><i class="fas fa-cube"></i> FloorPlan Pro Clean</div>
+            <div class="container app-layout" role="application" aria-label="FloorPlan Pro application"
+                data-left-collapsed="false" data-right-collapsed="false">
+                <div class="panel sidebar-panel sidebar-panel--left">
+                    <div class="logo"><i class="fas fa-cube"></i> FloorPlan Pro Clean</div>
 
-            <h3><i class="fas fa-tools"></i> CAD Tools</h3>
-            <button class="btn" id="uploadBtn" aria-label="Upload CAD file">
-                <i class="fas fa-upload"></i> Upload CAD File
-            </button>
-            <input type="file" id="fileInput" name="cadFile" accept=".dxf,.dwg" class="hidden"
-                aria-label="CAD file input" />
-
-            <h4>Generation</h4>
-            <button id="generateIlotsBtn" class="btn" title="Generate ilots" aria-label="Generate ilots">
-                <i class="fas fa-th-large"></i> Generate Îlots
-            </button>
-            <button id="generateCorridorsBtn" class="btn">
-                <i class="fas fa-route"></i> Generate Corridors
-            </button>
-
-            <h4>Configuration</h4>
-            <label for="corridorWidthSlider">Corridor Width (m):</label>
-            <input type="range" id="corridorWidthSlider" name="corridorWidth" class="corridor-slider" min="1" max="3"
-                step="0.1" value="1.2" aria-valuemin="1" aria-valuemax="3" aria-valuenow="1.2">
-            <span id="corridorWidthValue">1.2m</span>
-
-            <h4><i class="fas fa-chart-pie"></i> Îlot Distribution</h4>
-            <div class="distribution-help">
-                Define the percentage of îlots by size range. Total must equal 100%.
-            </div>
-            <div class="distribution-inputs" id="distributionInputs">
-                <div class="distribution-input-group">
-                    <label class="distribution-label">
-                        0-1 m²
-                        <span class="size-hint">(0-1 m²)</span>
-                    </label>
-                    <div class="input-with-unit">
-                        <input type="number" class="distribution-input" data-index="0" min="0" max="100" step="1"
-                            value="10" aria-label="Percentage for 0-1 m²" />
-                        <span class="unit">%</span>
-                    </div>
-                </div>
-                <div class="distribution-input-group">
-                    <label class="distribution-label">
-                        1-3 m²
-                        <span class="size-hint">(1-3 m²)</span>
-                    </label>
-                    <div class="input-with-unit">
-                        <input type="number" class="distribution-input" data-index="1" min="0" max="100" step="1"
-                            value="25" aria-label="Percentage for 1-3 m²" />
-                        <span class="unit">%</span>
-                    </div>
-                </div>
-                <div class="distribution-input-group">
-                    <label class="distribution-label">
-                        3-5 m²
-                        <span class="size-hint">(3-5 m²)</span>
-                    </label>
-                    <div class="input-with-unit">
-                        <input type="number" class="distribution-input" data-index="2" min="0" max="100" step="1"
-                            value="30" aria-label="Percentage for 3-5 m²" />
-                        <span class="unit">%</span>
-                    </div>
-                </div>
-                <div class="distribution-input-group">
-                    <label class="distribution-label">
-                        5-10 m²
-                        <span class="size-hint">(5-10 m²)</span>
-                    </label>
-                    <div class="input-with-unit">
-                        <input type="number" class="distribution-input" data-index="3" min="0" max="100" step="1"
-                            value="35" aria-label="Percentage for 5-10 m²" />
-                        <span class="unit">%</span>
-                    </div>
-                </div>
-            </div>
-            <div class="distribution-total">
-                <strong>Total: <span id="distributionTotal" class="total-value">100%</span></strong>
-                <span id="distributionError" class="error-message hidden">Must equal 100%</span>
-            </div>
-            <button id="applyDistributionBtn" class="btn" style="margin-top: 0.5rem;">
-                <i class="fas fa-check"></i> Apply Distribution
-            </button>
-
-            <h4><i class="fas fa-layer-group"></i> Distribution Presets</h4>
-            <div id="presetSelectorContainer" class="preset-selector-container">
-                <!-- Preset selector will be injected here -->
-            </div>
-
-            <h4><i class="fas fa-building"></i> Multi-Floor Stack</h4>
-            <div class="multi-floor-section">
-                <div class="multi-floor-form">
-                    <label class="input-label" for="floorNameInput">Floor Name</label>
-                    <input id="floorNameInput" type="text" placeholder="e.g. Level 1" />
-
-                    <label class="input-label" for="floorLevelInput">Level Index</label>
-                    <input id="floorLevelInput" type="number" value="0" />
-
-                    <div class="multi-floor-buttons">
-                        <button id="addFloorToStackBtn" class="btn secondary">
-                            <i class="fas fa-plus"></i> Add to Stack
-                        </button>
-                        <button id="clearMultiFloorBtn" class="btn ghost">
-                            <i class="fas fa-trash"></i> Clear Stack
-                        </button>
-                    </div>
-                </div>
-
-                <div class="multi-floor-options">
-                    <label class="input-label" for="floorHeightInput">Floor Height (m)</label>
-                    <input id="floorHeightInput" type="number" step="0.1" min="2" max="6" />
-
-                    <label class="input-label" for="connectorToleranceInput">Connector Match Tolerance (m)</label>
-                    <input id="connectorToleranceInput" type="number" step="0.05" min="0" max="5" />
-
-                    <label class="input-label" for="egressLimitInput">Max Egress Distance (m)</label>
-                    <input id="egressLimitInput" type="number" step="1" min="0" max="120" />
-
-                    <label class="input-label" for="accessibleEntrancesInput">Accessible Entrances (min)</label>
-                    <input id="accessibleEntrancesInput" type="number" min="0" max="10" />
-
-                    <div class="checkbox-row">
-                        <input type="checkbox" id="requireElevatorToggle" checked />
-                        <label for="requireElevatorToggle">Require elevator for upper floors</label>
-                    </div>
-
-                    <button id="computeMultiFloorBtn" class="btn">
-                        <i class="fas fa-layer-group"></i> Compute Stack &amp; Compliance
+                    <h3><i class="fas fa-tools"></i> CAD Tools</h3>
+                    <button class="btn" id="uploadBtn" aria-label="Upload CAD file">
+                        <i class="fas fa-upload"></i> Upload CAD File
                     </button>
-                    <button id="profileStackBtn" class="btn ghost" disabled>
-                        <i class="fas fa-tachometer-alt"></i> Profile Stack
+                    <input type="file" id="fileInput" name="cadFile" accept=".dxf,.dwg" class="hidden"
+                        aria-label="CAD file input" />
+
+                    <h4>Generation</h4>
+                    <button id="generateIlotsBtn" class="btn" title="Generate ilots" aria-label="Generate ilots">
+                        <i class="fas fa-th-large"></i> Generate Îlots
                     </button>
-                    <button id="previewStackBtn" class="btn secondary" disabled>
-                        <i class="fas fa-vr-cardboard"></i> Preview Stack
+                    <button id="generateCorridorsBtn" class="btn">
+                        <i class="fas fa-route"></i> Generate Corridors
                     </button>
-                    <button id="reportStackBtn" class="btn ghost" disabled>
-                        <i class="fas fa-file-alt"></i> Generate Report
+
+                    <h4>Configuration</h4>
+                    <label for="corridorWidthSlider">Corridor Width (m):</label>
+                    <input type="range" id="corridorWidthSlider" name="corridorWidth" class="corridor-slider" min="1"
+                        max="3" step="0.1" value="1.2" aria-valuemin="1" aria-valuemax="3" aria-valuenow="1.2">
+                    <span id="corridorWidthValue">1.2m</span>
+
+                    <h4><i class="fas fa-chart-pie"></i> Îlot Distribution</h4>
+                    <div class="distribution-help">
+                        Define the percentage of îlots by size range. Total must equal 100%.
+                    </div>
+                    <div class="distribution-inputs" id="distributionInputs">
+                        <div class="distribution-input-group">
+                            <label class="distribution-label">
+                                0-1 m²
+                                <span class="size-hint">(0-1 m²)</span>
+                            </label>
+                            <div class="input-with-unit">
+                                <input type="number" class="distribution-input" data-index="0" min="0" max="100"
+                                    step="1" value="10" aria-label="Percentage for 0-1 m²" />
+                                <span class="unit">%</span>
+                            </div>
+                        </div>
+                        <div class="distribution-input-group">
+                            <label class="distribution-label">
+                                1-3 m²
+                                <span class="size-hint">(1-3 m²)</span>
+                            </label>
+                            <div class="input-with-unit">
+                                <input type="number" class="distribution-input" data-index="1" min="0" max="100"
+                                    step="1" value="25" aria-label="Percentage for 1-3 m²" />
+                                <span class="unit">%</span>
+                            </div>
+                        </div>
+                        <div class="distribution-input-group">
+                            <label class="distribution-label">
+                                3-5 m²
+                                <span class="size-hint">(3-5 m²)</span>
+                            </label>
+                            <div class="input-with-unit">
+                                <input type="number" class="distribution-input" data-index="2" min="0" max="100"
+                                    step="1" value="30" aria-label="Percentage for 3-5 m²" />
+                                <span class="unit">%</span>
+                            </div>
+                        </div>
+                        <div class="distribution-input-group">
+                            <label class="distribution-label">
+                                5-10 m²
+                                <span class="size-hint">(5-10 m²)</span>
+                            </label>
+                            <div class="input-with-unit">
+                                <input type="number" class="distribution-input" data-index="3" min="0" max="100"
+                                    step="1" value="35" aria-label="Percentage for 5-10 m²" />
+                                <span class="unit">%</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="distribution-total">
+                        <strong>Total: <span id="distributionTotal" class="total-value">100%</span></strong>
+                        <span id="distributionError" class="error-message hidden">Must equal 100%</span>
+                    </div>
+                    <button id="applyDistributionBtn" class="btn" style="margin-top: 0.5rem;">
+                        <i class="fas fa-check"></i> Apply Distribution
                     </button>
+
+                    <h4><i class="fas fa-layer-group"></i> Distribution Presets</h4>
+                    <div id="presetSelectorContainer" class="preset-selector-container">
+                        <!-- Preset selector will be injected here -->
+                    </div>
+
+                    <h4><i class="fas fa-building"></i> Multi-Floor Stack</h4>
+                    <div class="multi-floor-section">
+                        <div class="multi-floor-form">
+                            <label class="input-label" for="floorNameInput">Floor Name</label>
+                            <input id="floorNameInput" type="text" placeholder="e.g. Level 1" />
+
+                            <label class="input-label" for="floorLevelInput">Level Index</label>
+                            <input id="floorLevelInput" type="number" value="0" />
+
+                            <div class="multi-floor-buttons">
+                                <button id="addFloorToStackBtn" class="btn secondary">
+                                    <i class="fas fa-plus"></i> Add to Stack
+                                </button>
+                                <button id="clearMultiFloorBtn" class="btn ghost">
+                                    <i class="fas fa-trash"></i> Clear Stack
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="multi-floor-options">
+                            <label class="input-label" for="floorHeightInput">Floor Height (m)</label>
+                            <input id="floorHeightInput" type="number" step="0.1" min="2" max="6" />
+
+                            <label class="input-label" for="connectorToleranceInput">Connector Match Tolerance
+                                (m)</label>
+                            <input id="connectorToleranceInput" type="number" step="0.05" min="0" max="5" />
+
+                            <label class="input-label" for="egressLimitInput">Max Egress Distance (m)</label>
+                            <input id="egressLimitInput" type="number" step="1" min="0" max="120" />
+
+                            <label class="input-label" for="accessibleEntrancesInput">Accessible Entrances (min)</label>
+                            <input id="accessibleEntrancesInput" type="number" min="0" max="10" />
+
+                            <div class="checkbox-row">
+                                <input type="checkbox" id="requireElevatorToggle" checked />
+                                <label for="requireElevatorToggle">Require elevator for upper floors</label>
+                            </div>
+
+                            <button id="computeMultiFloorBtn" class="btn">
+                                <i class="fas fa-layer-group"></i> Compute Stack &amp; Compliance
+                            </button>
+                            <button id="profileStackBtn" class="btn ghost" disabled>
+                                <i class="fas fa-tachometer-alt"></i> Profile Stack
+                            </button>
+                            <button id="previewStackBtn" class="btn secondary" disabled>
+                                <i class="fas fa-vr-cardboard"></i> Preview Stack
+                            </button>
+                            <button id="reportStackBtn" class="btn ghost" disabled>
+                                <i class="fas fa-file-alt"></i> Generate Report
+                            </button>
+                        </div>
+
+                        <div id="multiFloorStatus" class="stack-status">No floors added to stack yet.</div>
+                        <div id="multiFloorList" class="multi-floor-list"></div>
+
+                        <div class="multi-floor-summary">
+                            <h5><i class="fas fa-exclamation-triangle"></i> Alignment Warnings</h5>
+                            <div id="multiFloorWarnings" class="warning-list"></div>
+
+                            <h5><i class="fas fa-arrows-alt-v"></i> Vertical Connectors</h5>
+                            <div id="multiFloorConnectorList" class="connector-list"></div>
+
+                            <h5><i class="fas fa-route"></i> Cross-Floor Routes</h5>
+                            <div id="multiFloorRoutes" class="connector-list"></div>
+
+                            <h5><i class="fas fa-tachometer-alt"></i> Performance Profile</h5>
+                            <div id="multiFloorProfile" class="connector-list"></div>
+
+                            <h5><i class="fas fa-file-alt"></i> Latest Report</h5>
+                            <div id="multiFloorReport" class="connector-list"></div>
+
+                            <h5><i class="fas fa-universal-access"></i> Cross-Floor Compliance</h5>
+                            <div id="multiFloorCompliance" class="compliance-panel"></div>
+                        </div>
+                    </div>
+
+                    <h4>Viewer Controls</h4>
+                    <button id="toggle3DBtn" class="btn">
+                        <i class="fas fa-cube"></i> Toggle 3D View
+                    </button>
+                    <button id="resetCameraBtn" class="btn">
+                        <i class="fas fa-video"></i> Reset Camera
+                    </button>
+                    <button id="measureBtn" class="btn">
+                        <i class="fas fa-ruler"></i> Measure Distance
+                    </button>
+                    <button id="areaMeasureBtn" class="btn">
+                        <i class="fas fa-draw-polygon"></i> Measure Area
+                    </button>
+                    <button id="angleMeasureBtn" class="btn">
+                        <i class="fas fa-angle-right"></i> Measure Angle
+                    </button>
+                    <button id="clearMeasureBtn" class="btn">
+                        <i class="fas fa-eraser"></i> Clear Measurements
+                    </button>
+                    <button id="gridToggleBtn" class="btn">
+                        <i class="fas fa-border-all"></i> Toggle Grid
+                    </button>
+
+                    <h4>Export</h4>
+                    <button id="exportPdfBtn" class="btn">
+                        <i class="fas fa-file-pdf"></i> Export PDF
+                    </button>
+                    <button id="exportImageBtn" class="btn">
+                        <i class="fas fa-image"></i> Export Image
+                    </button>
+                    <button id="export4kBtn" class="btn">
+                        <i class="fas fa-image"></i> Export 4K Image
+                    </button>
+                    <button id="exportSvgBtn" class="btn">
+                        <i class="fas fa-vector-square"></i> Export SVG
+                    </button>
+                    <button id="exportDxfBtn" class="btn">
+                        <i class="fas fa-file-code"></i> Export DXF
+                    </button>
+                    <button id="exportGltfBtn" class="btn">
+                        <i class="fas fa-cube"></i> Export 3D Model
+                    </button>
+
+                    <h4>Statistics</h4>
+                    <div class="stats">
+                        <div class="stat-card">
+                            <div id="roomCount" class="stat-value">0</div>
+                            <div class="stat-label">Rooms</div>
+                        </div>
+                        <div class="stat-card">
+                            <div id="ilotCount" class="stat-value">0</div>
+                            <div class="stat-label">Îlots</div>
+                        </div>
+                    </div>
+                    <div class="stat-center" role="status" aria-live="polite">
+                        <strong>Total Area: <span id="totalArea">0 m²</span></strong>
+                    </div>
+
+                    <h4>Processing Status</h4>
+                    <div id="processingStatus" class="processing-status hidden">
+                        <div class="circular-progress-small">
+                            <svg width="60" height="60">
+                                <circle cx="30" cy="30" r="27" class="progress-bg-small"></circle>
+                                <circle cx="30" cy="30" r="27" class="progress-bar-small" id="progressCircleSmall">
+                                </circle>
+                            </svg>
+                            <div class="progress-text-small" id="progressPercentSmall">0%</div>
+                        </div>
+                        <div id="progressMessageSmall" class="progress-message-small">Processing...</div>
+                    </div>
                 </div>
 
-                <div id="multiFloorStatus" class="stack-status">No floors added to stack yet.</div>
-                <div id="multiFloorList" class="multi-floor-list"></div>
-
-                <div class="multi-floor-summary">
-                    <h5><i class="fas fa-exclamation-triangle"></i> Alignment Warnings</h5>
-                    <div id="multiFloorWarnings" class="warning-list"></div>
-
-                    <h5><i class="fas fa-arrows-alt-v"></i> Vertical Connectors</h5>
-                    <div id="multiFloorConnectorList" class="connector-list"></div>
-
-                    <h5><i class="fas fa-route"></i> Cross-Floor Routes</h5>
-                    <div id="multiFloorRoutes" class="connector-list"></div>
-
-                    <h5><i class="fas fa-tachometer-alt"></i> Performance Profile</h5>
-                    <div id="multiFloorProfile" class="connector-list"></div>
-
-                    <h5><i class="fas fa-file-alt"></i> Latest Report</h5>
-                    <div id="multiFloorReport" class="connector-list"></div>
-
-                    <h5><i class="fas fa-universal-access"></i> Cross-Floor Compliance</h5>
-                    <div id="multiFloorCompliance" class="compliance-panel"></div>
+                <div class="panel main-panel">
+                    <button class="toggle-btn toggle-left" data-toggle-panel="left" aria-pressed="false"
+                        title="Toggle left panel">
+                        <i class="fas fa-chevron-left"></i>
+                    </button>
+                    <button class="toggle-btn toggle-right" data-toggle-panel="right" aria-pressed="false"
+                        title="Toggle right panel">
+                        <i class="fas fa-chevron-right"></i>
+                    </button>
+                    <div id="threeContainer" class="canvas-wrapper" aria-live="polite" aria-label="3D canvas container">
+                    </div>
+                    <div class="top-controls" style="display: none;">
+                        <button id="useThreeBtn" class="btn small active" aria-pressed="true"
+                            style="display: none;">Three.js</button>
+                        <button id="useViewerBtn" class="btn small" aria-pressed="false" style="display: none;">Autodesk
+                            Viewer</button>
+                    </div>
                 </div>
-            </div>
 
-            <h4>Viewer Controls</h4>
-            <button id="toggle3DBtn" class="btn">
-                <i class="fas fa-cube"></i> Toggle 3D View
-            </button>
-            <button id="resetCameraBtn" class="btn">
-                <i class="fas fa-video"></i> Reset Camera
-            </button>
-            <button id="measureBtn" class="btn">
-                <i class="fas fa-ruler"></i> Measure Distance
-            </button>
-            <button id="areaMeasureBtn" class="btn">
-                <i class="fas fa-draw-polygon"></i> Measure Area
-            </button>
-            <button id="angleMeasureBtn" class="btn">
-                <i class="fas fa-angle-right"></i> Measure Angle
-            </button>
-            <button id="clearMeasureBtn" class="btn">
-                <i class="fas fa-eraser"></i> Clear Measurements
-            </button>
-            <button id="gridToggleBtn" class="btn">
-                <i class="fas fa-border-all"></i> Toggle Grid
-            </button>
+                <div class="panel sidebar-panel sidebar-panel--right">
+                    <h3><i class="fas fa-chart-bar"></i> Analysis Results</h3>
 
-            <h4>Export</h4>
-            <button id="exportPdfBtn" class="btn">
-                <i class="fas fa-file-pdf"></i> Export PDF
-            </button>
-            <button id="exportImageBtn" class="btn">
-                <i class="fas fa-image"></i> Export Image
-            </button>
-            <button id="export4kBtn" class="btn">
-                <i class="fas fa-image"></i> Export 4K Image
-            </button>
-            <button id="exportSvgBtn" class="btn">
-                <i class="fas fa-vector-square"></i> Export SVG
-            </button>
-            <button id="exportDxfBtn" class="btn">
-                <i class="fas fa-file-code"></i> Export DXF
-            </button>
-            <button id="exportGltfBtn" class="btn">
-                <i class="fas fa-cube"></i> Export 3D Model
-            </button>
+                    <h4>Detected Rooms</h4>
+                    <div id="roomList">
+                        <div class="list-item">No rooms detected yet</div>
+                    </div>
 
-            <h4>Statistics</h4>
-            <div class="stats">
-                <div class="stat-card">
-                    <div id="roomCount" class="stat-value">0</div>
-                    <div class="stat-label">Rooms</div>
+                    <h4>Generated Îlots</h4>
+                    <div id="ilotsList">
+                        <div class="list-item">No îlots generated yet</div>
+                    </div>
+
+                    <h4>Corridor Network</h4>
+                    <div id="corridorList">
+                        <div class="list-item">No corridors generated yet</div>
+                    </div>
                 </div>
-                <div class="stat-card">
-                    <div id="ilotCount" class="stat-value">0</div>
-                    <div class="stat-label">Îlots</div>
-                </div>
-            </div>
-            <div class="stat-center" role="status" aria-live="polite">
-                <strong>Total Area: <span id="totalArea">0 m²</span></strong>
-            </div>
-
-            <h4>Processing Status</h4>
-            <div id="processingStatus" class="processing-status hidden">
-                <div class="circular-progress-small">
-                    <svg width="60" height="60">
-                        <circle cx="30" cy="30" r="27" class="progress-bg-small"></circle>
-                        <circle cx="30" cy="30" r="27" class="progress-bar-small" id="progressCircleSmall"></circle>
-                    </svg>
-                    <div class="progress-text-small" id="progressPercentSmall">0%</div>
-                </div>
-                <div id="progressMessageSmall" class="progress-message-small">Processing...</div>
-            </div>
-        </div>
-
-        <div class="panel main-panel">
-            <button class="toggle-btn toggle-left" data-toggle-panel="left" aria-pressed="false"
-                title="Toggle left panel">
-                <i class="fas fa-chevron-left"></i>
-            </button>
-            <button class="toggle-btn toggle-right" data-toggle-panel="right" aria-pressed="false"
-                title="Toggle right panel">
-                <i class="fas fa-chevron-right"></i>
-            </button>
-            <div id="threeContainer" class="canvas-wrapper" aria-live="polite" aria-label="3D canvas container"></div>
-            <div class="top-controls" style="display: none;">
-                <button id="useThreeBtn" class="btn small active" aria-pressed="true"
-                    style="display: none;">Three.js</button>
-                <button id="useViewerBtn" class="btn small" aria-pressed="false" style="display: none;">Autodesk
-                    Viewer</button>
-            </div>
-        </div>
-
-        <div class="panel sidebar-panel sidebar-panel--right">
-            <h3><i class="fas fa-chart-bar"></i> Analysis Results</h3>
-
-            <h4>Detected Rooms</h4>
-            <div id="roomList">
-                <div class="list-item">No rooms detected yet</div>
-            </div>
-
-            <h4>Generated Îlots</h4>
-            <div id="ilotsList">
-                <div class="list-item">No îlots generated yet</div>
-            </div>
-
-            <h4>Corridor Network</h4>
-            <div id="corridorList">
-                <div class="list-item">No corridors generated yet</div>
-            </div>
-        </div>
-        <!-- Debug output for APS analysis (hidden by default) -->
-        <pre id="aps-debug" class="aps-debug" aria-hidden="true"></pre>
+                <!-- Debug output for APS analysis (hidden by default) -->
+                <pre id="aps-debug" class="aps-debug" aria-hidden="true"></pre>
             </div>
             <div id="notificationHost" class="notification-host" aria-live="polite" aria-atomic="true"></div>
-        </main>
+        </main></div>
+    <div id="legendPanel" class="legend legend--collapsed" aria-label="Floor plan legend">
+        <button id="legendToggle" class="legend__toggle" aria-expanded="false" aria-controls="legendContent" title="Toggle legend">
+            <i class="fas fa-info-circle"></i>
+        </button>
+        <div id="legendContent" class="legend__content" role="list">
+            <header class="legend__header">Color Coding</header>
+            <div class="legend__item" role="listitem">
+                <span class="legend__swatch legend__swatch--walls"></span>
+                <span class="legend__label">Walls</span>
+            </div>
+            <div class="legend__item" role="listitem">
+                <span class="legend__swatch legend__swatch--entrance"></span>
+                <span class="legend__label">Entrances / Exits</span>
+            </div>
+            <div class="legend__item" role="listitem">
+                <span class="legend__swatch legend__swatch--forbidden"></span>
+                <span class="legend__label">Forbidden Zones</span>
+            </div>
+            <div class="legend__item" role="listitem">
+                <span class="legend__swatch legend__swatch--ilot"></span>
+                <span class="legend__label">Îlots</span>
+            </div>
+            <div class="legend__item" role="listitem">
+                <span class="legend__swatch legend__swatch--corridor"></span>
+                <span class="legend__label">Corridors</span>
+            </div>
+        </div>
     </div>
-
     <!-- Global loader overlay -->
     <div id="globalLoader" class="global-loader hidden" aria-hidden="true" role="status" aria-live="polite">
         <div class="loader-box-advanced">

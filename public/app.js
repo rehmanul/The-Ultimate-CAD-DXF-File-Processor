@@ -268,6 +268,7 @@ function initializeModules() {
 
     initializeLayoutChrome();
     initializeHeaderActions();
+    initializeLegend();
 
     // Attach event listeners to UI elements
     const fileInput = document.getElementById('fileInput');
@@ -767,6 +768,11 @@ async function handleFileUpload(e) {
                     renderer.fitToBounds(currentFloorPlan.bounds);
                 }
             }, 100);
+            if (typeof window !== 'undefined' && typeof window.scrollTo === 'function') {
+                window.requestAnimationFrame(() => {
+                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                });
+            }
         }
 
         // Add room labels
@@ -2050,6 +2056,101 @@ function initializeHeaderActions() {
 
     updateActivePlanSummary(currentFloorPlan);
     updateActivePresetSummary(activePresetConfig);
+}
+
+function initializeLegend() {
+    const legend = document.getElementById('legendPanel');
+    const toggle = document.getElementById('legendToggle');
+    const content = document.getElementById('legendContent');
+    if (!legend || !toggle || !content) return;
+
+    const collapsedClass = 'legend--collapsed';
+    const DRAG_THRESHOLD = 4;
+    let isDragging = false;
+    let dragOffsetX = 0;
+    let dragOffsetY = 0;
+    let pointerStartX = 0;
+    let pointerStartY = 0;
+    let activePointerId = null;
+
+    const setCollapsed = (collapsed) => {
+        if (collapsed) {
+            legend.classList.add(collapsedClass);
+            toggle.setAttribute('aria-expanded', 'false');
+        } else {
+            legend.classList.remove(collapsedClass);
+            toggle.setAttribute('aria-expanded', 'true');
+        }
+    };
+
+    setCollapsed(true);
+
+    const clamp = (value, min, max) => Math.min(Math.max(value, min), max);
+
+    const onPointerDown = (event) => {
+        if (event.button !== undefined && event.button !== 0) return;
+        activePointerId = event.pointerId ?? null;
+        pointerStartX = event.clientX;
+        pointerStartY = event.clientY;
+
+        const rect = legend.getBoundingClientRect();
+        dragOffsetX = pointerStartX - rect.left;
+        dragOffsetY = pointerStartY - rect.top;
+        isDragging = false;
+
+        toggle.setPointerCapture?.(activePointerId);
+        window.addEventListener('pointermove', onPointerMove);
+        window.addEventListener('pointerup', onPointerUp, { once: true });
+    };
+
+    const onPointerMove = (event) => {
+        const deltaX = event.clientX - pointerStartX;
+        const deltaY = event.clientY - pointerStartY;
+        if (!isDragging && (Math.abs(deltaX) > DRAG_THRESHOLD || Math.abs(deltaY) > DRAG_THRESHOLD)) {
+            isDragging = true;
+            legend.classList.add('legend--dragging');
+        }
+        if (!isDragging) return;
+
+        event.preventDefault();
+
+        const proposedLeft = event.clientX - dragOffsetX;
+        const proposedTop = event.clientY - dragOffsetY;
+
+        const maxLeft = Math.max(16, window.innerWidth - legend.offsetWidth - 16);
+        const maxTop = Math.max(16, window.innerHeight - legend.offsetHeight - 16);
+        const clampedLeft = clamp(proposedLeft, 16, maxLeft);
+        const clampedTop = clamp(proposedTop, 16, maxTop);
+
+        legend.style.left = `${clampedLeft}px`;
+        legend.style.top = `${clampedTop}px`;
+        legend.style.right = 'auto';
+    };
+
+    const onPointerUp = (event) => {
+        window.removeEventListener('pointermove', onPointerMove);
+        if (activePointerId !== null) {
+            toggle.releasePointerCapture?.(activePointerId);
+        }
+        legend.classList.remove('legend--dragging');
+
+        if (!isDragging) {
+            const collapsed = legend.classList.contains(collapsedClass);
+            setCollapsed(!collapsed);
+        }
+
+        isDragging = false;
+        activePointerId = null;
+    };
+
+    toggle.addEventListener('pointerdown', onPointerDown);
+    toggle.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault();
+            const collapsed = legend.classList.contains(collapsedClass);
+            setCollapsed(!collapsed);
+        }
+    });
 }
 
 function loadLayoutState() {

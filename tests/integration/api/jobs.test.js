@@ -61,7 +61,7 @@ EOF`;
 
       // Clean up
       fs.unlinkSync(tempFilePath);
-      fs.rmdirSync(tempDir);
+      fs.rmSync(tempDir, { recursive: true });
     }, 15000);
 
     test('should return error when no file uploaded', async () => {

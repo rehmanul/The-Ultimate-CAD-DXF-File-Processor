@@ -545,8 +545,6 @@ class PresetSelector {
         this.updatePresetGrid();
     }
 
-    }
-
     async selectPreset(presetId) {
         const preset = (this.presets && this.presets[presetId]) || this.customPresets[presetId];
         if (!preset) return;
