@@ -2083,9 +2083,17 @@ function initializeLegend() {
         }
     };
 
-    setCollapsed(true);
+    setCollapsed(false);
 
     const clamp = (value, min, max) => Math.min(Math.max(value, min), max);
+    const finalizeDrag = () => {
+        window.removeEventListener('pointermove', onPointerMove);
+        if (activePointerId !== null && typeof toggle.releasePointerCapture === 'function') {
+            toggle.releasePointerCapture(activePointerId);
+        }
+        legend.classList.remove('legend--dragging');
+        activePointerId = null;
+    };
 
     const onPointerDown = (event) => {
         if (event.button !== undefined && event.button !== 0) return;
@@ -2098,7 +2106,9 @@ function initializeLegend() {
         dragOffsetY = pointerStartY - rect.top;
         isDragging = false;
 
-        toggle.setPointerCapture?.(activePointerId);
+        if (activePointerId !== null && typeof toggle.setPointerCapture === 'function') {
+            toggle.setPointerCapture(activePointerId);
+        }
         window.addEventListener('pointermove', onPointerMove);
         window.addEventListener('pointerup', onPointerUp, { once: true });
     };
@@ -2127,23 +2137,23 @@ function initializeLegend() {
         legend.style.right = 'auto';
     };
 
-    const onPointerUp = (event) => {
-        window.removeEventListener('pointermove', onPointerMove);
-        if (activePointerId !== null) {
-            toggle.releasePointerCapture?.(activePointerId);
-        }
-        legend.classList.remove('legend--dragging');
-
-        if (!isDragging) {
+    const onPointerUp = () => {
+        const wasDragging = isDragging;
+        finalizeDrag();
+        if (!wasDragging) {
             const collapsed = legend.classList.contains(collapsedClass);
             setCollapsed(!collapsed);
         }
-
         isDragging = false;
-        activePointerId = null;
+    };
+
+    const onPointerCancel = () => {
+        finalizeDrag();
+        isDragging = false;
     };
 
     toggle.addEventListener('pointerdown', onPointerDown);
+    toggle.addEventListener('pointercancel', onPointerCancel);
     toggle.addEventListener('keydown', (event) => {
         if (event.key === 'Enter' || event.key === ' ') {
             event.preventDefault();
@@ -2400,3 +2410,4 @@ function hideLoader() {
         if (sidebarStatus) sidebarStatus.classList.add('hidden');
     } catch (e) { /* ignore */ }
 }
+

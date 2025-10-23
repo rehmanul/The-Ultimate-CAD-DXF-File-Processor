@@ -430,6 +430,7 @@ h4 {
     place-items: center;
     cursor: grab;
     box-shadow: 0 12px 24px rgba(37, 99, 235, 0.35);
+    touch-action: none;
 }
 
 .legend__toggle:active {
