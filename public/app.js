@@ -12,6 +12,10 @@ import { ProfessionalExport } from './professionalExport.js';
 let currentFloorPlan = null;
 let generatedIlots = [];
 let corridorNetwork = [];
+let corridorArrows = [];
+let corridorArrowsVisible = true;
+let corridorStatistics = null;
+let corridorFilters = { showMain: true, showAccess: true };
 let renderer = null;
 let editor = null;
 let effects = null;
@@ -281,6 +285,39 @@ function initializeModules() {
     if (generateCorridorsBtn) generateCorridorsBtn.onclick = generateCorridors;
 
     setupCorridorWidthSlider();
+
+    const toggleArrowsBtn = document.getElementById('toggleArrowsBtn');
+    if (toggleArrowsBtn) {
+        toggleArrowsBtn.setAttribute('aria-pressed', corridorArrowsVisible ? 'true' : 'false');
+        toggleArrowsBtn.addEventListener('click', () => {
+            corridorArrowsVisible = !corridorArrowsVisible;
+            if (renderer && renderer.setCorridorArrowsVisible) {
+                renderer.setCorridorArrowsVisible(corridorArrowsVisible);
+            }
+            toggleArrowsBtn.setAttribute('aria-pressed', corridorArrowsVisible ? 'true' : 'false');
+            renderCurrentState();
+        });
+    }
+
+    const showMainCheckbox = document.getElementById('show-main-corridors');
+    if (showMainCheckbox) {
+        corridorFilters.showMain = showMainCheckbox.checked;
+        showMainCheckbox.addEventListener('change', () => {
+            corridorFilters.showMain = showMainCheckbox.checked;
+            renderCurrentState();
+            updateStats();
+        });
+    }
+
+    const showAccessCheckbox = document.getElementById('show-access-corridors');
+    if (showAccessCheckbox) {
+        corridorFilters.showAccess = showAccessCheckbox.checked;
+        showAccessCheckbox.addEventListener('change', () => {
+            corridorFilters.showAccess = showAccessCheckbox.checked;
+            renderCurrentState();
+            updateStats();
+        });
+    }
 
     // Distribution inputs handling
     const distributionInputs = document.querySelectorAll('.distribution-input');
@@ -699,6 +736,8 @@ DRAG - Move selected ilot
                 const j = await resp.json();
                 if (j && Array.isArray(j.corridors)) {
                     corridorNetwork = j.corridors;
+                    corridorArrows = Array.isArray(j.arrows) ? j.arrows : [];
+                    corridorStatistics = null;
                     renderCurrentState();
                     showNotification('Corridor optimization complete', 'success');
                 } else {
@@ -749,6 +788,25 @@ async function handleFileUpload(e) {
             uploadedAt: new Date().toISOString()
         };
 
+        generatedIlots = [];
+        corridorNetwork = [];
+        corridorArrows = [];
+        corridorStatistics = null;
+        corridorArrowsVisible = true;
+        const showMainCorridorsCheckbox = document.getElementById('show-main-corridors');
+        if (showMainCorridorsCheckbox) {
+            showMainCorridorsCheckbox.checked = true;
+            corridorFilters.showMain = true;
+        }
+        const showAccessCorridorsCheckbox = document.getElementById('show-access-corridors');
+        if (showAccessCorridorsCheckbox) {
+            showAccessCorridorsCheckbox.checked = true;
+            corridorFilters.showAccess = true;
+        }
+        const toggleArrowsBtn = document.getElementById('toggleArrowsBtn');
+        if (toggleArrowsBtn) {
+            toggleArrowsBtn.setAttribute('aria-pressed', 'true');
+        }
         console.log('currentFloorPlan created:', currentFloorPlan);
 
         updateActivePlanSummary(currentFloorPlan);
@@ -814,29 +872,96 @@ function updateStats() {
     }
 
     const corridorList = document.getElementById('corridorList');
-    corridorList.innerHTML = '';
-    if (corridorNetwork.length === 0) {
-        corridorList.innerHTML = '<div class="list-item">No corridors generated yet</div>';
-    } else {
-        corridorNetwork.forEach((corridor, index) => {
-            const item = document.createElement('div');
-            item.className = 'list-item';
-            item.textContent = `Corridor ${index + 1} - Type: ${corridor.type || 'Standard'}`;
-            corridorList.appendChild(item);
-        });
+    if (corridorList) {
+        corridorList.innerHTML = '';
+        const corridorsToDisplay = getFilteredCorridors();
+        if (corridorNetwork.length === 0) {
+            corridorList.innerHTML = '<div class="list-item">No corridors generated yet</div>';
+        } else if (corridorsToDisplay.length === 0) {
+            corridorList.innerHTML = '<div class="list-item">All corridor types hidden</div>';
+        } else {
+            corridorsToDisplay.forEach((corridor, index) => {
+                const item = document.createElement('div');
+                item.className = 'list-item';
+                const label = corridor.type ? corridor.type.replace(/_/g, ' ') : 'Standard';
+                item.textContent = `Corridor ${index + 1} - Type: ${label}`;
+                corridorList.appendChild(item);
+            });
+        }
     }
+
+    updateCorridorStatsPanel();
 }
 
 function renderCurrentState() {
     console.log('renderCurrentState called:', generatedIlots.length, 'ilots,', corridorNetwork.length, 'corridors');
     if (renderer) {
         renderer.renderIlots(generatedIlots);
-        renderer.renderCorridors(corridorNetwork);
+        renderer.renderCorridors(getFilteredCorridors());
+        if (renderer.renderCorridorArrows) {
+            renderer.renderCorridorArrows(corridorArrows);
+            renderer.setCorridorArrowsVisible(corridorArrowsVisible);
+        }
         if (!stackVisualizationEnabled && renderer.clearCrossFloorRoutes) {
             renderer.clearCrossFloorRoutes();
         }
     }
     updateConnectorVisualization();
+}
+
+function getFilteredCorridors() {
+    if (!Array.isArray(corridorNetwork)) return [];
+    return corridorNetwork.filter((corridor) => {
+        const type = (corridor?.type || '').toLowerCase();
+        if (!corridorFilters.showMain && (type === 'main' || type === 'vertical' || type === 'vertical_spine')) {
+            return false;
+        }
+        if (!corridorFilters.showAccess && (type === 'access' || type === 'entrance')) {
+            return false;
+        }
+        return true;
+    });
+}
+
+function computeCorridorCounts(sourceCorridors) {
+    const counts = {
+        main: 0,
+        connecting: 0,
+        access: 0,
+        vertical: 0
+    };
+
+    (sourceCorridors || []).forEach((corridor) => {
+        const type = (corridor?.type || '').toLowerCase();
+        if (type === 'main') counts.main += 1;
+        else if (type === 'connecting') counts.connecting += 1;
+        else if (type === 'access') counts.access += 1;
+        else if (type === 'vertical' || type === 'vertical_spine') counts.vertical += 1;
+    });
+
+    return counts;
+}
+
+function updateCorridorStatsPanel() {
+    const mainEl = document.getElementById('statsMainCorridors');
+    const connectingEl = document.getElementById('statsConnectingCorridors');
+    const accessEl = document.getElementById('statsAccessCorridors');
+    const arrowEl = document.getElementById('statsArrowCount');
+
+    if (!mainEl || !connectingEl || !accessEl || !arrowEl) return;
+
+    if (corridorStatistics) {
+        mainEl.textContent = String((corridorStatistics.main_corridors ?? 0) + (corridorStatistics.vertical_corridors ?? 0));
+        connectingEl.textContent = String(corridorStatistics.connecting_corridors ?? 0);
+        accessEl.textContent = String(corridorStatistics.access_corridors ?? 0);
+    } else {
+        const counts = computeCorridorCounts(corridorNetwork);
+        mainEl.textContent = String(counts.main + counts.vertical);
+        connectingEl.textContent = String(counts.connecting);
+        accessEl.textContent = String(counts.access);
+    }
+
+    arrowEl.textContent = String(corridorArrows.length || 0);
 }
 
 function initializeMultiFloorControls() {
@@ -921,6 +1046,8 @@ function addCurrentFloorToStack() {
         floorPlan: deepClone(currentFloorPlan),
         ilots: deepClone(generatedIlots),
         corridors: deepClone(corridorNetwork),
+        arrows: deepClone(corridorArrows),
+        corridor_statistics: corridorStatistics ? deepClone(corridorStatistics) : null,
         presetConfig: activePresetConfig ? deepClone(activePresetConfig) : null,
         metadata: {
             source: currentFloorPlan.sourceFile || currentFloorPlan.urn || floorName,
@@ -1045,6 +1172,8 @@ function selectStackFloor(floorId) {
     currentFloorPlan = deepClone(entry.floorPlan);
     generatedIlots = deepClone(entry.ilots || []);
     corridorNetwork = deepClone(entry.corridors || []);
+    corridorArrows = deepClone(entry.arrows || []);
+    corridorStatistics = entry.corridor_statistics ? deepClone(entry.corridor_statistics) : null;
     activePresetConfig = entry.presetConfig ? deepClone(entry.presetConfig) : activePresetConfig;
     if (entry.presetConfig) {
         syncPresetUIFromConfig(activePresetConfig);
@@ -1058,7 +1187,11 @@ function selectStackFloor(floorId) {
     if (renderer) {
         renderer.loadFloorPlan(currentFloorPlan);
         renderer.renderIlots(generatedIlots);
-        renderer.renderCorridors(corridorNetwork);
+        renderer.renderCorridors(getFilteredCorridors());
+        if (renderer.renderCorridorArrows) {
+            renderer.renderCorridorArrows(corridorArrows);
+            renderer.setCorridorArrowsVisible(corridorArrowsVisible);
+        }
     }
 
     if (textLabels) {
@@ -1593,6 +1726,8 @@ function syncActiveStackFloor() {
         floorPlan: deepClone(currentFloorPlan),
         ilots: deepClone(generatedIlots),
         corridors: deepClone(corridorNetwork),
+        arrows: deepClone(corridorArrows),
+        corridor_statistics: corridorStatistics ? deepClone(corridorStatistics) : null,
         metadata: {
             ...(multiFloorStack[index].metadata || {}),
             rooms: currentFloorPlan?.rooms?.length || 0,
@@ -1739,13 +1874,18 @@ async function generateCorridors() {
         showLoader('Generating corridors...', 20);
 
         const API = (window.__API_BASE__) ? window.__API_BASE__ : 'http://localhost:3001';
-        const response = await fetch(`${API}/api/corridors`, {
+        const corridorWidth = getActiveCorridorWidth();
+        const generateArrows = document.getElementById('generate-arrows') ? document.getElementById('generate-arrows').checked : true;
+
+        const response = await fetch(`${API}/api/corridors/advanced`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 floorPlan: currentFloorPlan,
-                ilots: generatedIlots,
-                corridorWidth: getActiveCorridorWidth()
+                options: {
+                    corridor_width: corridorWidth,
+                    generate_arrows: generateArrows
+                }
             })
         });
 
@@ -1754,7 +1894,12 @@ async function generateCorridors() {
         }
 
         const result = await response.json();
-        corridorNetwork = result.corridors || [];
+        if (result.error) {
+            throw new Error(result.error);
+        }
+        corridorNetwork = Array.isArray(result.corridors) ? result.corridors : [];
+        corridorArrows = Array.isArray(result.arrows) ? result.arrows : [];
+        corridorStatistics = result.statistics || null;
 
         console.log(`Generated ${corridorNetwork.length} corridors`);
         console.log('First corridor:', corridorNetwork[0]);
@@ -1767,7 +1912,13 @@ async function generateCorridors() {
             renderCurrentState();
         }, 500);
 
-        showNotification(`Generated ${corridorNetwork.length} corridors (${result.totalArea?.toFixed(2)} m²)`, 'success');
+        if (renderer && renderer.renderCorridorArrows) {
+            renderer.renderCorridorArrows(corridorArrows);
+            renderer.setCorridorArrowsVisible(corridorArrowsVisible);
+        }
+
+        const arrowMessage = corridorArrows.length ? ` with ${corridorArrows.length} arrows` : '';
+        showNotification(`Generated ${corridorNetwork.length} corridors${arrowMessage}`, 'success');
         hideLoader();
 
     } catch (error) {
@@ -1788,7 +1939,7 @@ async function exportToPDF() {
         const response = await fetch(`${API}/api/export/pdf`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ floorPlan: currentFloorPlan, ilots: generatedIlots, corridors: corridorNetwork })
+            body: JSON.stringify({ floorPlan: currentFloorPlan, ilots: generatedIlots, corridors: corridorNetwork, arrows: corridorArrows })
         });
 
         const result = await response.json();
@@ -1816,7 +1967,7 @@ async function exportToImage() {
         const response = await fetch(`${API}/api/export/image`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ floorPlan: currentFloorPlan, ilots: generatedIlots, corridors: corridorNetwork })
+            body: JSON.stringify({ floorPlan: currentFloorPlan, ilots: generatedIlots, corridors: corridorNetwork, arrows: corridorArrows })
         });
 
         const result = await response.json();
@@ -2410,4 +2561,5 @@ function hideLoader() {
         if (sidebarStatus) sidebarStatus.classList.add('hidden');
     } catch (e) { /* ignore */ }
 }
+
 

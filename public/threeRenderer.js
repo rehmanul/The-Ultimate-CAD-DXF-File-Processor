@@ -66,6 +66,7 @@ export class FloorPlanRenderer {
         this.forbiddenGroup = new THREE.Group();
         this.ilotsGroup = new THREE.Group();
         this.corridorsGroup = new THREE.Group();
+        this.corridorArrowsGroup = new THREE.Group();
         this.measurementsGroup = new THREE.Group();
         this.labelsGroup = new THREE.Group();
         this.connectorsGroup = new THREE.Group();
@@ -79,6 +80,19 @@ export class FloorPlanRenderer {
         this.currentStackOptions = {};
         this.currentCrossFloorRoutes = [];
         this.crossFloorOptions = {};
+        this.corridorArrowsGroup.visible = true;
+        this.corridorArrowsVisible = true;
+        this.arrowMeshes = [];
+        this.arrowMaterials = {
+            green: new THREE.MeshBasicMaterial({ color: 0x00cc00 }),
+            bright_green: new THREE.MeshBasicMaterial({ color: 0x00ff00 }),
+            blue: new THREE.MeshBasicMaterial({ color: 0x2674dc }),
+            teal: new THREE.MeshBasicMaterial({ color: 0x14b8a6 })
+        };
+        this.arrowClock = new THREE.Clock(false);
+        this.arrowAnimationActive = false;
+        this.arrowAnimationFrame = null;
+        this.arrowPulseTime = 0;
 
         this.scene.add(
             this.wallsGroup,
@@ -86,6 +100,7 @@ export class FloorPlanRenderer {
             this.forbiddenGroup,
             this.ilotsGroup,
             this.corridorsGroup,
+            this.corridorArrowsGroup,
             this.measurementsGroup,
             this.labelsGroup,
             this.connectorsGroup,
@@ -164,6 +179,7 @@ export class FloorPlanRenderer {
             this.forbiddenGroup,
             this.ilotsGroup,
             this.corridorsGroup,
+            this.corridorArrowsGroup,
             this.connectorsGroup,
             this.connectorHighlights,
             this.stackGroup,
@@ -176,6 +192,8 @@ export class FloorPlanRenderer {
         this.currentStackOptions = {};
         this.currentCrossFloorRoutes = [];
         this.crossFloorOptions = {};
+        this.clearCorridorArrows();
+        this.stopArrowAnimation();
         this.render();
     }
 
@@ -351,6 +369,149 @@ export class FloorPlanRenderer {
         });
     }
 
+    clearCorridorArrows() {
+        this.arrowMeshes.forEach(mesh => {
+            this.corridorArrowsGroup.remove(mesh);
+            if (mesh.geometry) {
+                mesh.geometry.dispose();
+            }
+        });
+        this.arrowMeshes = [];
+    }
+
+    renderCorridorArrows(arrows = []) {
+        this.clearCorridorArrows();
+
+        if (!Array.isArray(arrows) || arrows.length === 0) {
+            this.stopArrowAnimation();
+            this.render();
+            return;
+        }
+
+        arrows.forEach(arrow => {
+            const mesh = this._createCorridorArrowMesh(arrow);
+            if (mesh) {
+                this.corridorArrowsGroup.add(mesh);
+                this.arrowMeshes.push(mesh);
+            }
+        });
+
+        this.corridorArrowsGroup.visible = this.corridorArrowsVisible;
+
+        if (this.arrowMeshes.length > 0) {
+            this.startArrowAnimation();
+        } else {
+            this.stopArrowAnimation();
+            this.render();
+        }
+    }
+
+    _createCorridorArrowMesh(arrow) {
+        try {
+            const sizeKey = typeof arrow.size === 'string' ? arrow.size.toLowerCase() : 'medium';
+            const sizeConfig = {
+                small: { radius: 0.12, height: 0.5 },
+                medium: { radius: 0.18, height: 0.75 },
+                large: { radius: 0.28, height: 1.1 }
+            }[sizeKey] || { radius: 0.18, height: 0.75 };
+
+            const geometry = new THREE.ConeGeometry(sizeConfig.radius, sizeConfig.height, 16);
+            const material = this.arrowMaterials[arrow.color] || this.arrowMaterials.green;
+            const mesh = new THREE.Mesh(geometry, material);
+
+            const posX = Number.isFinite(arrow.x) ? Number(arrow.x) : 0;
+            const posY = Number.isFinite(arrow.y) ? Number(arrow.y) : 0;
+            const posZ = Number.isFinite(arrow.z) ? Number(arrow.z) : 0.6;
+
+            mesh.position.set(posX, posY, posZ);
+
+            const direction = typeof arrow.direction === 'string' ? arrow.direction.toLowerCase() : 'right';
+            if (typeof arrow.angle === 'number' && Number.isFinite(arrow.angle)) {
+                mesh.rotation.z = arrow.angle;
+            } else {
+                switch (direction) {
+                    case 'left':
+                        mesh.rotation.z = Math.PI / 2;
+                        break;
+                    case 'right':
+                        mesh.rotation.z = -Math.PI / 2;
+                        break;
+                    case 'down':
+                        mesh.rotation.z = Math.PI;
+                        break;
+                    default:
+                        mesh.rotation.z = 0;
+                        break;
+                }
+            }
+
+            mesh.userData = {
+                arrow,
+                baseHeight: mesh.position.z
+            };
+
+            return mesh;
+        } catch (error) {
+            console.error('Failed to create corridor arrow mesh:', error);
+            return null;
+        }
+    }
+
+    animateCorridorArrows(deltaTime) {
+        if (!this.arrowMeshes.length) return;
+
+        this.arrowPulseTime += deltaTime;
+
+        this.arrowMeshes.forEach((mesh, index) => {
+            const phase = this.arrowPulseTime * 2 + index * 0.35;
+            const scale = 0.9 + 0.15 * Math.sin(phase);
+            mesh.scale.set(scale, scale, scale);
+
+            const arrowData = mesh.userData?.arrow;
+            if (arrowData && arrowData.type === 'entrance_flow') {
+                const base = mesh.userData.baseHeight || mesh.position.z;
+                mesh.position.z = base + 0.1 * Math.sin(this.arrowPulseTime * 3 + index * 0.4);
+            }
+        });
+    }
+
+    startArrowAnimation() {
+        if (this.arrowAnimationActive) return;
+        this.arrowAnimationActive = true;
+        this.arrowClock.start();
+
+        const tick = () => {
+            if (!this.arrowAnimationActive) return;
+            const delta = this.arrowClock.getDelta();
+            this.animateCorridorArrows(delta);
+            this.render();
+            this.arrowAnimationFrame = window.requestAnimationFrame(tick);
+        };
+
+        this.arrowAnimationFrame = window.requestAnimationFrame(tick);
+    }
+
+    stopArrowAnimation() {
+        if (!this.arrowAnimationActive) return;
+        this.arrowAnimationActive = false;
+        if (this.arrowAnimationFrame !== null) {
+            window.cancelAnimationFrame(this.arrowAnimationFrame);
+            this.arrowAnimationFrame = null;
+        }
+        this.arrowClock.stop();
+    }
+
+    setCorridorArrowsVisible(visible) {
+        this.corridorArrowsVisible = Boolean(visible);
+        this.corridorArrowsGroup.visible = this.corridorArrowsVisible;
+        if (this.corridorArrowsVisible && this.arrowMeshes.length) {
+            this.startArrowAnimation();
+        } else {
+            this.stopArrowAnimation();
+        }
+        this.render();
+    }
+
     fitToBounds(bounds) {
         if (!bounds || typeof bounds.minX !== 'number') {
             console.warn('Invalid bounds:', bounds);
@@ -398,9 +559,12 @@ export class FloorPlanRenderer {
     }
 
     toggleLayer(layerName, visible) {
-        const groups = { walls: this.wallsGroup, entrances: this.entrancesGroup, forbidden: this.forbiddenGroup, ilots: this.ilotsGroup, corridors: this.corridorsGroup };
+        const groups = { walls: this.wallsGroup, entrances: this.entrancesGroup, forbidden: this.forbiddenGroup, ilots: this.ilotsGroup, corridors: this.corridorsGroup, arrows: this.corridorArrowsGroup };
         if (groups[layerName]) {
             groups[layerName].visible = visible;
+            if (layerName === 'arrows') {
+                this.corridorArrowsVisible = Boolean(visible);
+            }
             this.render();
         }
     }

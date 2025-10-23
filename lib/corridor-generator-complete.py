@@ -3,6 +3,7 @@
 # Generates comprehensive corridor networks with green arrow circulation flow
 
 import json
+import sys
 import math
 import random
 from typing import List, Dict, Any, Tuple, Optional
@@ -1044,27 +1045,51 @@ def generate_corridors_for_floor_plan(floor_plan_data, options=None):
     analysis = generator.analyze_floor_plan(floor_plan_data)
     return generator.generate_corridor_network(analysis, options)
 
-# Example usage
-if __name__ == "__main__":
-    # Example floor plan data
-    sample_floor_plan = {
-        "bounds": {"minX": 0, "minY": 0, "maxX": 50, "maxY": 30},
-        "rooms": [
-            {"id": "room_1", "area": 15.5, "center": {"x": 5, "y": 5}, "type": "office"},
-            {"id": "room_2", "area": 13.0, "center": {"x": 15, "y": 5}, "type": "office"},
-            {"id": "room_3", "area": 20.0, "center": {"x": 25, "y": 5}, "type": "meeting"}
-        ],
-        "entrances": [
-            {"id": "main_entrance", "start": {"x": 0, "y": 14}, "end": {"x": 2, "y": 16}}
-        ],
-        "forbidden_zones": []
+def main():
+    """
+    Entry point for command-line usage. Expects JSON on stdin with:
+    {
+        "floor_plan": {...},
+        "options": {...}
     }
-    
-    # Generate corridor network
-    result = generate_corridors_for_floor_plan(sample_floor_plan, {
-        "corridor_width": 1.5,
-        "generate_arrows": True
-    })
-    
-    print(f"Generated {result['statistics']['total_corridors']} corridors")
-    print(f"Generated {len(result['arrows'])} circulation arrows")
+    """
+    try:
+        raw_input = sys.stdin.read()
+        if not raw_input or not raw_input.strip():
+            raise ValueError('No input provided for corridor generation')
+
+        input_data = json.loads(raw_input)
+        floor_plan_data = input_data.get('floor_plan')
+        if floor_plan_data is None:
+            raise ValueError('Input JSON must include "floor_plan" data')
+
+        options = input_data.get('options') or {}
+
+        original_stdout = sys.stdout
+        try:
+            # Redirect diagnostic prints to stderr so stdout remains pure JSON
+            sys.stdout = sys.stderr
+            result = generate_corridors_for_floor_plan(floor_plan_data, options)
+        finally:
+            sys.stdout = original_stdout
+
+        sys.stdout.write(json.dumps(result) + '\n')
+    except Exception as exc:
+        error_result = {
+            'success': False,
+            'corridors': [],
+            'arrows': [],
+            'statistics': {'total_corridors': 0, 'total_corridor_area': 0},
+            'metadata': {},
+            'error': str(exc)
+        }
+        sys.stdout.write(json.dumps(error_result) + '\n')
+    finally:
+        try:
+            sys.stdout.flush()
+        except Exception:
+            pass
+
+
+if __name__ == "__main__":
+    main()

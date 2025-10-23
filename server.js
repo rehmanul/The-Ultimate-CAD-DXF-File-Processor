@@ -4,6 +4,7 @@ const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 const axios = require('axios');
+const { spawn } = require('child_process');
 const ProfessionalCADProcessor = require('./lib/professionalCADProcessor');
 const GridIlotPlacer = require('./lib/gridIlotPlacer');
 const ProductionCorridorGenerator = require('./lib/productionCorridorGenerator');
@@ -29,6 +30,8 @@ const { performance } = require('perf_hooks');
 const MultiFloorManager = require('./lib/multiFloorManager');
 const floorPlanStore = require('./lib/floorPlanStore');
 const ML_BOOT_PREFIX = '[ML Bootstrap]';
+const PYTHON_EXECUTABLE = process.env.PYTHON_EXECUTABLE || process.env.PYTHON_PATH || (process.platform === 'win32' ? 'python' : 'python3');
+const PYTHON_GENERATOR_PATH = path.join(__dirname, 'lib', 'corridor-generator-complete.py');
 let mlBootstrapPromise = null;
 let mlBootstrapFinished = false;
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 5000;
@@ -68,6 +71,70 @@ function ensureDirectories() {
     if (!fs.existsSync(exportsDir)) fs.mkdirSync(exportsDir, { recursive: true });
 }
 
+function runPythonCorridorGenerator(floorPlanData, generationOptions) {
+    return new Promise((resolve, reject) => {
+        try {
+            if (!fs.existsSync(PYTHON_GENERATOR_PATH)) {
+                return reject(new Error(`Python corridor generator not found at ${PYTHON_GENERATOR_PATH}`));
+            }
+
+            const python = spawn(PYTHON_EXECUTABLE, [PYTHON_GENERATOR_PATH], {
+                cwd: path.dirname(PYTHON_GENERATOR_PATH)
+            });
+
+            let stdout = '';
+            let stderr = '';
+
+            python.stdout.on('data', (data) => {
+                stdout += data.toString();
+            });
+
+            python.stderr.on('data', (data) => {
+                stderr += data.toString();
+            });
+
+            python.on('error', (err) => {
+                reject(new Error(`Failed to start Python generator: ${err.message}`));
+            });
+
+            python.on('close', (code) => {
+                if (code !== 0) {
+                    return reject(new Error(stderr || `Python generator exited with code ${code}`));
+                }
+
+                try {
+                    const parsed = JSON.parse(stdout || '{}');
+                    if (parsed && parsed.error) {
+                        const message = typeof parsed.error === 'string' ? parsed.error : JSON.stringify(parsed.error);
+                        return reject(new Error(message));
+                    }
+                    if (parsed && parsed.metadata && parsed.metadata.error) {
+                        const message = typeof parsed.metadata.error === 'string'
+                            ? parsed.metadata.error
+                            : JSON.stringify(parsed.metadata.error);
+                        return reject(new Error(message));
+                    }
+                    if (stderr && stderr.trim().length) {
+                        console.warn('[Python Corridor Generator]', stderr.trim());
+                    }
+                    resolve(parsed);
+                } catch (parseError) {
+                    reject(new Error(`Failed to parse Python generator output: ${parseError.message}`));
+                }
+            });
+
+            const payload = JSON.stringify({
+                floor_plan: floorPlanData,
+                options: generationOptions
+            });
+            python.stdin.write(payload);
+            python.stdin.end();
+        } catch (error) {
+            reject(error);
+        }
+    });
+}
+
 checkProductionRequirements();
 ensureDirectories();
 
@@ -86,7 +153,7 @@ process.on('unhandledRejection', (reason) => {
 
 const crypto = require('crypto');
 const os = require('os');
-const { safeNum, safePoint, sanitizeIlot, sanitizeCorridor } = require('./lib/sanitizers');
+const { safeNum, safePoint, sanitizeIlot, sanitizeCorridor, sanitizeArrow } = require('./lib/sanitizers');
 
 
 
@@ -840,6 +907,118 @@ app.post('/api/optimize/paths', (req, res) => {
     } catch (error) {
         console.error('Path optimization error:', error);
         res.status(500).json({ error: 'Path optimization failed: ' + error.message });
+    }
+});
+
+// Advanced corridor generation backed by Python corridor generator
+app.post('/api/corridors/advanced', async (req, res) => {
+    try {
+        const body = req.body || {};
+        const floorPlan = body.floorPlan;
+        const options = body.options || {};
+
+        if (!floorPlan) {
+            return res.status(400).json({ error: 'Floor plan data required' });
+        }
+
+        const normalizedFloorPlan = {
+            walls: Array.isArray(floorPlan.walls) ? floorPlan.walls : [],
+            forbidden_zones: Array.isArray(floorPlan.forbidden_zones) ? floorPlan.forbidden_zones : (Array.isArray(floorPlan.forbiddenZones) ? floorPlan.forbiddenZones : []),
+            forbiddenZones: Array.isArray(floorPlan.forbiddenZones) ? floorPlan.forbiddenZones : (Array.isArray(floorPlan.forbidden_zones) ? floorPlan.forbidden_zones : []),
+            entrances: Array.isArray(floorPlan.entrances) ? floorPlan.entrances : [],
+            bounds: floorPlan.bounds || { minX: 0, minY: 0, maxX: 100, maxY: 100 },
+            rooms: Array.isArray(floorPlan.rooms) ? floorPlan.rooms : [],
+            urn: floorPlan.urn || floorPlan.id || null,
+            id: floorPlan.id || floorPlan.urn || null
+        };
+
+        const generationOptions = {
+            corridor_width: typeof options.corridor_width === 'number'
+                ? options.corridor_width
+                : (typeof options.corridorWidth === 'number' ? options.corridorWidth : 1.5),
+            generate_arrows: options.generate_arrows !== false,
+            min_corridor_length: typeof options.min_corridor_length === 'number' ? options.min_corridor_length : 3.0,
+            max_corridor_spacing: typeof options.max_corridor_spacing === 'number' ? options.max_corridor_spacing : 8.0
+        };
+
+        const corridorNetwork = await runPythonCorridorGenerator(normalizedFloorPlan, generationOptions);
+
+        const corridors = Array.isArray(corridorNetwork.corridors)
+            ? corridorNetwork.corridors.map(sanitizeCorridor).filter(Boolean)
+            : [];
+        const arrows = Array.isArray(corridorNetwork.arrows)
+            ? corridorNetwork.arrows.map(sanitizeArrow).filter(Boolean)
+            : [];
+        const statistics = corridorNetwork.statistics || {};
+        const metadata = corridorNetwork.metadata || {};
+
+        global.lastGeneratedCorridors = corridors;
+        global.lastGeneratedArrows = arrows;
+        global.lastAdvancedCorridorStats = statistics;
+
+        const planId = normalizedFloorPlan.urn || normalizedFloorPlan.id;
+        if (planId) {
+            floorPlanStore.saveFloorPlan(normalizedFloorPlan);
+            const existingLayout = floorPlanStore.getLayout(planId) || {};
+            floorPlanStore.updateLayout(planId, Object.assign({}, existingLayout, {
+                corridors,
+                arrows,
+                corridor_statistics: statistics,
+                corridor_metadata: metadata
+            }));
+        }
+
+        res.json({
+            success: true,
+            corridors,
+            arrows,
+            statistics,
+            metadata,
+            message: `Generated ${corridors.length} corridors with ${arrows.length} circulation arrows`
+        });
+    } catch (error) {
+        console.error('Advanced corridor generation error:', error);
+        res.status(500).json({ error: 'Advanced corridor generation failed: ' + error.message });
+    }
+});
+
+// Fetch the most recently generated corridor arrows for a floor plan
+app.get('/api/corridors/arrows/:urn', (req, res) => {
+    try {
+        const urn = req.params.urn;
+        if (!urn) {
+            return res.status(400).json({ error: 'URN parameter required' });
+        }
+
+        const layout = floorPlanStore.getLayout(urn);
+        if (layout && Array.isArray(layout.arrows) && layout.arrows.length) {
+            const arrows = layout.arrows.map(sanitizeArrow).filter(Boolean);
+            return res.json({
+                success: true,
+                arrows,
+                count: arrows.length,
+                source: 'store'
+            });
+        }
+
+        if (Array.isArray(global.lastGeneratedArrows) && global.lastGeneratedArrows.length) {
+            return res.json({
+                success: true,
+                arrows: global.lastGeneratedArrows,
+                count: global.lastGeneratedArrows.length,
+                source: 'memory'
+            });
+        }
+
+        res.status(404).json({
+            success: false,
+            arrows: [],
+            count: 0,
+            error: 'No corridor arrows available for requested URN'
+        });
+    } catch (error) {
+        console.error('Corridor arrow retrieval error:', error);
+        res.status(500).json({ error: 'Failed to retrieve corridor arrows: ' + error.message });
     }
 });
 
