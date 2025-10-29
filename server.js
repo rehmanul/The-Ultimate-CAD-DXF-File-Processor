@@ -288,12 +288,26 @@ function runPythonCorridorGenerator(floorPlanData, generationOptions) {
                 }
             });
 
+            // Handle stdin errors (EPIPE, etc.)
+            python.stdin.on('error', (err) => {
+                if (!settled) {
+                    console.warn('[Python Corridor Generator] Stdin error:', err.message);
+                    // Don't fail immediately - the process might still produce output
+                }
+            });
+
             const payload = JSON.stringify({
                 floor_plan: floorPlanData,
                 options: generationOptions
             });
-            python.stdin.write(payload);
-            python.stdin.end();
+            
+            try {
+                python.stdin.write(payload);
+                python.stdin.end();
+            } catch (writeError) {
+                console.warn('[Python Corridor Generator] Write error:', writeError.message);
+                // Process might have already exited - wait for close event
+            }
         } catch (error) {
             useFallback(error.message || error);
         }
@@ -677,7 +691,7 @@ app.use((req, res, next) => {
 });
 
 const staticCacheMaxAge = USING_DIST_BUILD ? '1h' : 0;
-app.use(express.static(STATIC_ROOT, { 
+app.use(express.static(STATIC_ROOT, {
     maxAge: staticCacheMaxAge,
     setHeaders: (res, filePath) => {
         if (filePath.endsWith('.js') || filePath.endsWith('.mjs')) {
@@ -686,7 +700,7 @@ app.use(express.static(STATIC_ROOT, {
     }
 }));
 // Serve static assets
-app.use('/libs', express.static(path.join(PUBLIC_DIR, 'libs'), { 
+app.use('/libs', express.static(path.join(PUBLIC_DIR, 'libs'), {
     maxAge: staticCacheMaxAge,
     setHeaders: (res, filePath) => {
         if (filePath.endsWith('.js') || filePath.endsWith('.mjs')) {
