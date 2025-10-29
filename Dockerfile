@@ -10,10 +10,6 @@ RUN apt-get update \
 COPY package.json package-lock.json* ./
 RUN npm ci
 
-FROM deps AS build
-COPY . .
-RUN npm run vite-build
-
 FROM base AS production-deps
 COPY package.json package-lock.json* ./
 RUN npm ci --omit=dev
@@ -24,15 +20,15 @@ ENV NODE_ENV=production
 ENV PORT=3000
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends curl libsqlite3-dev \
+    && apt-get install -y --no-install-recommends curl libsqlite3-dev python3 \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=production-deps /usr/src/app/node_modules ./node_modules
-COPY --from=build /usr/src/app/package*.json ./
-COPY --from=build /usr/src/app/public ./public
-COPY --from=build /usr/src/app/lib ./lib
-COPY --from=build /usr/src/app/scripts ./scripts
-COPY --from=build /usr/src/app/server.js ./server.js
+COPY package*.json ./
+COPY public ./public
+COPY lib ./lib
+COPY scripts ./scripts
+COPY server.js ./server.js
 
 RUN mkdir -p models
 
