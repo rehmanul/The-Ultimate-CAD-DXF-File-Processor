@@ -23,30 +23,30 @@
         <div class='clearfix'>
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">64.59% </span>
+                <span class="strong">64.6% </span>
                 <span class="quiet">Statements</span>
-                <span class='fraction'>312/483</span>
+                <span class='fraction'>314/486</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">56.44% </span>
+                <span class="strong">58.92% </span>
                 <span class="quiet">Branches</span>
-                <span class='fraction'>127/225</span>
+                <span class='fraction'>142/241</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">60.49% </span>
+                <span class="strong">60.97% </span>
                 <span class="quiet">Functions</span>
-                <span class='fraction'>49/81</span>
+                <span class='fraction'>50/82</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">67.07% </span>
+                <span class="strong">67.14% </span>
                 <span class="quiet">Lines</span>
-                <span class='fraction'>277/413</span>
+                <span class='fraction'>280/417</span>
             </div>
         
             
@@ -869,7 +869,26 @@
 <a name='L804'></a><a href='#L804'>804</a>
 <a name='L805'></a><a href='#L805'>805</a>
 <a name='L806'></a><a href='#L806'>806</a>
-<a name='L807'></a><a href='#L807'>807</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
+<a name='L807'></a><a href='#L807'>807</a>
+<a name='L808'></a><a href='#L808'>808</a>
+<a name='L809'></a><a href='#L809'>809</a>
+<a name='L810'></a><a href='#L810'>810</a>
+<a name='L811'></a><a href='#L811'>811</a>
+<a name='L812'></a><a href='#L812'>812</a>
+<a name='L813'></a><a href='#L813'>813</a>
+<a name='L814'></a><a href='#L814'>814</a>
+<a name='L815'></a><a href='#L815'>815</a>
+<a name='L816'></a><a href='#L816'>816</a>
+<a name='L817'></a><a href='#L817'>817</a>
+<a name='L818'></a><a href='#L818'>818</a>
+<a name='L819'></a><a href='#L819'>819</a>
+<a name='L820'></a><a href='#L820'>820</a>
+<a name='L821'></a><a href='#L821'>821</a>
+<a name='L822'></a><a href='#L822'>822</a>
+<a name='L823'></a><a href='#L823'>823</a>
+<a name='L824'></a><a href='#L824'>824</a>
+<a name='L825'></a><a href='#L825'>825</a>
+<a name='L826'></a><a href='#L826'>826</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-yes">3x</span>
 <span class="cline-any cline-yes">3x</span>
@@ -951,6 +970,15 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-yes">4x</span>
+<span class="cline-any cline-yes">4x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">8x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-yes">8x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -1009,6 +1037,16 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-yes">4x</span>
+<span class="cline-any cline-yes">8x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-yes">8x</span>
 <span class="cline-any cline-yes">8x</span>
 <span class="cline-any cline-no">&nbsp;</span>
@@ -1757,10 +1795,19 @@
 &nbsp;
     findClosedPolygons(walls) {
         const polygons = [];
-        const segments = walls.map(w =&gt; ({
-            start: { x: w.start.x, y: w.start.y },
-            end: { x: w.end.x, y: w.end.y }
-        }));
+        const segments = walls
+            .filter(w =&gt;
+                w &amp;&amp;
+                w.start &amp;&amp; w.end &amp;&amp;
+                Number.isFinite(w.start.x) &amp;&amp;
+                Number.isFinite(w.start.y) &amp;&amp;
+                Number.isFinite(w.end.x) &amp;&amp;
+                Number.isFinite(w.end.y)
+            )
+            .map(w =&gt; ({
+                start: { x: w.start.x, y: w.start.y },
+                end: { x: w.end.x, y: w.end.y }
+            }));
 &nbsp;
         const used = new Set();
 &nbsp;
@@ -1815,6 +1862,16 @@
         };
 &nbsp;
         walls.forEach((wall, index) =&gt; {
+            <span class="missing-if-branch" title="if path not taken" >I</span>if (
+                !wall ||
+                !wall.start || !wall.end ||
+                !Number.isFinite(wall.start.x) ||
+                !Number.isFinite(wall.start.y) ||
+                !Number.isFinite(wall.end.x) ||
+                !Number.isFinite(wall.end.y)
+            ) {
+<span class="cstat-no" title="statement not covered" >                return;</span>
+            }
             if (wall.start &amp;&amp; wall.end) {
                 addEdge(wall.start, wall.end, index);
             } else <span class="cstat-no" title="statement not covered" ><span class="missing-if-branch" title="else path not taken" >E</span>if (Array.isArray(wall.polygon) &amp;&amp; wall.polygon.length &gt;= 2) {</span>
@@ -2488,7 +2545,7 @@ module.exports = new RoomDetector();
             <div class='footer quiet pad2 space-top1 center small'>
                 Code coverage generated by
                 <a href="https://istanbul.js.org/" target="_blank" rel="noopener noreferrer">istanbul</a>
-                at 2025-10-23T00:19:18.612Z
+                at 2025-10-28T18:02:44.422Z
             </div>
         <script src="../../prettify.js"></script>
         <script>

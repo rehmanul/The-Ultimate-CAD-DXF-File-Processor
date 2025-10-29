@@ -4,7 +4,8 @@ const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 const axios = require('axios');
-const { spawn } = require('child_process');
+const { spawn, spawnSync } = require('child_process');
+const net = require('net');
 const ProfessionalCADProcessor = require('./lib/professionalCADProcessor');
 const GridIlotPlacer = require('./lib/gridIlotPlacer');
 const ProductionCorridorGenerator = require('./lib/productionCorridorGenerator');
@@ -15,23 +16,169 @@ const presetRoutes = require('./lib/presetRoutes');
 const mlRoutes = require('./lib/mlRoutes');
 const PUBLIC_DIR = path.join(__dirname, 'public');
 const DIST_DIR = path.join(PUBLIC_DIR, 'dist');
-const STATIC_ROOT = fs.existsSync(path.join(DIST_DIR, 'index.html')) ? DIST_DIR : PUBLIC_DIR;
-const USING_DIST_BUILD = STATIC_ROOT === DIST_DIR;
+// Always serve from public directory (new clean build)
+const STATIC_ROOT = PUBLIC_DIR;
+const USING_DIST_BUILD = false;
 const SERVER_BOOT_TIME = new Date();
 const app = express();
 app.locals.staticRoot = STATIC_ROOT;
 app.locals.bootTime = SERVER_BOOT_TIME.toISOString();
 const transformStore = require('./lib/transformStore');
-const MLTrainer = require('./lib/completeMLTrainer');
+const ProductionInitializer = require('./lib/productionInitializer');
+const MLProcessor = require('./lib/mlProcessor');
 const CrossFloorRouter = require('./lib/crossFloorRouter');
 const MultiFloorProfiler = require('./lib/multiFloorProfiler');
 const MultiFloorReporter = require('./lib/multiFloorReporter');
 const { performance } = require('perf_hooks');
 const MultiFloorManager = require('./lib/multiFloorManager');
 const floorPlanStore = require('./lib/floorPlanStore');
-const ML_BOOT_PREFIX = '[ML Bootstrap]';
-const PYTHON_EXECUTABLE = process.env.PYTHON_EXECUTABLE || process.env.PYTHON_PATH || (process.platform === 'win32' ? 'python' : 'python3');
+const ML_BOOT_PREFIX = '[Production ML System]';
 const PYTHON_GENERATOR_PATH = path.join(__dirname, 'lib', 'corridor-generator-complete.py');
+const PYTHON_CANDIDATES = (() => {
+    const envSpec = process.env.PYTHON_EXECUTABLE || process.env.PYTHON_PATH;
+    const candidates = [];
+    if (envSpec) candidates.push(envSpec);
+    if (process.platform === 'win32') {
+        candidates.push('python', 'python3', 'py -3', 'py');
+    } else {
+        candidates.push('python3', 'python', 'python2');
+    }
+    return candidates;
+})();
+
+function tokenizeCommand(spec) {
+    const matches = spec.match(/"([^"]*)"|[^\s"]+/g);
+    if (!matches) return [];
+    return matches.map((token) => {
+        if (token.startsWith('"') && token.endsWith('"')) {
+            return token.slice(1, -1);
+        }
+        return token;
+    });
+}
+
+function parsePythonSpec(spec) {
+    if (!spec || typeof spec !== 'string') return null;
+    const parts = tokenizeCommand(spec.trim());
+    if (!parts.length) return null;
+    return { command: parts[0], args: parts.slice(1) };
+}
+
+function resolvePythonExecutable() {
+    for (const candidate of PYTHON_CANDIDATES) {
+        const parsed = parsePythonSpec(candidate);
+        if (!parsed) continue;
+        try {
+            const check = spawnSync(parsed.command, [...parsed.args, '--version'], { stdio: 'ignore' });
+            if (check && check.status === 0) {
+                return parsed;
+            }
+        } catch (error) {
+            // Ignore detection errors and continue with next candidate
+        }
+    }
+    return null;
+}
+
+const PYTHON_EXECUTION_SPEC = resolvePythonExecutable();
+if (!PYTHON_EXECUTION_SPEC) {
+    console.log('[Corridor Generator] Python not detected. Using production JavaScript corridor engine.');
+} else {
+    const argsPreview = PYTHON_EXECUTION_SPEC.args.length ? ` ${PYTHON_EXECUTION_SPEC.args.join(' ')}` : '';
+    console.log(`[Corridor Generator] Python available: ${PYTHON_EXECUTION_SPEC.command}${argsPreview}`);
+}
+
+function resolveStoredIlots(planId) {
+    if (Array.isArray(global.lastPlacedIlots) && global.lastPlacedIlots.length) {
+        return global.lastPlacedIlots;
+    }
+    if (!planId) return [];
+    try {
+        const storedLayout = floorPlanStore.getLayout(planId);
+        if (storedLayout && Array.isArray(storedLayout.ilots) && storedLayout.ilots.length) {
+            return storedLayout.ilots;
+        }
+    } catch (error) {
+        console.warn('[Corridor Generator] Unable to load cached îlots:', error.message || error);
+    }
+    return [];
+}
+
+function buildProductionCorridorNetwork(floorPlanData, generationOptions = {}) {
+    const corridorWidth = typeof generationOptions.corridor_width === 'number'
+        ? generationOptions.corridor_width
+        : (typeof generationOptions.corridorWidth === 'number' ? generationOptions.corridorWidth : 1.5);
+
+    const planId = floorPlanData?.urn || floorPlanData?.id || null;
+    const ilots = resolveStoredIlots(planId);
+
+    if (!Array.isArray(ilots) || ilots.length === 0) {
+        return {
+            corridors: [],
+            arrows: [],
+            statistics: {
+                corridorCount: 0,
+                arrowCount: 0,
+                corridorWidth,
+                reason: 'no-ilots-available'
+            },
+            metadata: {
+                engine: 'production-js',
+                timestamp: new Date().toISOString()
+            }
+        };
+    }
+
+    const normalizedFloorPlan = {
+        walls: Array.isArray(floorPlanData?.walls) ? floorPlanData.walls : [],
+        forbiddenZones: Array.isArray(floorPlanData?.forbiddenZones)
+            ? floorPlanData.forbiddenZones
+            : (Array.isArray(floorPlanData?.forbidden_zones) ? floorPlanData.forbidden_zones : []),
+        entrances: Array.isArray(floorPlanData?.entrances) ? floorPlanData.entrances : [],
+        bounds: floorPlanData?.bounds || { minX: 0, minY: 0, maxX: 100, maxY: 100 },
+        rooms: Array.isArray(floorPlanData?.rooms) ? floorPlanData.rooms : [],
+        urn: planId
+    };
+
+    const corridorGenerator = new ProductionCorridorGenerator(normalizedFloorPlan, ilots, { corridorWidth });
+    const rawCorridors = corridorGenerator.generateCorridors() || [];
+    const corridors = rawCorridors.map(sanitizeCorridor).filter(Boolean);
+
+    // 🎯 ADVANCED ARROW GENERATION - TRUE PRODUCTION SYSTEM
+    const AdvancedCorridorArrowGenerator = require('./lib/advancedCorridorArrowGenerator');
+    const arrowGenerator = new AdvancedCorridorArrowGenerator({
+        arrowLength: 2.0,
+        arrowSpacing: 3.0,
+        arrowWidth: 0.5,
+        corridorWidth: corridorWidth
+    });
+
+    const arrows = generationOptions.generate_arrows !== false
+        ? arrowGenerator.generateArrows(corridors, normalizedFloorPlan.entrances, ilots)
+        : [];
+
+    const totalArea = corridors.reduce((sum, corridor) => sum + (Number(corridor.area) || 0), 0);
+    const totalLength = corridors.reduce((sum, corridor) => sum + (Number(corridor.length) || 0), 0);
+
+    return {
+        corridors,
+        arrows,
+        statistics: {
+            corridorCount: corridors.length,
+            arrowCount: arrows.length,
+            corridorWidth,
+            totalCorridorArea: Number.isFinite(totalArea) ? parseFloat(totalArea.toFixed(2)) : totalArea,
+            totalCorridorLength: Number.isFinite(totalLength) ? parseFloat(totalLength.toFixed(2)) : totalLength,
+            fallback: true,
+            arrowsGenerated: arrows.length > 0
+        },
+        metadata: {
+            engine: 'js-advanced-arrows',
+            sourceIlotCount: ilots.length,
+            timestamp: new Date().toISOString()
+        }
+    };
+}
 let mlBootstrapPromise = null;
 let mlBootstrapFinished = false;
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 5000;
@@ -73,12 +220,28 @@ function ensureDirectories() {
 
 function runPythonCorridorGenerator(floorPlanData, generationOptions) {
     return new Promise((resolve, reject) => {
+        let settled = false;
+        const useFallback = (reason) => {
+            if (settled) return;
+            settled = true;
+            if (reason) {
+                console.log('[Corridor Generator] Using JavaScript engine:', reason);
+            }
+            try {
+                const jsNetwork = buildProductionCorridorNetwork(floorPlanData, generationOptions);
+                resolve(jsNetwork);
+            } catch (jsError) {
+                reject(jsError);
+            }
+        };
+
         try {
-            if (!fs.existsSync(PYTHON_GENERATOR_PATH)) {
-                return reject(new Error(`Python corridor generator not found at ${PYTHON_GENERATOR_PATH}`));
+            if (!fs.existsSync(PYTHON_GENERATOR_PATH) || !PYTHON_EXECUTION_SPEC) {
+                return useFallback('Python not available, using JavaScript engine');
             }
 
-            const python = spawn(PYTHON_EXECUTABLE, [PYTHON_GENERATOR_PATH], {
+            const pythonArgs = [...PYTHON_EXECUTION_SPEC.args, PYTHON_GENERATOR_PATH];
+            const python = spawn(PYTHON_EXECUTION_SPEC.command, pythonArgs, {
                 cwd: path.dirname(PYTHON_GENERATOR_PATH)
             });
 
@@ -94,32 +257,34 @@ function runPythonCorridorGenerator(floorPlanData, generationOptions) {
             });
 
             python.on('error', (err) => {
-                reject(new Error(`Failed to start Python generator: ${err.message}`));
+                useFallback(`Failed to start Python generator: ${err.message}`);
             });
 
             python.on('close', (code) => {
+                if (settled) return;
                 if (code !== 0) {
-                    return reject(new Error(stderr || `Python generator exited with code ${code}`));
+                    return useFallback(stderr || `Python generator exited with code ${code}`);
                 }
 
                 try {
                     const parsed = JSON.parse(stdout || '{}');
                     if (parsed && parsed.error) {
                         const message = typeof parsed.error === 'string' ? parsed.error : JSON.stringify(parsed.error);
-                        return reject(new Error(message));
+                        return useFallback(message);
                     }
                     if (parsed && parsed.metadata && parsed.metadata.error) {
                         const message = typeof parsed.metadata.error === 'string'
                             ? parsed.metadata.error
                             : JSON.stringify(parsed.metadata.error);
-                        return reject(new Error(message));
+                        return useFallback(message);
                     }
                     if (stderr && stderr.trim().length) {
                         console.warn('[Python Corridor Generator]', stderr.trim());
                     }
+                    settled = true;
                     resolve(parsed);
                 } catch (parseError) {
-                    reject(new Error(`Failed to parse Python generator output: ${parseError.message}`));
+                    useFallback(`Failed to parse Python generator output: ${parseError.message}`);
                 }
             });
 
@@ -130,7 +295,7 @@ function runPythonCorridorGenerator(floorPlanData, generationOptions) {
             python.stdin.write(payload);
             python.stdin.end();
         } catch (error) {
-            reject(error);
+            useFallback(error.message || error);
         }
     });
 }
@@ -498,12 +663,8 @@ app.use(express.urlencoded({
 }));
 const staticCacheMaxAge = USING_DIST_BUILD ? '1h' : 0;
 app.use(express.static(STATIC_ROOT, { maxAge: staticCacheMaxAge }));
-if (USING_DIST_BUILD) {
-    app.use('/libs', express.static(path.join(PUBLIC_DIR, 'libs'), { maxAge: staticCacheMaxAge }));
-    app.get('/presetSelector.js', (req, res) => {
-        res.sendFile(path.join(PUBLIC_DIR, 'presetSelector.js'));
-    });
-}
+// Serve static assets
+app.use('/libs', express.static(path.join(PUBLIC_DIR, 'libs'), { maxAge: staticCacheMaxAge }));
 app.use('/exports', express.static(path.join(__dirname, 'exports')));
 
 // Phase 2: Register preset management routes
@@ -1051,7 +1212,7 @@ app.post('/api/corridors', (req, res) => {
             generateVertical: options.generateVertical !== false,
             generateHorizontal: options.generateHorizontal !== false
         };
-        
+
         const corridorGenerator = new AdvancedCorridorGenerator(floorPlan, ilotsToUse, advancedOptions);
         const result = corridorGenerator.generate();
 
@@ -1692,54 +1853,103 @@ app.get('*', (req, res, next) => {
 
 // Bind address - default to 0.0.0.0 so cloud hosts (Render, Docker) can detect the port
 const BIND_ADDRESS = process.env.BIND_ADDRESS || '0.0.0.0';
+const parsedPortRetryLimit = parseInt(process.env.PORT_RETRY_LIMIT || '5', 10);
+const PORT_RETRY_LIMIT = Number.isFinite(parsedPortRetryLimit) && parsedPortRetryLimit >= 0 ? parsedPortRetryLimit : 5;
 
-function startServer(port = PORT, bindAddress = BIND_ADDRESS) {
-    const server = app.listen(port, bindAddress, () => {
-        const host = bindAddress === '0.0.0.0' ? '0.0.0.0' : bindAddress;
-        console.log(`FloorPlan Pro Clean with Three.js running on http://${host}:${port}`);
-        console.log('✅ Local DXF Processing Ready');
-        console.log('✅ Three.js 2D Rendering Ready');
-        console.log('✅ Intelligent Îlot Placement Ready');
-        console.log('✅ Corridor Network Generation Ready');
-        console.log('✅ PDF/Image Export Ready');
-        if (bindAddress === '127.0.0.1') {
-            console.log('This instance is bound to localhost (127.0.0.1). It is suitable for single-PC personal use.');
-        } else {
-            console.log('This instance is bound to', bindAddress);
-        }
-        // Note: admin-only simulate endpoints/scripts were removed to avoid demo/fake behaviors.
-        console.log('Pure Three.js - No Autodesk APS required');
-    });
+function checkPortAvailability(port, bindAddress) {
+    return new Promise((resolve) => {
+        const tester = net.createServer()
+            .once('error', (error) => {
+                if (error && (error.code === 'EADDRINUSE' || error.code === 'EACCES')) {
+                    resolve(false);
+                } else {
+                    resolve(false);
+                }
+            })
+            .once('listening', () => {
+                tester.close(() => resolve(true));
+            });
 
-    setImmediate(() => scheduleMLBootstrap());
-
-    server.on('error', (err) => {
-        if (err && err.code === 'EADDRINUSE') {
-            console.error(`Port ${port} is already in use. If you have another instance running, stop it or set PORT to a different value.`);
-        } else {
-            console.error('Server error:', err && err.stack ? err.stack : err);
+        try {
+            tester.listen(port, bindAddress);
+        } catch (error) {
+            resolve(false);
         }
     });
+}
 
-    return server;
+async function findAvailablePort(preferredPort, bindAddress) {
+    const maxPort = 65535;
+    let candidate = preferredPort;
+    for (let attempt = 0; attempt <= PORT_RETRY_LIMIT && candidate <= maxPort; attempt += 1, candidate += 1) {
+        // eslint-disable-next-line no-await-in-loop
+        const isAvailable = await checkPortAvailability(candidate, bindAddress);
+        if (isAvailable) {
+            return { port: candidate, attempts: attempt };
+        }
+    }
+    throw new Error(`No open TCP port found starting from ${preferredPort}. Increase PORT_RETRY_LIMIT to scan a wider range.`);
+}
+
+async function startServer(port = PORT, bindAddress = BIND_ADDRESS) {
+    const { port: resolvedPort, attempts } = await findAvailablePort(port, bindAddress);
+    if (attempts > 0) {
+        console.warn(`Port ${port} is busy. Using ${resolvedPort} instead. Set PORT to override or adjust PORT_RETRY_LIMIT.`);
+    }
+
+    return new Promise((resolve, reject) => {
+        let started = false;
+        const server = app.listen(resolvedPort, bindAddress, () => {
+            started = true;
+            const host = bindAddress === '0.0.0.0' ? '0.0.0.0' : bindAddress;
+            console.log(`FloorPlan Pro Clean with Three.js running on http://${host}:${resolvedPort}`);
+            console.log('✅ Local DXF Processing Ready');
+            console.log('✅ Three.js 2D Rendering Ready');
+            console.log('✅ Intelligent Îlot Placement Ready');
+            console.log('✅ Corridor Network Generation Ready');
+            console.log('✅ PDF/Image Export Ready');
+            if (bindAddress === '127.0.0.1') {
+                console.log('This instance is bound to localhost (127.0.0.1). It is suitable for single-PC personal use.');
+            } else {
+                console.log('This instance is bound to', bindAddress);
+            }
+            // Note: admin-only simulate endpoints/scripts were removed to avoid demo/fake behaviors.
+            console.log('Pure Three.js - No Autodesk APS required');
+
+            setImmediate(() => scheduleMLBootstrap());
+            resolve(server);
+        });
+
+        server.on('error', (err) => {
+            if (!started) {
+                if (err && err.code === 'EADDRINUSE') {
+                    reject(Object.assign(new Error(`Port ${resolvedPort} is already in use.`), { code: 'EADDRINUSE', port: resolvedPort }));
+                } else {
+                    reject(err);
+                }
+            } else {
+                console.error('Server error:', err && err.stack ? err.stack : err);
+            }
+        });
+    });
 }
 
 // Start server automatically only when run directly
 if (require.main === module) {
-    try {
-        const server = startServer();
-        server.on('error', (err) => {
-            // Already handled in startServer; retain exit for CLI usage
-            if (err && err.code === 'EADDRINUSE') {
-                process.exit(1);
+    startServer()
+        .then((server) => {
+            server.on('close', () => {
+                console.log('HTTP server closed');
+            });
+        })
+        .catch((error) => {
+            if (error && error.code === 'EADDRINUSE') {
+                console.error(`Unable to bind – port ${error.port || 'unknown'} is already in use.`);
             } else {
-                process.exit(1);
+                console.error('Failed to start server:', error && error.stack ? error.stack : error);
             }
+            process.exit(1);
         });
-    } catch (e) {
-        console.error('Failed to start server:', e && e.stack ? e.stack : e);
-        process.exit(1);
-    }
 }
 
 // Export automation helper and server controls for tests/worker scripts
@@ -1769,18 +1979,20 @@ function scheduleMLBootstrap(reason = 'server-start') {
     if (!mlBootstrapPromise) {
         mlBootstrapPromise = (async () => {
             const startedAt = Date.now();
-            console.log(`${ML_BOOT_PREFIX} Starting (${reason})...`);
+            console.log(`${ML_BOOT_PREFIX} Initializing production ML models (${reason})...`);
             try {
-                const success = await MLTrainer.initializeML();
+                const success = await ProductionInitializer.initialize();
                 const duration = Date.now() - startedAt;
                 if (success) {
                     mlBootstrapFinished = true;
-                    console.log(`${ML_BOOT_PREFIX} Ready in ${duration}ms`);
+                    console.log(`${ML_BOOT_PREFIX} Production system ready in ${duration}ms`);
                 } else {
-                    console.warn(`${ML_BOOT_PREFIX} Completed with fallback after ${duration}ms`);
+                    mlBootstrapFinished = true;
+                    console.log(`${ML_BOOT_PREFIX} System ready with rule-based algorithms after ${duration}ms`);
                 }
             } catch (error) {
-                console.error(`${ML_BOOT_PREFIX} Failed:`, error && error.stack ? error.stack : error);
+                console.error(`${ML_BOOT_PREFIX} Initialization error:`, error && error.stack ? error.stack : error);
+                mlBootstrapFinished = true;
             }
         })().finally(() => {
             mlBootstrapPromise = null;

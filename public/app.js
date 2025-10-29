@@ -51,48 +51,16 @@ const deepClone = (data) => {
     }
 };
 
-
 document.addEventListener('DOMContentLoaded', function () {
-    console.log('FloorPlan Pro Clean - System Ready');
-
-    // Global defensive error handler to surface injected-script issues (e.g., content.js from extensions)
-    window.addEventListener('error', (ev) => {
-        try {
-            const src = ev.filename || (ev.error && ev.error.fileName) || '';
-            if (src && src.toLowerCase().includes('content.js')) {
-                console.warn('An injected script (content.js) triggered an error:', ev.message, 'from', src);
-                // suppress the error to avoid breaking the app UI; report to console only
-                ev.preventDefault && ev.preventDefault();
-            }
-        } catch (e) { /* ignore errors in handler */ }
-    });
-
-    // Initialize content.query immediately to prevent TypeErrors
-    (function initializeContentQuery() {
-        // Defensive shim: some browser extensions inject a global `content` object that conflicts with our usage.
-        // Provide a minimal safe `content.query` stub if an unexpected `content` object exists to avoid runtime TypeErrors.
-        if (typeof window.content === 'undefined') {
-            // Some extensions inject code expecting a `content` global. Provide a minimal safe object to avoid crashes.
-            Object.defineProperty(window, 'content', {
-                configurable: true,
-                enumerable: false,
-                writable: true,
-                value: { query: function () { return null; } }
-            });
-        } else if (typeof window.content.query === 'undefined') {
-            // Only add a safe no-op query function if content exists but doesn't expose query.
-            Object.defineProperty(window.content, 'query', {
-                configurable: true,
-                enumerable: false,
-                writable: true,
-                value: function () { return null; }
-            });
-        }
-    })(); // Execute immediately
+    console.log('✨ FloorPlan Pro - Production System Initialized');
 
     const container = document.getElementById('threeContainer');
 
-    // Wait for container to have size before initializing renderer
+    // Initialize UI enhancements
+    initializeAutoHide();
+    initializeCollapsible();
+
+    // Initialize renderer
     setTimeout(() => {
         if (container.clientWidth === 0 || container.clientHeight === 0) {
             console.warn('Container has zero size, waiting...');
@@ -272,7 +240,6 @@ function initializeModules() {
 
     initializeLayoutChrome();
     initializeHeaderActions();
-    initializeLegend();
 
     // Attach event listeners to UI elements
     const fileInput = document.getElementById('fileInput');
@@ -838,6 +805,9 @@ async function handleFileUpload(e) {
             currentFloorPlan.rooms.forEach((room, i) => textLabels.addRoomLabel(room, i));
         }
 
+        // Show legend
+        showLegend();
+
         hideLoader();
         showNotification(`File processed successfully! ${currentFloorPlan.rooms.length} rooms detected.`, 'success');
 
@@ -897,11 +867,18 @@ function renderCurrentState() {
     console.log('renderCurrentState called:', generatedIlots.length, 'ilots,', corridorNetwork.length, 'corridors');
     if (renderer) {
         renderer.renderIlots(generatedIlots);
-        renderer.renderCorridors(getFilteredCorridors());
-        if (renderer.renderCorridorArrows) {
+
+        // Only render arrows (circulation indicators), not solid corridor rectangles
+        if (renderer.renderCorridorArrows && corridorArrows.length > 0) {
             renderer.renderCorridorArrows(corridorArrows);
             renderer.setCorridorArrowsVisible(corridorArrowsVisible);
+            // Hide solid corridors when arrows are available
+            renderer.renderCorridors([]);
+        } else {
+            // Fallback to solid corridors if no arrows available
+            renderer.renderCorridors(getFilteredCorridors());
         }
+
         if (!stackVisualizationEnabled && renderer.clearCrossFloorRoutes) {
             renderer.clearCrossFloorRoutes();
         }
@@ -1900,6 +1877,14 @@ async function generateCorridors() {
         corridorNetwork = Array.isArray(result.corridors) ? result.corridors : [];
         corridorArrows = Array.isArray(result.arrows) ? result.arrows : [];
         corridorStatistics = result.statistics || null;
+        if (result.metadata && result.metadata.engine === 'js-fallback') {
+            showNotification('Using built-in JS corridor generator (Python engine unavailable).', 'info', {
+                title: 'Fallback Corridor Engine',
+                description: 'Install Python 3 and set PYTHON_EXECUTABLE to enable the advanced path planner.',
+                duration: 7000,
+                icon: 'fa-route'
+            });
+        }
 
         console.log(`Generated ${corridorNetwork.length} corridors`);
         console.log('First corridor:', corridorNetwork[0]);
@@ -1917,8 +1902,8 @@ async function generateCorridors() {
             renderer.setCorridorArrowsVisible(corridorArrowsVisible);
         }
 
-        const arrowMessage = corridorArrows.length ? ` with ${corridorArrows.length} arrows` : '';
-        showNotification(`Generated ${corridorNetwork.length} corridors${arrowMessage}`, 'success');
+        const arrowMessage = corridorArrows.length ? `${corridorArrows.length} circulation arrows` : `${corridorNetwork.length} corridors`;
+        showNotification(`Generated ${arrowMessage}`, 'success');
         hideLoader();
 
     } catch (error) {
@@ -2045,6 +2030,9 @@ function setupCorridorWidthSlider(initialWidth) {
 
     if (typeof initialWidth === 'number' && !Number.isNaN(initialWidth)) {
         slider.value = initialWidth;
+    } else {
+        // Set default to 1.2m
+        slider.value = 1.2;
     }
 
     valueEl.textContent = `${slider.value}m`;
@@ -2209,111 +2197,6 @@ function initializeHeaderActions() {
     updateActivePresetSummary(activePresetConfig);
 }
 
-function initializeLegend() {
-    const legend = document.getElementById('legendPanel');
-    const toggle = document.getElementById('legendToggle');
-    const content = document.getElementById('legendContent');
-    if (!legend || !toggle || !content) return;
-
-    const collapsedClass = 'legend--collapsed';
-    const DRAG_THRESHOLD = 4;
-    let isDragging = false;
-    let dragOffsetX = 0;
-    let dragOffsetY = 0;
-    let pointerStartX = 0;
-    let pointerStartY = 0;
-    let activePointerId = null;
-
-    const setCollapsed = (collapsed) => {
-        if (collapsed) {
-            legend.classList.add(collapsedClass);
-            toggle.setAttribute('aria-expanded', 'false');
-        } else {
-            legend.classList.remove(collapsedClass);
-            toggle.setAttribute('aria-expanded', 'true');
-        }
-    };
-
-    setCollapsed(false);
-
-    const clamp = (value, min, max) => Math.min(Math.max(value, min), max);
-    const finalizeDrag = () => {
-        window.removeEventListener('pointermove', onPointerMove);
-        if (activePointerId !== null && typeof toggle.releasePointerCapture === 'function') {
-            toggle.releasePointerCapture(activePointerId);
-        }
-        legend.classList.remove('legend--dragging');
-        activePointerId = null;
-    };
-
-    const onPointerDown = (event) => {
-        if (event.button !== undefined && event.button !== 0) return;
-        activePointerId = event.pointerId ?? null;
-        pointerStartX = event.clientX;
-        pointerStartY = event.clientY;
-
-        const rect = legend.getBoundingClientRect();
-        dragOffsetX = pointerStartX - rect.left;
-        dragOffsetY = pointerStartY - rect.top;
-        isDragging = false;
-
-        if (activePointerId !== null && typeof toggle.setPointerCapture === 'function') {
-            toggle.setPointerCapture(activePointerId);
-        }
-        window.addEventListener('pointermove', onPointerMove);
-        window.addEventListener('pointerup', onPointerUp, { once: true });
-    };
-
-    const onPointerMove = (event) => {
-        const deltaX = event.clientX - pointerStartX;
-        const deltaY = event.clientY - pointerStartY;
-        if (!isDragging && (Math.abs(deltaX) > DRAG_THRESHOLD || Math.abs(deltaY) > DRAG_THRESHOLD)) {
-            isDragging = true;
-            legend.classList.add('legend--dragging');
-        }
-        if (!isDragging) return;
-
-        event.preventDefault();
-
-        const proposedLeft = event.clientX - dragOffsetX;
-        const proposedTop = event.clientY - dragOffsetY;
-
-        const maxLeft = Math.max(16, window.innerWidth - legend.offsetWidth - 16);
-        const maxTop = Math.max(16, window.innerHeight - legend.offsetHeight - 16);
-        const clampedLeft = clamp(proposedLeft, 16, maxLeft);
-        const clampedTop = clamp(proposedTop, 16, maxTop);
-
-        legend.style.left = `${clampedLeft}px`;
-        legend.style.top = `${clampedTop}px`;
-        legend.style.right = 'auto';
-    };
-
-    const onPointerUp = () => {
-        const wasDragging = isDragging;
-        finalizeDrag();
-        if (!wasDragging) {
-            const collapsed = legend.classList.contains(collapsedClass);
-            setCollapsed(!collapsed);
-        }
-        isDragging = false;
-    };
-
-    const onPointerCancel = () => {
-        finalizeDrag();
-        isDragging = false;
-    };
-
-    toggle.addEventListener('pointerdown', onPointerDown);
-    toggle.addEventListener('pointercancel', onPointerCancel);
-    toggle.addEventListener('keydown', (event) => {
-        if (event.key === 'Enter' || event.key === ' ') {
-            event.preventDefault();
-            const collapsed = legend.classList.contains(collapsedClass);
-            setCollapsed(!collapsed);
-        }
-    });
-}
-
 function loadLayoutState() {
     try {
         const stored = localStorage.getItem(LAYOUT_STATE_STORAGE_KEY);
@@ -2440,7 +2323,7 @@ function showNotification(message, type = 'info', options = {}) {
         type = options.type || 'info';
     }
 
-    const host = document.getElementById('notificationHost') || document.body;
+    const host = document.getElementById('notifications') || document.body;
     const notification = document.createElement('div');
     notification.className = `notification notification-${type}`;
     notification.setAttribute('role', 'alert');
@@ -2560,6 +2443,175 @@ function hideLoader() {
         const sidebarStatus = document.getElementById('processingStatus');
         if (sidebarStatus) sidebarStatus.classList.add('hidden');
     } catch (e) { /* ignore */ }
+}
+
+// Auto-hide functionality for navigation and sidebars
+function initializeAutoHide() {
+    const nav = document.querySelector('.top-nav');
+    const leftSidebar = document.querySelector('.sidebar-left');
+    const rightSidebar = document.querySelector('.sidebar-right');
+    const mainContent = document.querySelector('.main-content');
+
+    // Pin states
+    let navPinned = false;
+    let leftPinned = false;
+    let rightPinned = false;
+
+    let hideTimer = null;
+
+    // Start with navigation hidden
+    if (nav && !navPinned) {
+        nav.classList.add('auto-hidden');
+    }
+
+    // Navigation pin button
+    const navPinBtn = document.getElementById('navPinBtn');
+    if (navPinBtn) {
+        navPinBtn.addEventListener('click', () => {
+            navPinned = !navPinned;
+            navPinBtn.classList.toggle('pinned', navPinned);
+            if (navPinned) {
+                nav.classList.add('pinned');
+                nav.classList.remove('auto-hidden');
+            } else {
+                nav.classList.remove('pinned');
+            }
+        });
+    }
+
+    // Left sidebar toggle
+    const leftToggle = document.getElementById('leftSidebarToggle');
+    if (leftToggle) {
+        leftToggle.addEventListener('click', () => {
+            leftPinned = !leftPinned;
+            leftToggle.classList.toggle('pinned', leftPinned);
+            if (leftPinned) {
+                leftSidebar.classList.add('pinned');
+                leftSidebar.classList.remove('auto-hidden');
+            } else {
+                leftSidebar.classList.remove('pinned');
+            }
+            resizeCanvas(); // Resize canvas when toggling sidebar
+        });
+    }
+
+    // Right sidebar toggle
+    const rightToggle = document.getElementById('rightSidebarToggle');
+    if (rightToggle) {
+        rightToggle.addEventListener('click', () => {
+            rightPinned = !rightPinned;
+            rightToggle.classList.toggle('pinned', rightPinned);
+            if (rightPinned) {
+                rightSidebar.classList.add('pinned');
+                rightSidebar.classList.remove('auto-hidden');
+            } else {
+                rightSidebar.classList.remove('pinned');
+            }
+            resizeCanvas(); // Resize canvas when toggling sidebar
+        });
+    }
+
+    // Helper function to resize canvas when sidebars toggle
+    function resizeCanvas() {
+        if (renderer && renderer.onResize) {
+            setTimeout(() => {
+                renderer.onResize();
+            }, 350); // Wait for CSS transition to complete
+        }
+    }
+
+    // Mouse movement tracking for auto-hide
+    document.addEventListener('mousemove', (e) => {
+        const { clientX, clientY } = e;
+        const windowWidth = window.innerWidth;
+        const windowHeight = window.innerHeight;
+
+        // Show/hide navigation based on mouse position
+        if (!navPinned) {
+            if (clientY < 60) {
+                nav.classList.remove('auto-hidden');
+            } else {
+                clearTimeout(hideTimer);
+                hideTimer = setTimeout(() => {
+                    if (!navPinned) nav.classList.add('auto-hidden');
+                }, 1000);
+            }
+        }
+
+        // Show/hide left sidebar
+        if (!leftPinned) {
+            if (clientX < 30) {
+                const wasHidden = leftSidebar.classList.contains('auto-hidden');
+                leftSidebar.classList.remove('auto-hidden');
+                if (wasHidden) resizeCanvas();
+            } else if (clientX > 300) {
+                clearTimeout(hideTimer);
+                hideTimer = setTimeout(() => {
+                    if (!leftPinned) {
+                        const wasVisible = !leftSidebar.classList.contains('auto-hidden');
+                        leftSidebar.classList.add('auto-hidden');
+                        if (wasVisible) resizeCanvas();
+                    }
+                }, 1000);
+            }
+        }
+
+        // Show/hide right sidebar
+        if (!rightPinned) {
+            if (clientX > windowWidth - 30) {
+                const wasHidden = rightSidebar.classList.contains('auto-hidden');
+                rightSidebar.classList.remove('auto-hidden');
+                if (wasHidden) resizeCanvas();
+            } else if (clientX < windowWidth - 300) {
+                clearTimeout(hideTimer);
+                hideTimer = setTimeout(() => {
+                    if (!rightPinned) {
+                        const wasVisible = !rightSidebar.classList.contains('auto-hidden');
+                        rightSidebar.classList.add('auto-hidden');
+                        if (wasVisible) resizeCanvas();
+                    }
+                }, 1000);
+            }
+        }
+    });
+
+    // Keep elements visible when hovering over them
+    [nav, leftSidebar, rightSidebar].forEach(el => {
+        if (!el) return;
+        el.addEventListener('mouseenter', () => {
+            clearTimeout(hideTimer);
+        });
+    });
+}
+
+// Collapsible sections functionality
+function initializeCollapsible() {
+    const sections = document.querySelectorAll('.sidebar-section');
+
+    sections.forEach(section => {
+        const header = section.querySelector('h3');
+        if (!header) return;
+
+        header.addEventListener('click', () => {
+            section.classList.toggle('collapsed');
+        });
+    });
+}
+
+// Show legend when floor plan is loaded
+function showLegend() {
+    const legend = document.getElementById('floorLegend');
+    if (legend) {
+        legend.style.display = 'block';
+    }
+}
+
+// Hide legend
+function hideLegend() {
+    const legend = document.getElementById('floorLegend');
+    if (legend) {
+        legend.style.display = 'none';
+    }
 }
 
 
