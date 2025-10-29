@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 
-FROM node:18-bullseye AS base
+FROM node:22-bullseye AS base
 WORKDIR /usr/src/app
 
 FROM base AS deps
@@ -18,7 +18,7 @@ FROM base AS production-deps
 COPY package.json package-lock.json* ./
 RUN npm ci --omit=dev
 
-FROM node:18-bullseye AS runner
+FROM node:22-bullseye AS runner
 WORKDIR /usr/src/app
 ENV NODE_ENV=production
 ENV PORT=3000
