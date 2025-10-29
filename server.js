@@ -661,10 +661,39 @@ app.use(express.urlencoded({
         req.rawBody = buf;
     }
 }));
+
+// Fix MIME types for ES modules - CRITICAL for Three.js
+express.static.mime.define({
+    'application/javascript': ['js', 'mjs'],
+    'text/javascript': ['js', 'mjs']
+});
+
+// Set correct MIME type for all .js files
+app.use((req, res, next) => {
+    if (req.path.endsWith('.js') || req.path.endsWith('.mjs')) {
+        res.type('application/javascript');
+    }
+    next();
+});
+
 const staticCacheMaxAge = USING_DIST_BUILD ? '1h' : 0;
-app.use(express.static(STATIC_ROOT, { maxAge: staticCacheMaxAge }));
+app.use(express.static(STATIC_ROOT, { 
+    maxAge: staticCacheMaxAge,
+    setHeaders: (res, filePath) => {
+        if (filePath.endsWith('.js') || filePath.endsWith('.mjs')) {
+            res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
+        }
+    }
+}));
 // Serve static assets
-app.use('/libs', express.static(path.join(PUBLIC_DIR, 'libs'), { maxAge: staticCacheMaxAge }));
+app.use('/libs', express.static(path.join(PUBLIC_DIR, 'libs'), { 
+    maxAge: staticCacheMaxAge,
+    setHeaders: (res, filePath) => {
+        if (filePath.endsWith('.js') || filePath.endsWith('.mjs')) {
+            res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
+        }
+    }
+}));
 app.use('/exports', express.static(path.join(__dirname, 'exports')));
 
 // Phase 2: Register preset management routes
