@@ -84,8 +84,8 @@ export class FloorPlanRenderer {
         this.corridorArrowsVisible = true;
         this.arrowMeshes = [];
         this.arrowMaterials = {
-            green: new THREE.MeshBasicMaterial({ color: 0x00cc00 }),
-            bright_green: new THREE.MeshBasicMaterial({ color: 0x00ff00 }),
+            green: new THREE.MeshBasicMaterial({ color: 0xf59e0b }), // Orange to match corridors
+            bright_green: new THREE.MeshBasicMaterial({ color: 0xffa500 }), // Bright orange
             blue: new THREE.MeshBasicMaterial({ color: 0x2674dc }),
             teal: new THREE.MeshBasicMaterial({ color: 0x14b8a6 })
         };
@@ -359,8 +359,8 @@ export class FloorPlanRenderer {
             const linePoints = points.map(p => new THREE.Vector3(p.x, p.y, 0));
             linePoints.push(linePoints[0]); // Close the polygon
 
-            // Create a reddish color for corridors (like in the sample image)
-            const corridorColor = 0xdc2626; // Reddish color
+            // Orange color for corridors (matches legend: #f59e0b)
+            const corridorColor = 0xf59e0b; // Orange - matches legend
 
             this.corridorsGroup.add(new THREE.Line(
                 new THREE.BufferGeometry().setFromPoints(linePoints),
