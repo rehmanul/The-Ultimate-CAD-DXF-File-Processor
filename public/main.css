@@ -1301,3 +1301,32 @@ body {
         padding-top: 0;
     }
 }
+/* DevmanAi Branding - Hidden Type Watermark */
+.devmanai-watermark {
+    position: fixed;
+    bottom: 8px;
+    right: 12px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    opacity: 0.15;
+    transition: opacity 0.3s ease;
+    z-index: 1;
+    pointer-events: none;
+    font-size: 9px;
+}
+
+.devmanai-watermark:hover {
+    opacity: 0.4;
+}
+
+.watermark-text {
+    color: var(--gray-500);
+    font-weight: 400;
+}
+
+.watermark-brand {
+    color: #4db8a6;
+    font-weight: 700;
+    letter-spacing: 0.3px;
+}
