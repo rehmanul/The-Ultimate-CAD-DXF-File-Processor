@@ -47,10 +47,15 @@ dist/
 build/
 public/dist/
 
-# Three.js library - Keep only build files, exclude source and examples
+# Three.js library - Keep build files and essential addons
 public/libs/package/src/
-public/libs/package/examples/jsm/
-public/libs/package/examples/fonts/
+public/libs/package/examples/jsm/*
+!public/libs/package/examples/jsm/controls/
+!public/libs/package/examples/jsm/postprocessing/
+!public/libs/package/examples/jsm/loaders/
+!public/libs/package/examples/jsm/geometries/
+!public/libs/package/examples/jsm/exporters/
+!public/libs/package/examples/jsm/renderers/
 !public/libs/build/
 !public/libs/*.json
 !public/libs/LICENSE
