@@ -52,6 +52,7 @@ public/libs/package/src/
 public/libs/package/examples/jsm/*
 !public/libs/package/examples/jsm/controls/
 !public/libs/package/examples/jsm/postprocessing/
+!public/libs/package/examples/jsm/shaders/
 !public/libs/package/examples/jsm/loaders/
 !public/libs/package/examples/jsm/geometries/
 !public/libs/package/examples/jsm/exporters/
