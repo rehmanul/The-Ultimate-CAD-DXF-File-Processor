@@ -47,8 +47,14 @@ dist/
 build/
 public/dist/
 
-# Three.js library (should be installed via CDN or npm)
-public/libs/
+# Three.js library - Keep only build files, exclude source and examples
+public/libs/package/src/
+public/libs/package/examples/jsm/
+public/libs/package/examples/fonts/
+!public/libs/build/
+!public/libs/*.json
+!public/libs/LICENSE
+!public/libs/README.md
 
 # Temporary files
 temp_*.html
