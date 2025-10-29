@@ -18,9 +18,10 @@ FROM node:22-bullseye AS runner
 WORKDIR /usr/src/app
 ENV NODE_ENV=production
 ENV PORT=3000
+ENV PYTHON_EXECUTABLE=python3
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends curl libsqlite3-dev python3 \
+    && apt-get install -y --no-install-recommends curl libsqlite3-dev python3 python3-pip python3-numpy \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=production-deps /usr/src/app/node_modules ./node_modules
