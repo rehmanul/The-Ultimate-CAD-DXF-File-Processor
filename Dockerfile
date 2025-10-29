@@ -31,14 +31,10 @@ COPY --from=production-deps /usr/src/app/node_modules ./node_modules
 COPY --from=build /usr/src/app/package*.json ./
 COPY --from=build /usr/src/app/public ./public
 COPY --from=build /usr/src/app/lib ./lib
-COPY --from=build /usr/src/app/models ./models
 COPY --from=build /usr/src/app/scripts ./scripts
 COPY --from=build /usr/src/app/server.js ./server.js
-COPY --from=build /usr/src/app/training-data.json ./training-data.json
-COPY --from=build /usr/src/app/PRODUCTION_VERIFICATION.md ./PRODUCTION_VERIFICATION.md
-COPY --from=build /usr/src/app/PROJECT_STATUS.md ./PROJECT_STATUS.md
-COPY --from=build /usr/src/app/README.md ./README.md
-COPY --from=build /usr/src/app/render.yaml ./render.yaml
+
+RUN mkdir -p models
 
 RUN mkdir -p uploads exports logs && chown -R node:node uploads exports logs
 
