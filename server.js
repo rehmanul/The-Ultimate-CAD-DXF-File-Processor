@@ -7,7 +7,7 @@ const axios = require('axios');
 const { spawn, spawnSync } = require('child_process');
 const net = require('net');
 const ProfessionalCADProcessor = require('./lib/professionalCADProcessor');
-const GridIlotPlacer = require('./lib/gridIlotPlacer');
+const RowBasedIlotPlacer = require('./lib/RowBasedIlotPlacer');
 const ProductionCorridorGenerator = require('./lib/productionCorridorGenerator');
 const AdvancedCorridorGenerator = require('./lib/advancedCorridorGenerator');
 const ExportManager = require('./lib/exportManager');
@@ -1002,7 +1002,7 @@ app.post('/api/ilots', async (req, res) => {
         generatorOptions.margin = typeof generatorOptions.margin === 'number' ? generatorOptions.margin : (generatorOptions.minRowDistance || 1.0);
         generatorOptions.spacing = typeof generatorOptions.spacing === 'number' ? generatorOptions.spacing : 0.3;
 
-        const ilotPlacer = new GridIlotPlacer(normalizedFloorPlan, generatorOptions);
+        const ilotPlacer = new RowBasedIlotPlacer(normalizedFloorPlan, generatorOptions);
         const ilotsRaw = ilotPlacer.generateIlots(normalizedDistribution, generatorOptions.totalIlots);
 
         // sanitize placements to ensure numeric fields for client
@@ -1439,7 +1439,7 @@ async function runAutomationForUrn(urn, { distribution = { '1-3': 10 }, options 
         placementTransform: analysisData.placementTransform || null
     };
 
-    const ilotPlacer = new GridIlotPlacer(floorPlan, options || {});
+    const ilotPlacer = new RowBasedIlotPlacer(floorPlan, options || {});
     const ilots = ilotPlacer.generateIlots(distribution || { '1-3': 0.25, '3-5': 0.35, '5-10': 0.40 }, options.totalIlots || 100);
     global.lastPlacedIlots = ilots;
 
