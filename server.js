@@ -22,6 +22,8 @@ const MultiFloorReporter = require('./lib/multiFloorReporter');
 const { performance } = require('perf_hooks');
 const MultiFloorManager = require('./lib/multiFloorManager');
 const floorPlanStore = require('./lib/floorPlanStore');
+const ProductionInitializer = require('./lib/productionInitializer');
+const MLProcessor = require('./lib/mlProcessor');
 const ML_BOOT_PREFIX = '[Production ML System]';
 
 // --- RESTORED INITIALIZATION ---
@@ -699,7 +701,12 @@ app.use(express.urlencoded({
 // DEBUG: Explicit root route to diagnose 404
 app.get('/', (req, res) => {
     console.log('[Debug] GET / request received');
-    res.send('FloorPlan Pro is Live! (Debug Mode)');
+    const indexHtmlPath = path.join(PUBLIC_DIR, 'index.html');
+    if (fs.existsSync(indexHtmlPath)) {
+        res.sendFile(indexHtmlPath);
+    } else {
+        res.status(404).send('Debug: index.html not found at ' + indexHtmlPath);
+    }
 });
 
 app.get('/debug-file', (req, res) => {
