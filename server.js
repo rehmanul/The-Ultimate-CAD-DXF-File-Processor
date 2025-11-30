@@ -14,20 +14,6 @@ const ExportManager = require('./lib/exportManager');
 const ArchitecturalValidator = require('./lib/architecturalValidator');
 const AnnotationAndCorrection = require('./lib/annotationAndCorrection');
 const sqliteAdapter = require('./lib/sqliteAdapter');
-const presetRoutes = require('./lib/presetRoutes');
-const mlRoutes = require('./lib/mlRoutes');
-const PUBLIC_DIR = path.join(__dirname, 'public');
-const DIST_DIR = path.join(PUBLIC_DIR, 'dist');
-// Always serve from public directory (new clean build)
-const STATIC_ROOT = PUBLIC_DIR;
-const USING_DIST_BUILD = false;
-const SERVER_BOOT_TIME = new Date();
-const app = express();
-app.locals.staticRoot = STATIC_ROOT;
-app.locals.bootTime = SERVER_BOOT_TIME.toISOString();
-const transformStore = require('./lib/transformStore');
-const ProductionInitializer = require('./lib/productionInitializer');
-const MLProcessor = require('./lib/mlProcessor');
 const CrossFloorRouter = require('./lib/crossFloorRouter');
 const MultiFloorProfiler = require('./lib/multiFloorProfiler');
 const MultiFloorReporter = require('./lib/multiFloorReporter');
@@ -302,7 +288,7 @@ function runPythonCorridorGenerator(floorPlanData, generationOptions) {
                 floor_plan: floorPlanData,
                 options: generationOptions
             });
-            
+
             try {
                 python.stdin.write(payload);
                 python.stdin.end();
@@ -677,6 +663,19 @@ app.use(express.urlencoded({
         req.rawBody = buf;
     }
 }));
+
+// DEBUG: Explicit root route to diagnose 404
+app.get('/', (req, res) => {
+    console.log('[Debug] GET / request received');
+    const indexHtmlPath = path.join(PUBLIC_DIR, 'index.html');
+    if (fs.existsSync(indexHtmlPath)) {
+        console.log('[Debug] Serving index.html from:', indexHtmlPath);
+        res.sendFile(indexHtmlPath);
+    } else {
+        console.error('[Debug] index.html NOT FOUND at:', indexHtmlPath);
+        res.status(404).send('Debug: index.html not found on server at ' + indexHtmlPath);
+    }
+});
 
 // Fix MIME types for ES modules - CRITICAL for Three.js
 express.static.mime.define({
