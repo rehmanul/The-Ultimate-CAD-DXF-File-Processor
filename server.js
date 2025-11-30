@@ -939,22 +939,13 @@ app.post('/api/jobs', upload.single('file'), async (req, res) => {
         let cadData = null;
         let filePathToProcess = file.path;
 
-        // If DWG, silently convert to DXF and proceed
+        // If DWG, process directly via libredwg (silent conversion to DXF-like entities)
         if (fileExtension === 'dwg') {
             try {
-                console.log('[DWG] Converting DWG to DXF silently...');
-                const dwgBuffer = fs.readFileSync(file.path);
-                const dxfBuffer = await convertDwgToDxfBuffer(dwgBuffer);
-                const tempDxfPath = path.join(os.tmpdir(), `converted_${Date.now()}.dxf`);
-                fs.writeFileSync(tempDxfPath, dxfBuffer);
-                filePathToProcess = tempDxfPath;
-                // cleanup both DWG and temp DXF on exit
-                const previousCleanup = cleanupUpload;
-                cleanupUpload = () => {
-                    try { fs.existsSync(tempDxfPath) && fs.unlinkSync(tempDxfPath); } catch (_) {}
-                    previousCleanup();
-                };
-                console.log('[DWG] Conversion complete. Proceeding with DXF processing.');
+                console.log('[DWG] Processing DWG via libredwg...');
+                const cadProcessor = new ProfessionalCADProcessor();
+                cadData = await cadProcessor.processDWG(filePathToProcess);
+                console.log(`CAD processing (DWG): ${cadData.walls.length} walls, ${cadData.forbiddenZones.length} forbidden zones, ${cadData.entrances.length} entrances, ${cadData.rooms.length} rooms`);
             } catch (convErr) {
                 console.error('[DWG] Conversion failed:', convErr.message || convErr);
                 cleanupUpload();
@@ -974,7 +965,11 @@ app.post('/api/jobs', upload.single('file'), async (req, res) => {
 
         try {
             const cadProcessor = new ProfessionalCADProcessor();
-            cadData = await cadProcessor.processDXF(filePathToProcess);
+            if (fileExtension === 'dwg' && cadData) {
+                // already processed above
+            } else {
+                cadData = await cadProcessor.processDXF(filePathToProcess);
+            }
 
             // Run room detection on the processed CAD data
             if (cadData && cadData.walls && cadData.walls.length > 0) {
