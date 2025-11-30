@@ -21,6 +21,35 @@ const { performance } = require('perf_hooks');
 const MultiFloorManager = require('./lib/multiFloorManager');
 const floorPlanStore = require('./lib/floorPlanStore');
 const ML_BOOT_PREFIX = '[Production ML System]';
+
+// --- RESTORED INITIALIZATION ---
+const PUBLIC_DIR = path.join(__dirname, 'public');
+const DIST_DIR = path.join(PUBLIC_DIR, 'dist');
+// Always serve from public directory (new clean build)
+const STATIC_ROOT = PUBLIC_DIR;
+const USING_DIST_BUILD = false;
+const SERVER_BOOT_TIME = new Date();
+const app = express();
+app.locals.staticRoot = STATIC_ROOT;
+app.locals.bootTime = SERVER_BOOT_TIME.toISOString();
+
+// DEBUG: Verify public directory and index.html
+console.log('[Startup] PUBLIC_DIR:', PUBLIC_DIR);
+const indexHtmlPath = path.join(PUBLIC_DIR, 'index.html');
+console.log('[Startup] Checking index.html at:', indexHtmlPath);
+if (fs.existsSync(indexHtmlPath)) {
+    console.log('[Startup] index.html exists!');
+} else {
+    console.error('[Startup] index.html MISSING!');
+    // List contents of public dir
+    if (fs.existsSync(PUBLIC_DIR)) {
+        console.log('[Startup] Contents of public:', fs.readdirSync(PUBLIC_DIR));
+    } else {
+        console.error('[Startup] public directory MISSING!');
+    }
+}
+// -------------------------------
+
 const PYTHON_GENERATOR_PATH = path.join(__dirname, 'lib', 'corridor-generator-complete.py');
 const PYTHON_CANDIDATES = (() => {
     const envSpec = process.env.PYTHON_EXECUTABLE || process.env.PYTHON_PATH;
