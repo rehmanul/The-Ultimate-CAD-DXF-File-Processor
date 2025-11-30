@@ -958,14 +958,16 @@ app.post('/api/jobs', upload.single('file'), async (req, res) => {
             } catch (convErr) {
                 console.error('[DWG] Conversion failed:', convErr.message || convErr);
                 cleanupUpload();
-                return res.status(422).json({
+                return res.status(200).json({
+                    success: false,
                     error: 'Unable to process DWG automatically. Please provide a DXF export from CAD.',
                     detail: convErr.message || String(convErr)
                 });
             }
         } else if (fileExtension !== 'dxf') {
             cleanupUpload();
-            return res.status(422).json({
+            return res.status(200).json({
+                success: false,
                 error: 'Unsupported file type. Please upload a DXF file.'
             });
         }
@@ -995,7 +997,8 @@ app.post('/api/jobs', upload.single('file'), async (req, res) => {
             if (!cadData || !Array.isArray(cadData.walls) || cadData.walls.length === 0) {
                 console.warn('CAD processing produced no walls; rejecting upload');
                 cleanupUpload();
-                return res.status(422).json({
+                return res.status(200).json({
+                    success: false,
                     error: 'Unable to extract geometry from this file. Please ensure the DXF contains wall linework (or convert DWG to DXF with wall layers).'
                 });
             }
@@ -1004,7 +1007,7 @@ app.post('/api/jobs', upload.single('file'), async (req, res) => {
         } catch (e) {
             console.warn('CAD processing failed:', e.message);
             cleanupUpload();
-            return res.status(422).json({ error: 'CAD processing failed: ' + e.message });
+            return res.status(200).json({ success: false, error: 'CAD processing failed: ' + e.message });
         }
 
         // Return CAD data directly - no APS upload needed
