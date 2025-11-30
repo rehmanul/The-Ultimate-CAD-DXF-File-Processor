@@ -699,23 +699,37 @@ app.use(express.urlencoded({
 
 // DEBUG: Explicit root route to diagnose 404
 // DEBUG: Explicit root route to diagnose 404
+// DEBUG: Explicit root route to diagnose 404
 app.get('/', (req, res) => {
     console.log('[Debug] GET / request received');
     const indexHtmlPath = path.join(PUBLIC_DIR, 'index.html');
-    if (fs.existsSync(indexHtmlPath)) {
-        res.sendFile(indexHtmlPath);
-    } else {
-        res.status(404).send('Debug: index.html not found at ' + indexHtmlPath);
+    try {
+        if (fs.existsSync(indexHtmlPath)) {
+            const stats = fs.statSync(indexHtmlPath);
+            console.log('[Debug] File stats:', JSON.stringify(stats));
+            const content = fs.readFileSync(indexHtmlPath, 'utf8');
+            console.log('[Debug] Read file success, length:', content.length);
+            res.setHeader('Content-Type', 'text/html');
+            res.send(content);
+        } else {
+            console.error('[Debug] File not found via existsSync');
+            res.status(404).send('Debug: index.html not found at ' + indexHtmlPath);
+        }
+    } catch (err) {
+        console.error('[Debug] Error serving index.html:', err);
+        res.status(500).send('Debug: Error serving file: ' + err.message);
     }
 });
 
 app.get('/debug-file', (req, res) => {
+    // ... keep existing or similar
     const indexHtmlPath = path.join(PUBLIC_DIR, 'index.html');
-    if (fs.existsSync(indexHtmlPath)) {
-        res.sendFile(indexHtmlPath);
-    } else {
-        res.status(404).send('Debug: index.html not found at ' + indexHtmlPath);
-    }
+    res.sendFile(indexHtmlPath, (err) => {
+        if (err) {
+            console.error('[Debug] sendFile error:', err);
+            res.status(500).send('sendFile error: ' + err.message);
+        }
+    });
 });
 
 // Fix MIME types for ES modules - CRITICAL for Three.js
