@@ -696,15 +696,18 @@ app.use(express.urlencoded({
 }));
 
 // DEBUG: Explicit root route to diagnose 404
+// DEBUG: Explicit root route to diagnose 404
 app.get('/', (req, res) => {
     console.log('[Debug] GET / request received');
+    res.send('FloorPlan Pro is Live! (Debug Mode)');
+});
+
+app.get('/debug-file', (req, res) => {
     const indexHtmlPath = path.join(PUBLIC_DIR, 'index.html');
     if (fs.existsSync(indexHtmlPath)) {
-        console.log('[Debug] Serving index.html from:', indexHtmlPath);
         res.sendFile(indexHtmlPath);
     } else {
-        console.error('[Debug] index.html NOT FOUND at:', indexHtmlPath);
-        res.status(404).send('Debug: index.html not found on server at ' + indexHtmlPath);
+        res.status(404).send('Debug: index.html not found at ' + indexHtmlPath);
     }
 });
 
