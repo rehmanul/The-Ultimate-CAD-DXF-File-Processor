@@ -1009,6 +1009,14 @@ app.post('/api/jobs', upload.single('file'), async (req, res) => {
         const urn = `local_${Date.now()}`;
 
         const normalizedCadData = normalizeCadData(cadData);
+        if (!cadData) {
+            cleanupUpload();
+            return res.status(200).json({
+                success: false,
+                error: 'CAD processing returned empty data. Please provide a DXF with wall linework or retry conversion.'
+            });
+        }
+
         if (normalizedCadData) {
             normalizedCadData.urn = urn;
             cadCache.set(urn, normalizedCadData);
