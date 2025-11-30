@@ -3,6 +3,7 @@ const cors = require('cors');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
+const os = require('os');
 const axios = require('axios');
 const { spawn, spawnSync } = require('child_process');
 const net = require('net');
@@ -359,6 +360,7 @@ const { safeNum, safePoint, sanitizeIlot, sanitizeCorridor, sanitizeArrow } = re
 
 // Webhook storage: switched to SQLite-backed store (lib/webhookStore)
 const webhookStore = require('./lib/webhookStore');
+let libreDwgModule = null;
 
 function encryptSecret(plain) {
     const key = _getMasterKeyBuffer();
@@ -497,6 +499,33 @@ function normalizeCadData(cad) {
     }
 
     return norm;
+}
+
+async function convertDwgToDxfBuffer(buffer) {
+    // Lazy-load libredwg wasm converter
+    if (!libreDwgModule) {
+        try {
+            const mod = require('@mlightcad/libredwg-web');
+            // module may export a factory (.default) or direct API
+            libreDwgModule = typeof mod === 'function' ? await mod() : (mod.default ? await mod.default() : mod);
+        } catch (e) {
+            throw new Error('DWG->DXF converter not available: ' + (e.message || e));
+        }
+    }
+
+    const converter = libreDwgModule;
+    if (!converter) throw new Error('DWG->DXF converter module missing');
+
+    // Try known API shapes
+    if (typeof converter.convertDwgToDxf === 'function') {
+        const out = await converter.convertDwgToDxf(buffer);
+        return Buffer.isBuffer(out) ? out : Buffer.from(out);
+    }
+    if (typeof converter.convert === 'function') {
+        const out = await converter.convert(buffer, 'dxf');
+        return Buffer.isBuffer(out) ? out : Buffer.from(out);
+    }
+    throw new Error('DWG->DXF converter API not found');
 }
 
 function normalizeDistribution(distribution) {
@@ -895,45 +924,88 @@ app.post('/api/jobs', upload.single('file'), async (req, res) => {
             return res.status(400).json({ error: 'No file uploaded' });
         }
 
+        const cleanupUpload = () => {
+            try {
+                if (file && file.path && fs.existsSync(file.path)) {
+                    fs.unlinkSync(file.path);
+                }
+            } catch (e) {
+                // ignore cleanup errors
+            }
+        };
+
         console.log('Processing file:', file.originalname);
 
-        let cadData = null;
-
-        // Process CAD files
         const fileExtension = file.originalname.toLowerCase().split('.').pop();
-        let fileToProcess = file.path;
+        let cadData = null;
+        let filePathToProcess = file.path;
 
-        // DWG to DXF conversion using ODA with ASCII format
-        if (fileExtension === 'dxf') {
+        // If DWG, silently convert to DXF and proceed
+        if (fileExtension === 'dwg') {
             try {
-                const cadProcessor = new ProfessionalCADProcessor();
-                cadData = await cadProcessor.processDXF(fileToProcess);
-
-                // Run room detection on the processed CAD data
-                if (cadData && cadData.walls && cadData.walls.length > 0) {
-                    try {
-                        const roomDetector = require('./lib/roomDetector');
-                        const detectedRooms = await roomDetector.detectRooms(
-                            cadData.walls,
-                            cadData.entrances || [],
-                            cadData.forbiddenZones || [],
-                            cadData.bounds
-                        );
-                        cadData.rooms = detectedRooms || [];
-                        console.log(`Room detection: ${cadData.rooms.length} rooms detected`);
-                    } catch (roomError) {
-                        console.warn('Room detection failed:', roomError.message);
-                        cadData.rooms = [];
-                    }
-                }
-
-                console.log(`CAD processing: ${cadData.walls.length} walls, ${cadData.forbiddenZones.length} forbidden zones, ${cadData.entrances.length} entrances, ${cadData.rooms.length} rooms`);
-            } catch (e) {
-                console.warn('CAD processing failed:', e.message);
-                cadData = null;
+                console.log('[DWG] Converting DWG to DXF silently...');
+                const dwgBuffer = fs.readFileSync(file.path);
+                const dxfBuffer = await convertDwgToDxfBuffer(dwgBuffer);
+                const tempDxfPath = path.join(os.tmpdir(), `converted_${Date.now()}.dxf`);
+                fs.writeFileSync(tempDxfPath, dxfBuffer);
+                filePathToProcess = tempDxfPath;
+                // cleanup both DWG and temp DXF on exit
+                const previousCleanup = cleanupUpload;
+                cleanupUpload = () => {
+                    try { fs.existsSync(tempDxfPath) && fs.unlinkSync(tempDxfPath); } catch (_) {}
+                    previousCleanup();
+                };
+                console.log('[DWG] Conversion complete. Proceeding with DXF processing.');
+            } catch (convErr) {
+                console.error('[DWG] Conversion failed:', convErr.message || convErr);
+                cleanupUpload();
+                return res.status(422).json({
+                    error: 'Unable to process DWG automatically. Please provide a DXF export from CAD.',
+                    detail: convErr.message || String(convErr)
+                });
             }
-        } else {
-            cadData = null;
+        } else if (fileExtension !== 'dxf') {
+            cleanupUpload();
+            return res.status(422).json({
+                error: 'Unsupported file type. Please upload a DXF file.'
+            });
+        }
+
+        try {
+            const cadProcessor = new ProfessionalCADProcessor();
+            cadData = await cadProcessor.processDXF(filePathToProcess);
+
+            // Run room detection on the processed CAD data
+            if (cadData && cadData.walls && cadData.walls.length > 0) {
+                try {
+                    const roomDetector = require('./lib/roomDetector');
+                    const detectedRooms = await roomDetector.detectRooms(
+                        cadData.walls,
+                        cadData.entrances || [],
+                        cadData.forbiddenZones || [],
+                        cadData.bounds
+                    );
+                    cadData.rooms = detectedRooms || [];
+                    console.log(`Room detection: ${cadData.rooms.length} rooms detected`);
+                } catch (roomError) {
+                    console.warn('Room detection failed:', roomError.message);
+                    cadData.rooms = [];
+                }
+            }
+
+            if (!cadData || !Array.isArray(cadData.walls) || cadData.walls.length === 0) {
+                console.warn('CAD processing produced no walls; rejecting upload');
+                cleanupUpload();
+                return res.status(422).json({
+                    error: 'Unable to extract geometry from this file. Please ensure the DXF contains wall linework (or convert DWG to DXF with wall layers).'
+                });
+            }
+
+            console.log(`CAD processing: ${cadData.walls.length} walls, ${cadData.forbiddenZones.length} forbidden zones, ${cadData.entrances.length} entrances, ${cadData.rooms.length} rooms`);
+        } catch (e) {
+            console.warn('CAD processing failed:', e.message);
+            cleanupUpload();
+            return res.status(422).json({ error: 'CAD processing failed: ' + e.message });
         }
 
         // Return CAD data directly - no APS upload needed
@@ -959,11 +1031,7 @@ app.post('/api/jobs', upload.single('file'), async (req, res) => {
         });
 
         // Clean up local files after a small delay
-        setTimeout(() => {
-            try {
-                if (fs.existsSync(file.path)) fs.unlinkSync(file.path);
-            } catch (e) { /* ignore cleanup errors */ }
-        }, 1000);
+        setTimeout(() => cleanupUpload(), 1000);
 
     } catch (error) {
         console.error('Upload error:', error);
