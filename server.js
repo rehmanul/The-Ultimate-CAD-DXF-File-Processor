@@ -3,7 +3,6 @@ const cors = require('cors');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
-const os = require('os');
 const axios = require('axios');
 const { spawn, spawnSync } = require('child_process');
 const net = require('net');
