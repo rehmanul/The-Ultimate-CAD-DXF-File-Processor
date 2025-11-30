@@ -17,7 +17,6 @@ RUN npm ci --omit=dev
 FROM node:22-bullseye AS runner
 WORKDIR /usr/src/app
 ENV NODE_ENV=production
-ENV PORT=3000
 ENV PYTHON_EXECUTABLE=python3
 
 RUN apt-get update \
@@ -37,8 +36,8 @@ RUN mkdir -p uploads exports logs && chown -R node:node uploads exports logs
 
 USER node
 
-EXPOSE 3000
+EXPOSE 10000
 
-HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 CMD curl -fsS http://localhost:${PORT:-3000}/health || exit 1
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 CMD curl -fsS http://localhost:${PORT:-10000}/health || exit 1
 
 CMD ["node", "server.js"]

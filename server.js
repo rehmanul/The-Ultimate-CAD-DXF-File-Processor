@@ -183,7 +183,7 @@ function buildProductionCorridorNetwork(floorPlanData, generationOptions = {}) {
 }
 let mlBootstrapPromise = null;
 let mlBootstrapFinished = false;
-const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 5000;
+const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 10000;
 
 // In-memory CAD cache keyed by URN for request-scoped analysis
 const cadCache = new Map();
