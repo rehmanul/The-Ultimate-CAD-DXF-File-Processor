@@ -32,7 +32,7 @@ COPY server.js ./server.js
 
 RUN mkdir -p models
 
-RUN mkdir -p uploads exports logs && chown -R node:node uploads exports logs
+RUN mkdir -p uploads exports logs models checkpoints && chown -R node:node uploads exports logs models checkpoints
 
 USER node
 
