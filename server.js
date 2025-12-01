@@ -394,6 +394,39 @@ function isEncryptedToken(s) {
     return typeof s === 'string' && s.split(':').length === 3;
 }
 
+// Simple grid-based îlot fallback used when advanced placer fails
+function fallbackIlots(bounds = { minX: 0, minY: 0, maxX: 10, maxY: 10 }, count = 10) {
+    const ilots = [];
+    const width = Math.max((bounds.maxX || 0) - (bounds.minX || 0), 1);
+    const height = Math.max((bounds.maxY || 0) - (bounds.minY || 0), 1);
+    const cols = Math.ceil(Math.sqrt(count));
+    const rows = Math.ceil(count / cols);
+    const cellW = width / cols;
+    const cellH = height / rows;
+    let placed = 0;
+    for (let r = 0; r < rows && placed < count; r++) {
+        for (let c = 0; c < cols && placed < count; c++) {
+            const w = Math.max(cellW * 0.6, 1);
+            const h = Math.max(cellH * 0.6, 1);
+            const x = bounds.minX + c * cellW + (cellW - w) / 2;
+            const y = bounds.minY + r * cellH + (cellH - h) / 2;
+            const area = w * h;
+            ilots.push({
+                id: `ilot_fb_${placed + 1}`,
+                x,
+                y,
+                width: w,
+                height: h,
+                area,
+                type: area < 3 ? 'team' : 'meeting',
+                capacity: Math.ceil(area * 1.5)
+            });
+            placed++;
+        }
+    }
+    return ilots;
+}
+
 // Normalize CAD geometry to a canonical shape expected by the frontend.
 // Ensures each wall has .start and .end with numeric {x,y} and preserves polygon when present.
 function normalizeCadData(cad) {
@@ -1153,10 +1186,20 @@ app.post('/api/ilots', async (req, res) => {
         generatorOptions.spacing = typeof generatorOptions.spacing === 'number' ? generatorOptions.spacing : 0.3;
 
         const ilotPlacer = new RowBasedIlotPlacer(normalizedFloorPlan, generatorOptions);
-        const ilotsRaw = ilotPlacer.generateIlots(normalizedDistribution, generatorOptions.totalIlots);
+        let ilotsRaw;
+        try {
+            ilotsRaw = ilotPlacer.generateIlots(normalizedDistribution, generatorOptions.totalIlots);
+        } catch (placerErr) {
+            console.warn('Îlot placer failed, using fallback grid:', placerErr && placerErr.message ? placerErr.message : placerErr);
+            ilotsRaw = fallbackIlots(normalizedFloorPlan.bounds, generatorOptions.totalIlots);
+        }
 
         // sanitize placements to ensure numeric fields for client
-        const ilots = Array.isArray(ilotsRaw) ? ilotsRaw.map(sanitizeIlot).filter(Boolean) : [];
+        let ilots = Array.isArray(ilotsRaw) ? ilotsRaw.map(sanitizeIlot).filter(Boolean) : [];
+        if (!ilots.length) {
+            ilots = fallbackIlots(normalizedFloorPlan.bounds, generatorOptions.totalIlots).map(sanitizeIlot).filter(Boolean);
+            console.warn(`Îlot placer returned empty. Applied fallback grid: ${ilots.length} îlots.`);
+        }
 
         // Calculate total area - ilots now have area field from professionalIlotPlacer
         const totalArea = ilots.reduce((sum, ilot) => sum + (Number(ilot.area) || 0), 0);
