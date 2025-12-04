@@ -258,7 +258,8 @@ export class FloorPlanRenderer {
         this.ilotMeshes = [];
         this.selectedIlots = [];
 
-        const colorMap = { single: 0x10b981, double: 0x3b82f6, team: 0x8b5cf6, meeting: 0xf59e0b };
+        // All workstations render as green to match legend
+        const colorMap = { single: 0x10b981, double: 0x10b981, team: 0x10b981, meeting: 0x10b981 };
 
         if (!ilots || ilots.length === 0) {
             this.render();
