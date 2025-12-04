@@ -1753,7 +1753,8 @@ async function generateIlots() {
             const height = floorPlan.bounds.maxY - floorPlan.bounds.minY;
             floorArea = width * height * 0.3;
         }
-        const targetIlots = Math.max(10, Math.min(100, Math.floor(floorArea / 50))); // 1 ilot per 50 m², max 100
+        // Increase density: 1 ilot per 10 m² (standard office density), max 500
+        const targetIlots = Math.max(20, Math.min(500, Math.floor(floorArea / 10)));
 
         const distribution = parseDistribution();
         console.log('Using distribution configuration:', distribution);

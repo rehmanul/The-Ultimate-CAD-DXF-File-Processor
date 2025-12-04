@@ -84,8 +84,8 @@ export class FloorPlanRenderer {
         this.corridorArrowsVisible = true;
         this.arrowMeshes = [];
         this.arrowMaterials = {
-            green: new THREE.MeshBasicMaterial({ color: 0xf59e0b }), // Orange to match corridors
-            bright_green: new THREE.MeshBasicMaterial({ color: 0xffa500 }), // Bright orange
+            green: new THREE.MeshBasicMaterial({ color: 0x10b981 }), // Green arrows
+            bright_green: new THREE.MeshBasicMaterial({ color: 0x22c55e }), // Bright green
             blue: new THREE.MeshBasicMaterial({ color: 0x2674dc }),
             teal: new THREE.MeshBasicMaterial({ color: 0x14b8a6 })
         };
@@ -309,7 +309,6 @@ export class FloorPlanRenderer {
             this.ilotsGroup.add(mesh);
             this.ilotMeshes.push(mesh);
 
-            // Create outline with relative coordinates
             const linePoints = [
                 new THREE.Vector3(0, 0, 0),
                 new THREE.Vector3(ilot.width, 0, 0),
@@ -323,6 +322,23 @@ export class FloorPlanRenderer {
             );
             line.position.set(ilot.x, ilot.y, 0);
             this.ilotsGroup.add(line);
+
+            // Add area label in center of ilot
+            const areaText = ilot.label || `${(ilot.area || ilot.width * ilot.height).toFixed(1)}m²`;
+            const labelSprite = this.createTextSprite(areaText, {
+                fontsize: 24,
+                fillStyle: '#1f2937',
+                backgroundColor: 'rgba(255, 255, 255, 0.85)'
+            });
+            labelSprite.position.set(
+                ilot.x + ilot.width / 2,
+                ilot.y + ilot.height / 2,
+                0.2
+            );
+            // Scale based on ilot size
+            const scale = Math.min(ilot.width, ilot.height) * 0.3;
+            labelSprite.scale.set(scale, scale * 0.5, 1);
+            this.ilotsGroup.add(labelSprite);
         });
 
         // Restore selection if there was one (visual only, no event dispatch)
@@ -350,23 +366,36 @@ export class FloorPlanRenderer {
     renderCorridors(corridors) {
         this.corridorsGroup.clear();
 
+        // Pink/Magenta color for corridors (matches professional plans: #ec4899)
+        const corridorColor = 0xec4899;
+        const lineMaterial = new THREE.LineBasicMaterial({ color: corridorColor, linewidth: 2 });
+
         corridors.forEach(corridor => {
-            if (!corridor.polygon || corridor.polygon.length < 3) return;
+            // Draw center-line through corridor (walking path style)
+            const centerLine = [];
 
-            const points = corridor.polygon.map(pt => new THREE.Vector2(Array.isArray(pt) ? pt[0] : pt.x, Array.isArray(pt) ? pt[1] : pt.y));
+            if (corridor.type === 'horizontal' || corridor.width > corridor.height) {
+                // Horizontal corridor - draw horizontal line through center
+                const centerY = corridor.y + (corridor.height || this.corridorWidth || 1) / 2;
+                centerLine.push(new THREE.Vector3(corridor.x, centerY, 0.1));
+                centerLine.push(new THREE.Vector3(corridor.x + corridor.width, centerY, 0.1));
+            } else {
+                // Vertical corridor - draw vertical line through center
+                const centerX = corridor.x + (corridor.width || this.corridorWidth || 1) / 2;
+                centerLine.push(new THREE.Vector3(centerX, corridor.y, 0.1));
+                centerLine.push(new THREE.Vector3(centerX, corridor.y + corridor.height, 0.1));
+            }
 
-            // Only render the outline/border - no fill
-            const linePoints = points.map(p => new THREE.Vector3(p.x, p.y, 0));
-            linePoints.push(linePoints[0]); // Close the polygon
-
-            // Orange color for corridors (matches legend: #f59e0b)
-            const corridorColor = 0xf59e0b; // Orange - matches legend
-
-            this.corridorsGroup.add(new THREE.Line(
-                new THREE.BufferGeometry().setFromPoints(linePoints),
-                new THREE.LineBasicMaterial({ color: corridorColor, linewidth: 3 })
-            ));
+            if (centerLine.length >= 2) {
+                this.corridorsGroup.add(new THREE.Line(
+                    new THREE.BufferGeometry().setFromPoints(centerLine),
+                    lineMaterial
+                ));
+            }
         });
+
+        console.log(`Rendered ${corridors.length} corridor paths`);
+        this.render();
     }
 
     clearCorridorArrows() {
@@ -1225,5 +1254,47 @@ export class FloorPlanRenderer {
             this.gridHelper = null;
             this.render();
         }
+    }
+
+    createTextSprite(text, options = {}) {
+        const fontsize = options.fontsize || 24;
+        const fillStyle = options.fillStyle || '#1f2937';
+        const backgroundColor = options.backgroundColor || 'rgba(255, 255, 255, 0.85)';
+
+        const canvas = document.createElement('canvas');
+        const context = canvas.getContext('2d');
+
+        // Set font and measure text
+        context.font = `bold ${fontsize}px Arial`;
+        const metrics = context.measureText(text);
+        const textWidth = metrics.width;
+
+        // Set canvas size with padding
+        const padding = 8;
+        canvas.width = textWidth + padding * 2;
+        canvas.height = fontsize + padding * 2;
+
+        // Re-set font after canvas resize
+        context.font = `bold ${fontsize}px Arial`;
+
+        // Background
+        context.fillStyle = backgroundColor;
+        context.fillRect(0, 0, canvas.width, canvas.height);
+
+        // Text
+        context.fillStyle = fillStyle;
+        context.textAlign = 'center';
+        context.textBaseline = 'middle';
+        context.fillText(text, canvas.width / 2, canvas.height / 2);
+
+        // Create sprite
+        const texture = new THREE.CanvasTexture(canvas);
+        const spriteMaterial = new THREE.SpriteMaterial({
+            map: texture,
+            transparent: true
+        });
+        const sprite = new THREE.Sprite(spriteMaterial);
+
+        return sprite;
     }
 }

@@ -395,37 +395,7 @@ function isEncryptedToken(s) {
 }
 
 // Simple grid-based îlot fallback used when advanced placer fails
-function fallbackIlots(bounds = { minX: 0, minY: 0, maxX: 10, maxY: 10 }, count = 10) {
-    const ilots = [];
-    const width = Math.max((bounds.maxX || 0) - (bounds.minX || 0), 1);
-    const height = Math.max((bounds.maxY || 0) - (bounds.minY || 0), 1);
-    const cols = Math.ceil(Math.sqrt(count));
-    const rows = Math.ceil(count / cols);
-    const cellW = width / cols;
-    const cellH = height / rows;
-    let placed = 0;
-    for (let r = 0; r < rows && placed < count; r++) {
-        for (let c = 0; c < cols && placed < count; c++) {
-            const w = Math.max(cellW * 0.6, 1);
-            const h = Math.max(cellH * 0.6, 1);
-            const x = bounds.minX + c * cellW + (cellW - w) / 2;
-            const y = bounds.minY + r * cellH + (cellH - h) / 2;
-            const area = w * h;
-            ilots.push({
-                id: `ilot_fb_${placed + 1}`,
-                x,
-                y,
-                width: w,
-                height: h,
-                area,
-                type: area < 3 ? 'team' : 'meeting',
-                capacity: Math.ceil(area * 1.5)
-            });
-            placed++;
-        }
-    }
-    return ilots;
-}
+// Fallback removed for production grade system
 
 // Normalize CAD geometry to a canonical shape expected by the frontend.
 // Ensures each wall has .start and .end with numeric {x,y} and preserves polygon when present.
@@ -1188,20 +1158,21 @@ app.post('/api/ilots', async (req, res) => {
         const ilotPlacer = new RowBasedIlotPlacer(normalizedFloorPlan, generatorOptions);
         let ilotsRaw;
         try {
-            ilotsRaw = ilotPlacer.generateIlots(normalizedDistribution, generatorOptions.totalIlots);
-        } catch (placerErr) {
-            console.warn('Îlot placer failed, using fallback grid:', placerErr && placerErr.message ? placerErr.message : placerErr);
-            ilotsRaw = fallbackIlots(normalizedFloorPlan.bounds, generatorOptions.totalIlots);
+            // Attempt to generate ilots using the advanced placer
+            ilotsRaw = await ilotPlacer.generateIlots(normalizedDistribution, generatorOptions.totalIlots);
+        } catch (ilotError) {
+            console.warn('Advanced îlot placer failed:', ilotError.message);
+            ilotsRaw = [];
         }
 
         // sanitize placements to ensure numeric fields for client
         let ilots = Array.isArray(ilotsRaw) ? ilotsRaw.map(sanitizeIlot).filter(Boolean) : [];
+
         if (!ilots.length) {
-            ilots = fallbackIlots(normalizedFloorPlan.bounds, generatorOptions.totalIlots).map(sanitizeIlot).filter(Boolean);
-            console.warn(`Îlot placer returned empty. Applied fallback grid: ${ilots.length} îlots.`);
+            console.warn('Îlot placer returned empty. No fallback applied (Production Mode).');
         }
 
-        // Calculate total area - ilots now have area field from professionalIlotPlacer
+        // Calculate total area
         const totalArea = ilots.reduce((sum, ilot) => sum + (Number(ilot.area) || 0), 0);
 
         global.lastPlacedIlots = ilots;
@@ -1314,7 +1285,7 @@ app.post('/api/optimize/paths', (req, res) => {
     }
 });
 
-// Advanced corridor generation backed by Python corridor generator
+// Advanced corridor generation backed by JS corridor generator
 app.post('/api/corridors/advanced', async (req, res) => {
     try {
         const body = req.body || {};
@@ -1341,20 +1312,55 @@ app.post('/api/corridors/advanced', async (req, res) => {
                 ? options.corridor_width
                 : (typeof options.corridorWidth === 'number' ? options.corridorWidth : 1.5),
             generate_arrows: options.generate_arrows !== false,
-            min_corridor_length: typeof options.min_corridor_length === 'number' ? options.min_corridor_length : 3.0,
-            max_corridor_spacing: typeof options.max_corridor_spacing === 'number' ? options.max_corridor_spacing : 8.0
+            margin: 0.5,
+            corridorWidth: typeof options.corridor_width === 'number' ? options.corridor_width : 1.5
         };
 
-        const corridorNetwork = await runPythonCorridorGenerator(normalizedFloorPlan, generationOptions);
+        // Use the last placed ilots or empty array
+        const ilots = global.lastPlacedIlots || [];
 
-        const corridors = Array.isArray(corridorNetwork.corridors)
-            ? corridorNetwork.corridors.map(sanitizeCorridor).filter(Boolean)
-            : [];
-        const arrows = Array.isArray(corridorNetwork.arrows)
-            ? corridorNetwork.arrows.map(sanitizeArrow).filter(Boolean)
-            : [];
-        const statistics = corridorNetwork.statistics || {};
-        const metadata = corridorNetwork.metadata || {};
+        // Generate corridors using ProductionCorridorGenerator
+        const corridorGenerator = new ProductionCorridorGenerator(normalizedFloorPlan, ilots, generationOptions);
+        const corridors = corridorGenerator.generateCorridors();
+
+        // Generate circulation arrows (green arrows showing flow direction)
+        const arrows = [];
+        if (generationOptions.generate_arrows && corridors.length > 0) {
+            corridors.forEach((corridor, idx) => {
+                // Add arrows along corridor centerline
+                const numArrows = Math.max(1, Math.floor(corridor.length / 5)); // 1 arrow per 5m
+                const isHorizontal = corridor.width > corridor.height;
+
+                for (let i = 0; i < numArrows; i++) {
+                    const progress = (i + 0.5) / numArrows;
+                    const x = corridor.x + (isHorizontal ? corridor.width * progress : corridor.width / 2);
+                    const y = corridor.y + (isHorizontal ? corridor.height / 2 : corridor.height * progress);
+
+                    arrows.push({
+                        x, y, z: 0.6,
+                        direction: isHorizontal ? 'right' : 'up',
+                        color: 'green',
+                        size: 'small',
+                        type: 'circulation'
+                    });
+                }
+            });
+        }
+
+        const statistics = {
+            total_corridors: corridors.length,
+            total_area: corridors.reduce((sum, c) => sum + (c.area || 0), 0),
+            total_length: corridors.reduce((sum, c) => sum + (c.length || 0), 0),
+            average_width: corridors.length > 0
+                ? corridors.reduce((sum, c) => sum + (isNaN(c.width) ? 0 : c.width), 0) / corridors.length
+                : 0
+        };
+
+        const metadata = {
+            engine: 'js-production',
+            version: '2.0',
+            timestamp: new Date().toISOString()
+        };
 
         global.lastGeneratedCorridors = corridors;
         global.lastGeneratedArrows = arrows;
