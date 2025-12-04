@@ -84,10 +84,10 @@ export class FloorPlanRenderer {
         this.corridorArrowsVisible = true;
         this.arrowMeshes = [];
         this.arrowMaterials = {
-            green: new THREE.MeshBasicMaterial({ color: 0x10b981 }), // Green arrows
-            bright_green: new THREE.MeshBasicMaterial({ color: 0x22c55e }), // Bright green
-            blue: new THREE.MeshBasicMaterial({ color: 0x2674dc }),
-            teal: new THREE.MeshBasicMaterial({ color: 0x14b8a6 })
+            green: new THREE.MeshBasicMaterial({ color: 0xec4899 }), // Pink/Magenta to match corridors
+            bright_green: new THREE.MeshBasicMaterial({ color: 0xec4899 }), // Pink/Magenta
+            blue: new THREE.MeshBasicMaterial({ color: 0xec4899 }),
+            teal: new THREE.MeshBasicMaterial({ color: 0xec4899 })
         };
         this.arrowClock = new THREE.Clock(false);
         this.arrowAnimationActive = false;
