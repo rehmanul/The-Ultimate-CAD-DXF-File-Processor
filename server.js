@@ -24,6 +24,8 @@ const MultiFloorManager = require('./lib/multiFloorManager');
 const floorPlanStore = require('./lib/floorPlanStore');
 const ProductionInitializer = require('./lib/productionInitializer');
 const MLProcessor = require('./lib/mlProcessor');
+const UnitMixManager = require('./lib/unitMixManager');
+const RuleManager = require('./lib/ruleManager');
 const ML_BOOT_PREFIX = '[Production ML System]';
 
 // --- RESTORED INITIALIZATION ---
@@ -918,6 +920,31 @@ const upload = multer({ dest: 'uploads/' });
 
 // No APS functions needed - using local DXF processing only
 
+// Unit Mix Import Endpoint
+app.post('/api/import/mix', upload.single('file'), (req, res) => {
+    try {
+        if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+
+        const buffer = fs.readFileSync(req.file.path);
+        // Default to checking extension if mimetype is generic, but passing mimetype for now
+        // Basic extension check for robustness
+        let mime = req.file.mimetype;
+        if (req.file.originalname.endsWith('.csv')) mime = 'text/csv';
+        if (req.file.originalname.endsWith('.xlsx')) mime = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+
+        const mix = UnitMixManager.parseMix(buffer, mime);
+
+        // Clean up
+        try { fs.unlinkSync(req.file.path); } catch (e) {}
+
+        res.json({ success: true, mix });
+    } catch (error) {
+        if (req.file && req.file.path) try { fs.unlinkSync(req.file.path); } catch (e) {}
+        console.error('Unit mix import error:', error);
+        res.status(400).json({ success: false, error: error.message });
+    }
+});
+
 // Enhanced CAD processing endpoint
 app.post('/api/jobs', upload.single('file'), async (req, res) => {
     try {
@@ -1120,7 +1147,7 @@ app.post('/api/ilots', async (req, res) => {
             '1-3': 0.25,
             '3-5': 0.35,
             '5-10': 0.40
-        }, options = {} } = req.body;
+        }, unitMix, rules, options = {} } = req.body;
 
         if (!floorPlan) {
             return res.status(400).json({ error: 'Floor plan data required' });
