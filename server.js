@@ -25,6 +25,7 @@ const floorPlanStore = require('./lib/floorPlanStore');
 const ProductionInitializer = require('./lib/productionInitializer');
 const MLProcessor = require('./lib/mlProcessor');
 const UnitMixManager = require('./lib/unitMixManager');
+const UnitMixReport = require('./lib/unitMixReport');
 const RuleManager = require('./lib/ruleManager');
 const ML_BOOT_PREFIX = '[Production ML System]';
 
@@ -1201,6 +1202,7 @@ app.post('/api/ilots', async (req, res) => {
 
         // Calculate total area
         const totalArea = ilots.reduce((sum, ilot) => sum + (Number(ilot.area) || 0), 0);
+        const unitMixReport = UnitMixReport.buildReport(ilots, unitMix);
 
         global.lastPlacedIlots = ilots;
         if (planId) {
@@ -1208,7 +1210,8 @@ app.post('/api/ilots', async (req, res) => {
             floorPlanStore.updateLayout(planId, {
                 ilots,
                 distribution: normalizedDistribution,
-                options: generatorOptions
+                options: generatorOptions,
+                unitMixReport
             });
         }
 
@@ -1227,6 +1230,7 @@ app.post('/api/ilots', async (req, res) => {
             count: ilots.length,
             distribution: normalizedDistribution,
             options: generatorOptions,
+            unitMixReport: unitMixReport,
             validation: validationReport,
             suggestions: suggestions,
             message: `Generated ${ilots.length} ilots with ${totalArea.toFixed(2)} m² total area`
