@@ -26,6 +26,7 @@ const ProductionInitializer = require('./lib/productionInitializer');
 const MLProcessor = require('./lib/mlProcessor');
 const UnitMixManager = require('./lib/unitMixManager');
 const UnitMixReport = require('./lib/unitMixReport');
+const ComplianceReport = require('./lib/complianceReport');
 const RuleManager = require('./lib/ruleManager');
 const ML_BOOT_PREFIX = '[Production ML System]';
 
@@ -1222,6 +1223,13 @@ app.post('/api/ilots', async (req, res) => {
         const validationReport = validator.validate();
         const corrector = new AnnotationAndCorrection({ ...normalizedFloorPlan, ilots }, validationReport.issues);
         const suggestions = corrector.generateSuggestions();
+        const complianceReport = ComplianceReport.buildComplianceReport({
+            floorPlan: normalizedFloorPlan,
+            ilots,
+            corridors: Array.isArray(global.lastGeneratedCorridors) ? global.lastGeneratedCorridors : [],
+            unitMixReport,
+            validation: validationReport
+        });
 
         res.json({
             success: true,
@@ -1231,6 +1239,7 @@ app.post('/api/ilots', async (req, res) => {
             distribution: normalizedDistribution,
             options: generatorOptions,
             unitMixReport: unitMixReport,
+            complianceReport: complianceReport,
             validation: validationReport,
             suggestions: suggestions,
             message: `Generated ${ilots.length} ilots with ${totalArea.toFixed(2)} m² total area`
@@ -1239,6 +1248,37 @@ app.post('/api/ilots', async (req, res) => {
     } catch (error) {
         console.error('Îlot generation error:', error);
         res.status(500).json({ error: 'Îlot generation failed: ' + error.message });
+    }
+});
+
+// Compliance report endpoint
+app.post('/api/report/compliance', (req, res) => {
+    try {
+        const { floorPlan, ilots, corridors, unitMixReport, validation } = req.body || {};
+        if (!floorPlan) {
+            return res.status(400).json({ error: 'Floor plan data required' });
+        }
+        const ilotList = Array.isArray(ilots) ? ilots : [];
+        const corridorList = Array.isArray(corridors) ? corridors : [];
+
+        let validationReport = validation;
+        if (!validationReport) {
+            const validator = new ArchitecturalValidator({ ...floorPlan, ilots: ilotList, corridors: corridorList });
+            validationReport = validator.validate();
+        }
+
+        const report = ComplianceReport.buildComplianceReport({
+            floorPlan,
+            ilots: ilotList,
+            corridors: corridorList,
+            unitMixReport,
+            validation: validationReport
+        });
+
+        res.json({ success: true, report });
+    } catch (error) {
+        console.error('Compliance report error:', error);
+        res.status(500).json({ success: false, error: error.message });
     }
 });
 
