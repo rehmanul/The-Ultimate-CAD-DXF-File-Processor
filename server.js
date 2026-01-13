@@ -24,16 +24,10 @@ const MultiFloorManager = require('./lib/multiFloorManager');
 const floorPlanStore = require('./lib/floorPlanStore');
 const ProductionInitializer = require('./lib/productionInitializer');
 const MLProcessor = require('./lib/mlProcessor');
-<<<<<<< HEAD
-const UnitMixManager = require('./lib/unitMixManager');
-const UnitMixReport = require('./lib/unitMixReport');
-const RuleManager = require('./lib/ruleManager');
-=======
 const UnitMixManager = require('./lib/unitMixManager');
 const UnitMixReport = require('./lib/unitMixReport');
 const ComplianceReport = require('./lib/complianceReport');
 const RuleManager = require('./lib/ruleManager');
->>>>>>> 91ef4255e14c814d850de72a9275ce550eb908d7
 const ML_BOOT_PREFIX = '[Production ML System]';
 
 // --- RESTORED INITIALIZATION ---
