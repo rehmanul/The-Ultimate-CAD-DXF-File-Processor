@@ -985,7 +985,6 @@ function buildProductionCorridorNetwork(floorPlanData, generationOptions = {}) {
             });
 
             // Advanced îlot generation endpoint
-<<<<<<< HEAD
             app.post('/api/ilots', async (req, res) => {
                 try {
                     const { floorPlan, distribution = {
@@ -993,15 +992,6 @@ function buildProductionCorridorNetwork(floorPlanData, generationOptions = {}) {
                         '3-5': 0.35,
                         '5-10': 0.40
                     }, unitMix, rules, options = {} } = req.body;
-=======
-app.post('/api/ilots', async (req, res) => {
-    try {
-        const { floorPlan, distribution = {
-            '1-3': 0.25,
-            '3-5': 0.35,
-            '5-10': 0.40
-        }, unitMix, rules, options = {} } = req.body;
->>>>>>> 91ef4255e14c814d850de72a9275ce550eb908d7
 
                     if (!floorPlan) {
                         return res.status(400).json({ error: 'Floor plan data required' });
