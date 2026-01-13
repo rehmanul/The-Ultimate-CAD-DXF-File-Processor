@@ -14,30 +14,30 @@ export class InteractiveEditor {
         this.collisionDetector = collisionDetector;
         this.setupTransformControls();
     }
-    
+
     setupTransformControls() {
         const camera = this.renderer.is3DMode ? this.renderer.perspectiveCamera : this.renderer.camera;
-        
+
         try {
             this.transformControl = new TransformControls(camera, this.renderer.renderer.domElement);
             this.transformControl.setMode('translate');
             this.transformControl.setSpace('world');
-            
+
             this.isDragging = false;
             this.dragStartPosition = null;
             this.dragStartSize = null;
-            
+
             this.transformControl.addEventListener('dragging-changed', (event) => {
                 this.renderer.controls.enabled = !event.value;
                 this.renderer.perspectiveControls.enabled = !event.value;
-                
+
                 if (event.value) {
                     this.onDragStart();
                 } else {
                     this.onDragEnd();
                 }
             });
-            
+
             if (this.transformControl instanceof THREE.Object3D) {
                 this.renderer.scene.add(this.transformControl);
             }
@@ -45,7 +45,7 @@ export class InteractiveEditor {
             console.error('TransformControls setup failed:', error);
         }
     }
-    
+
     enableEditMode(enabled) {
         if (enabled && this.renderer.selectedIlots.length > 0) {
             this.selectedMesh = this.renderer.selectedIlots[0];
@@ -58,57 +58,57 @@ export class InteractiveEditor {
         }
         this.renderer.render();
     }
-    
+
     onDragStart() {
         if (!this.selectedMesh || !this.selectedMesh.userData.ilot) return;
-        
+
         const ilot = this.selectedMesh.userData.ilot;
-        
+
         // Capture original position
         this.dragStartPosition = {
             x: ilot.x,
             y: ilot.y
         };
-        
+
         // Capture original size
         this.dragStartSize = {
             width: ilot.width,
             height: ilot.height
         };
-        
+
         this.isDragging = true;
     }
-    
+
     onDragEnd() {
         if (!this.isDragging || !this.selectedMesh || !this.selectedMesh.userData.ilot) return;
-        
+
         this.isDragging = false;
-        
+
         // Update ilot data from mesh transform
         this.finalizeTransform();
     }
-    
+
     setMode(mode) {
         this.editMode = mode;
         this.transformControl.setMode(mode);
         this.renderer.render();
     }
-    
+
     finalizeTransform() {
         if (!this.selectedMesh || !this.selectedMesh.userData.ilot) return;
-        
+
         const ilot = this.selectedMesh.userData.ilot;
         const pos = this.selectedMesh.position;
         const scale = this.selectedMesh.scale;
-        
+
         // Calculate new position from mesh
         let newX = pos.x;
         let newY = pos.y;
-        
+
         // Calculate new size from scale
         let newWidth = this.dragStartSize.width * scale.x;
         let newHeight = this.dragStartSize.height * scale.y;
-        
+
         // Apply snapping if enabled
         if (this.enableSnapping && this.collisionDetector) {
             const tempIlot = { x: newX, y: newY, width: newWidth, height: newHeight };
@@ -118,28 +118,28 @@ export class InteractiveEditor {
             newWidth = snapped.width;
             newHeight = snapped.height;
         }
-        
+
         // Check if anything actually changed
         const positionChanged = (newX !== this.dragStartPosition.x || newY !== this.dragStartPosition.y);
         const sizeChanged = (newWidth !== this.dragStartSize.width || newHeight !== this.dragStartSize.height);
-        
+
         if (!positionChanged && !sizeChanged) {
             // No change, reset mesh transform
             this.selectedMesh.position.set(ilot.x, ilot.y, pos.z);
             this.selectedMesh.scale.set(1, 1, 1);
             return;
         }
-        
+
         // Update ilot data
         ilot.x = newX;
         ilot.y = newY;
         ilot.width = newWidth;
         ilot.height = newHeight;
-        
+
         // Reset mesh transform (ilot data is source of truth)
         this.selectedMesh.position.set(ilot.x, ilot.y, pos.z);
         this.selectedMesh.scale.set(1, 1, 1);
-        
+
         // Notify callback with old and new states
         if (this.onIlotModified) {
             this.onIlotModified(
@@ -156,7 +156,7 @@ export class InteractiveEditor {
             );
         }
     }
-    
+
     deleteSelected() {
         if (!this.selectedMesh) return null;
         const index = this.selectedMesh.userData.index;
@@ -167,13 +167,49 @@ export class InteractiveEditor {
         this.renderer.render();
         return index;
     }
-    
+
     duplicateSelected() {
         if (!this.selectedMesh || !this.selectedMesh.userData.ilot) return null;
-        
+
         const ilot = { ...this.selectedMesh.userData.ilot };
         ilot.x += 2;
         ilot.y += 2;
         return ilot;
+    }
+
+    updateCamera(camera) {
+        // Dispose old control if attached
+        if (this.transformControl) {
+            this.transformControl.detach();
+            this.renderer.scene.remove(this.transformControl);
+            if (this.transformControl.dispose) this.transformControl.dispose();
+        }
+
+        // Create new control with new camera
+        try {
+            this.transformControl = new TransformControls(camera, this.renderer.renderer.domElement);
+            this.transformControl.setMode(this.editMode);
+            this.transformControl.setSpace('world');
+
+            this.transformControl.addEventListener('dragging-changed', (event) => {
+                this.renderer.controls.enabled = !event.value;
+                this.renderer.perspectiveControls.enabled = !event.value;
+
+                if (event.value) {
+                    this.onDragStart();
+                } else {
+                    this.onDragEnd();
+                }
+            });
+
+            this.renderer.scene.add(this.transformControl);
+
+            // Re-attach if something was selected
+            if (this.selectedMesh) {
+                this.transformControl.attach(this.selectedMesh);
+            }
+        } catch (error) {
+            console.error('TransformControls update failed:', error);
+        }
     }
 }

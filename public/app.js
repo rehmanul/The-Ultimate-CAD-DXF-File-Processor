@@ -9,6 +9,13 @@ import { UndoRedoManager, MoveIlotCommand, DeleteIlotCommand, AddIlotCommand, Re
 import { ProfessionalExport } from './professionalExport.js';
 
 
+const DEFAULT_DISTRIBUTION = {
+    '0-1': 0.10,
+    '1-3': 0.25,
+    '3-5': 0.30,
+    '5-10': 0.35
+};
+
 let currentFloorPlan = null;
 let generatedIlots = [];
 let corridorNetwork = [];
@@ -253,6 +260,19 @@ function initializeModules() {
 
     setupCorridorWidthSlider();
 
+    // Enhancement: Connect 3D toggle to editor
+    if (renderer) {
+        // Find existing toggle button if any, or just rely on global function
+        const originalToggle = renderer.toggle3DMode;
+        renderer.toggle3DMode = function () {
+            const is3D = originalToggle.call(this);
+            if (editor) {
+                editor.updateCamera(this.is3DMode ? this.perspectiveCamera : this.camera);
+            }
+            return is3D;
+        };
+    }
+
     const toggleArrowsBtn = document.getElementById('toggleArrowsBtn');
     if (toggleArrowsBtn) {
         toggleArrowsBtn.setAttribute('aria-pressed', corridorArrowsVisible ? 'true' : 'false');
@@ -347,7 +367,7 @@ function initializeModules() {
     const distributionEditor = document.createElement('textarea');
     distributionEditor.id = 'distributionEditor';
     distributionEditor.style.display = 'none';
-    distributionEditor.value = JSON.stringify({ '0-1': 0.10, '1-3': 0.25, '3-5': 0.30, '5-10': 0.35 }, null, 2);
+    distributionEditor.value = JSON.stringify(DEFAULT_DISTRIBUTION, null, 2);
     document.body.appendChild(distributionEditor);
 
     // Initialize total display
@@ -825,7 +845,7 @@ async function handleFileUpload(e) {
 function updateStats() {
     if (currentFloorPlan) {
         document.getElementById('roomCount').textContent = currentFloorPlan.rooms?.length || 0;
-        document.getElementById('totalArea').textContent = `${currentFloorPlan.totalArea || 0} m²`;
+        document.getElementById('totalArea').textContent = `${currentFloorPlan.totalArea ? currentFloorPlan.totalArea.toFixed(2) : 0} m²`;
     }
     document.getElementById('ilotCount').textContent = generatedIlots.length;
     const ilotsList = document.getElementById('ilotsList');

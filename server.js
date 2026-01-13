@@ -147,7 +147,7 @@ function buildProductionCorridorNetwork(floorPlanData, generationOptions = {}) {
                 reason: 'no-ilots-available'
             },
             metadata: {
-                engine: 'production-js',
+                engine: 'js-production-engine',
                 timestamp: new Date().toISOString()
             }
         };
@@ -178,165 +178,61 @@ function buildProductionCorridorNetwork(floorPlanData, generationOptions = {}) {
     });
 
     const arrows = generationOptions.generate_arrows !== false
-        ? arrowGenerator.generateArrows(corridors, normalizedFloorPlan.entrances, ilots)
-        : [];
 
-    const totalArea = corridors.reduce((sum, corridor) => sum + (Number(corridor.area) || 0), 0);
-    const totalLength = corridors.reduce((sum, corridor) => sum + (Number(corridor.length) || 0), 0);
+    // In-memory CAD cache keyed by URN for request-scoped analysis
+    const cadCache = new Map();
 
-    return {
-        corridors,
-        arrows,
-        statistics: {
-            corridorCount: corridors.length,
-            arrowCount: arrows.length,
-            corridorWidth,
-            totalCorridorArea: Number.isFinite(totalArea) ? parseFloat(totalArea.toFixed(2)) : totalArea,
-            totalCorridorLength: Number.isFinite(totalLength) ? parseFloat(totalLength.toFixed(2)) : totalLength,
-            fallback: true,
-            arrowsGenerated: arrows.length > 0
-        },
-        metadata: {
-            engine: 'js-advanced-arrows',
-            sourceIlotCount: ilots.length,
-            timestamp: new Date().toISOString()
+    // Load environment variables
+    require('dotenv').config();
+
+    const APS_BASE_URL = process.env.APS_BASE_URL || 'https://developer.api.autodesk.com';
+    const APS_CLIENT_ID = process.env.APS_CLIENT_ID || '';
+    const APS_CLIENT_SECRET = process.env.APS_CLIENT_SECRET || '';
+    let cachedApsToken = null;
+    let tokenExpiry = 0;
+
+    // Production readiness checks
+    function checkProductionRequirements() {
+        const env = process.env.NODE_ENV || 'development';
+        if (env === 'production') {
+            const required = [];
+            const missing = [];
+            if (missing.length) {
+                console.error('Missing required environment variables for production:', missing.join(', '));
+                console.error('Set them in your environment or use Docker Compose with appropriate env vars.');
+                process.exit(1);
+            }
+        } else {
+            // In non-production warn when critical secrets are missing
+            if (!process.env.APS_CLIENT_ID || !process.env.APS_CLIENT_SECRET) console.warn('APS_CLIENT_ID/APS_CLIENT_SECRET not set; APS operations will fail.');
         }
-    };
-}
-let mlBootstrapPromise = null;
-let mlBootstrapFinished = false;
-const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 10000;
-
-// In-memory CAD cache keyed by URN for request-scoped analysis
-const cadCache = new Map();
-
-// Load environment variables
-require('dotenv').config();
-
-const APS_BASE_URL = process.env.APS_BASE_URL || 'https://developer.api.autodesk.com';
-const APS_CLIENT_ID = process.env.APS_CLIENT_ID || '';
-const APS_CLIENT_SECRET = process.env.APS_CLIENT_SECRET || '';
-let cachedApsToken = null;
-let tokenExpiry = 0;
-
-// Production readiness checks
-function checkProductionRequirements() {
-    const env = process.env.NODE_ENV || 'development';
-    if (env === 'production') {
-        const required = [];
-        const missing = [];
-        if (missing.length) {
-            console.error('Missing required environment variables for production:', missing.join(', '));
-            console.error('Set them in your environment or use Docker Compose with appropriate env vars.');
-            process.exit(1);
-        }
-    } else {
-        // In non-production warn when critical secrets are missing
-        if (!process.env.APS_CLIENT_ID || !process.env.APS_CLIENT_SECRET) console.warn('APS_CLIENT_ID/APS_CLIENT_SECRET not set; APS operations will fail.');
     }
-}
 
-// Ensure necessary directories exist
-function ensureDirectories() {
-    const exportsDir = path.join(__dirname, 'exports');
-    if (!fs.existsSync(exportsDir)) fs.mkdirSync(exportsDir, { recursive: true });
-}
+    // Ensure necessary directories exist
+    function ensureDirectories() {
+        const exportsDir = path.join(__dirname, 'exports');
+        if (!fs.existsSync(exportsDir)) fs.mkdirSync(exportsDir, { recursive: true });
+    }
 
-function runPythonCorridorGenerator(floorPlanData, generationOptions) {
-    return new Promise((resolve, reject) => {
-        let settled = false;
-        const useFallback = (reason) => {
-            if (settled) return;
-            settled = true;
-            if (reason) {
-                console.log('[Corridor Generator] Using JavaScript engine:', reason);
-            }
-            try {
-                const jsNetwork = buildProductionCorridorNetwork(floorPlanData, generationOptions);
-                resolve(jsNetwork);
-            } catch (jsError) {
-                reject(jsError);
-            }
-        };
+    // python event listeners removed
 
-        try {
-            if (!fs.existsSync(PYTHON_GENERATOR_PATH) || !PYTHON_EXECUTION_SPEC) {
-                return useFallback('Python not available, using JavaScript engine');
-            }
-
-            const pythonArgs = [...PYTHON_EXECUTION_SPEC.args, PYTHON_GENERATOR_PATH];
-            const python = spawn(PYTHON_EXECUTION_SPEC.command, pythonArgs, {
-                cwd: path.dirname(PYTHON_GENERATOR_PATH)
-            });
-
-            let stdout = '';
-            let stderr = '';
-
-            python.stdout.on('data', (data) => {
-                stdout += data.toString();
-            });
-
-            python.stderr.on('data', (data) => {
-                stderr += data.toString();
-            });
-
-            python.on('error', (err) => {
-                useFallback(`Failed to start Python generator: ${err.message}`);
-            });
-
-            python.on('close', (code) => {
-                if (settled) return;
-                if (code !== 0) {
-                    return useFallback(stderr || `Python generator exited with code ${code}`);
-                }
-
-                try {
-                    const parsed = JSON.parse(stdout || '{}');
-                    if (parsed && parsed.error) {
-                        const message = typeof parsed.error === 'string' ? parsed.error : JSON.stringify(parsed.error);
-                        return useFallback(message);
-                    }
-                    if (parsed && parsed.metadata && parsed.metadata.error) {
-                        const message = typeof parsed.metadata.error === 'string'
-                            ? parsed.metadata.error
-                            : JSON.stringify(parsed.metadata.error);
-                        return useFallback(message);
-                    }
-                    if (stderr && stderr.trim().length) {
-                        console.warn('[Python Corridor Generator]', stderr.trim());
-                    }
-                    settled = true;
-                    resolve(parsed);
-                } catch (parseError) {
-                    useFallback(`Failed to parse Python generator output: ${parseError.message}`);
-                }
-            });
-
-            // Handle stdin errors (EPIPE, etc.)
-            python.stdin.on('error', (err) => {
-                if (!settled) {
-                    console.warn('[Python Corridor Generator] Stdin error:', err.message);
-                    // Don't fail immediately - the process might still produce output
-                }
-            });
-
-            const payload = JSON.stringify({
-                floor_plan: floorPlanData,
-                options: generationOptions
-            });
-
-            try {
-                python.stdin.write(payload);
-                python.stdin.end();
-            } catch (writeError) {
-                console.warn('[Python Corridor Generator] Write error:', writeError.message);
-                // Process might have already exited - wait for close event
-            }
-        } catch (error) {
-            useFallback(error.message || error);
-        }
+    const payload = JSON.stringify({
+        floor_plan: floorPlanData,
+        options: generationOptions
     });
+
+    try {
+        python.stdin.write(payload);
+        python.stdin.end();
+    } catch (writeError) {
+        console.warn('[Python Corridor Generator] Write error:', writeError.message);
+        // Process might have already exited - wait for close event
+    }
+} catch (error) {
+    useFallback(error.message || error);
 }
+        });
+    }
 
 checkProductionRequirements();
 ensureDirectories();
@@ -936,11 +832,11 @@ app.post('/api/import/mix', upload.single('file'), (req, res) => {
         const mix = UnitMixManager.parseMix(buffer, mime);
 
         // Clean up
-        try { fs.unlinkSync(req.file.path); } catch (e) {}
+        try { fs.unlinkSync(req.file.path); } catch (e) { }
 
         res.json({ success: true, mix });
     } catch (error) {
-        if (req.file && req.file.path) try { fs.unlinkSync(req.file.path); } catch (e) {}
+        if (req.file && req.file.path) try { fs.unlinkSync(req.file.path); } catch (e) { }
         console.error('Unit mix import error:', error);
         res.status(400).json({ success: false, error: error.message });
     }
@@ -1501,30 +1397,9 @@ app.post('/api/corridors', (req, res) => {
         let corridors = result.corridors.map(sanitizeCorridor).filter(Boolean);
         let totalArea = result.totalArea;
 
-        // Fallback: if facing-row generation yields no corridors, synthesize a simple access spine across the plan
-        if ((!corridors.length || !Number.isFinite(totalArea) || totalArea <= 0) && floorPlan?.bounds) {
-            const b = floorPlan.bounds;
-            const margin = options.margin || 0.5;
-            const widthSpan = Math.max((b.maxX || 0) - (b.minX || 0) - 2 * margin, corridorWidth);
-            const heightSpan = corridorWidth;
-            const fallback = {
-                id: 'corridor_fallback_1',
-                polygon: [
-                    [b.minX + margin, b.minY + margin],
-                    [b.minX + margin + widthSpan, b.minY + margin],
-                    [b.minX + margin + widthSpan, b.minY + margin + heightSpan],
-                    [b.minX + margin, b.minY + margin + heightSpan]
-                ],
-                width: widthSpan,
-                height: heightSpan,
-                area: widthSpan * heightSpan
-            };
-            const sanitizedFallback = sanitizeCorridor(fallback);
-            corridors = sanitizedFallback ? [sanitizedFallback] : corridors;
-            totalArea = sanitizedFallback?.area || widthSpan * heightSpan;
-            result.statistics = result.statistics || {};
-            result.statistics.vertical = result.statistics.vertical || 0;
-            result.statistics.horizontal = result.statistics.horizontal || 1;
+        // Fallback removed: strict production mode requires actual generation
+        if (!corridors.length && options.strictMode) {
+            console.warn('[Corridor API] No corridors generated.');
         }
 
         res.json({

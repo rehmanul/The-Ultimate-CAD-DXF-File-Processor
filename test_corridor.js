@@ -8,7 +8,11 @@ const mockIlots = [
   { x: 5, y: 5, width: 2, height: 3, id: 'ilot4' }
 ];
 
-const generator = new ProductionCorridorGenerator(null, mockIlots);
+const mockFloorPlan = {
+  bounds: { minX: 0, maxX: 100, minY: 0, maxY: 100 }
+};
+
+const generator = new ProductionCorridorGenerator(mockFloorPlan, mockIlots);
 const corridors = generator.generateCorridors();
 
 console.log('Generated corridors:');
