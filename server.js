@@ -1061,7 +1061,7 @@ function buildProductionCorridorNetwork(floorPlanData, generationOptions = {}) {
                     console.log(`Îlot generation: ${ilots.length} placed, total area: ${totalArea.toFixed(2)} m²`);
                     if (ilots.length > 0) console.log('First ilot sample:', JSON.stringify(ilots[0]));
 
-<<<<<<< HEAD
+
                     const validator = new ArchitecturalValidator({ ...normalizedFloorPlan, ilots });
                     const validationReport = validator.validate();
                     const corrector = new AnnotationAndCorrection({ ...normalizedFloorPlan, ilots }, validationReport.issues);
@@ -1079,33 +1079,7 @@ function buildProductionCorridorNetwork(floorPlanData, generationOptions = {}) {
                         suggestions: suggestions,
                         message: `Generated ${ilots.length} ilots with ${totalArea.toFixed(2)} m² total area`
                     });
-=======
-        const validator = new ArchitecturalValidator({ ...normalizedFloorPlan, ilots });
-        const validationReport = validator.validate();
-        const corrector = new AnnotationAndCorrection({ ...normalizedFloorPlan, ilots }, validationReport.issues);
-        const suggestions = corrector.generateSuggestions();
-        const complianceReport = ComplianceReport.buildComplianceReport({
-            floorPlan: normalizedFloorPlan,
-            ilots,
-            corridors: Array.isArray(global.lastGeneratedCorridors) ? global.lastGeneratedCorridors : [],
-            unitMixReport,
-            validation: validationReport
-        });
 
-        res.json({
-            success: true,
-            ilots: ilots,
-            totalArea: totalArea,
-            count: ilots.length,
-            distribution: normalizedDistribution,
-            options: generatorOptions,
-            unitMixReport: unitMixReport,
-            complianceReport: complianceReport,
-            validation: validationReport,
-            suggestions: suggestions,
-            message: `Generated ${ilots.length} ilots with ${totalArea.toFixed(2)} m² total area`
-        });
->>>>>>> 91ef4255e14c814d850de72a9275ce550eb908d7
 
                 } catch (error) {
                     console.error('Îlot generation error:', error);
