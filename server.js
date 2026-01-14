@@ -30,8 +30,9 @@ const ComplianceReport = require('./lib/complianceReport');
 const RuleManager = require('./lib/ruleManager');
 const { sanitizeIlot, sanitizeCorridor, sanitizeArrow } = require('./lib/sanitizers');
 const ML_BOOT_PREFIX = '[Production ML System]';
-let mlBootstrapFinished = false;
 let mlBootstrapPromise = null;
+let mlBootstrapFinished = false;
+
 
 // --- RESTORED INITIALIZATION ---
 const PUBLIC_DIR = path.join(__dirname, 'public');
@@ -2125,4 +2126,3 @@ function scheduleMLBootstrap(reason = 'server-start') {
         });
     }
 }
-
