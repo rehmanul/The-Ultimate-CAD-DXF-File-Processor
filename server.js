@@ -28,7 +28,10 @@ const UnitMixManager = require('./lib/unitMixManager');
 const UnitMixReport = require('./lib/unitMixReport');
 const ComplianceReport = require('./lib/complianceReport');
 const RuleManager = require('./lib/ruleManager');
+const { sanitizeIlot, sanitizeCorridor, sanitizeArrow } = require('./lib/sanitizers');
 const ML_BOOT_PREFIX = '[Production ML System]';
+let mlBootstrapFinished = false;
+let mlBootstrapPromise = null;
 
 // --- RESTORED INITIALIZATION ---
 const PUBLIC_DIR = path.join(__dirname, 'public');
