@@ -2044,7 +2044,6 @@ app.get('*', (req, res, next) => {
 
 // Bind address - default to 0.0.0.0 so cloud hosts (Render, Docker) can detect the port
 const BIND_ADDRESS = process.env.BIND_ADDRESS || '0.0.0.0';
-const PORT = process.env.PORT || 3000;
 
 async function startServer() {
     return new Promise((resolve, reject) => {
