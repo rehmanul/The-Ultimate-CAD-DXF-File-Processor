@@ -29,6 +29,8 @@ const UnitMixReport = require('./lib/unitMixReport');
 const ComplianceReport = require('./lib/complianceReport');
 const RuleManager = require('./lib/ruleManager');
 const ML_BOOT_PREFIX = '[Production ML System]';
+let mlBootstrapPromise = null;
+let mlBootstrapFinished = false;
 
 // --- RESTORED INITIALIZATION ---
 const PUBLIC_DIR = path.join(__dirname, 'public');
@@ -2122,4 +2124,3 @@ function scheduleMLBootstrap(reason = 'server-start') {
         });
     }
 }
-
