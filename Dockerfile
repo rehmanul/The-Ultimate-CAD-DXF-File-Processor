@@ -10,9 +10,8 @@ RUN apt-get update \
 COPY package.json package-lock.json* ./
 RUN npm ci
 
-FROM base AS production-deps
-COPY package.json package-lock.json* ./
-RUN npm ci --omit=dev
+FROM deps AS production-deps
+RUN npm prune --production
 
 FROM node:22-bullseye AS runner
 WORKDIR /usr/src/app
