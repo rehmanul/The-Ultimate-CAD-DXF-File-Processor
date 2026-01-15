@@ -146,7 +146,7 @@ describe('MLProcessor', () => {
       expect(features[0]).toBe(20); // area
       expect(features[1]).toBe(4/5); // aspect ratio (width/height)
       expect(features[2]).toBe(3); // adjacency count
-      expect(features[3]).toBe(5); // distance to entrance (default)
+      expect(features[3]).toBe(10); // distance to entrance (default when no entrances provided)
       expect(features[4]).toBe(18); // perimeter (2*(width+height))
     });
 
@@ -161,6 +161,53 @@ describe('MLProcessor', () => {
       expect(features[2]).toBe(0); // no adjacency
       expect(features[3]).toBe(10); // default distance
       expect(features[4]).toBe(20); // default perimeter
+    });
+
+    test('should calculate distance to entrance if entrances provided', () => {
+      const room = {
+        area: 20,
+        bounds: { minX: 0, minY: 0, maxX: 4, maxY: 5 },
+        center: { x: 5, y: 5 },
+        entrances: [{ center: { x: 5, y: 10 } }]
+      };
+
+      const features = mlProcessor.extractRoomFeatures(room);
+      expect(features[3]).toBe(5); // Distance from (5,5) to (5,10)
+    });
+  });
+
+  describe('calculateDistanceToEntrance', () => {
+    test('should calculate correct distance to nearest entrance', () => {
+      const center = { x: 5, y: 5 };
+      const entrances = [
+        { center: { x: 5, y: 10 } }, // distance 5
+        { center: { x: 0, y: 5 } }   // distance 5
+      ];
+
+      const distance = mlProcessor.calculateDistanceToEntrance(center, entrances);
+      expect(distance).toBe(5);
+    });
+
+    test('should handle entrance with start/end coordinates', () => {
+      const center = { x: 5, y: 5 };
+      const entrances = [
+        { start: { x: 0, y: 0 }, end: { x: 0, y: 10 } } // center at 0,5
+      ];
+
+      const distance = mlProcessor.calculateDistanceToEntrance(center, entrances);
+      // Distance from (5,5) to (0,5) is 5
+      expect(distance).toBe(5);
+    });
+
+    test('should return default distance if no entrances', () => {
+      const center = { x: 5, y: 5 };
+      const distance = mlProcessor.calculateDistanceToEntrance(center, []);
+      expect(distance).toBe(10);
+    });
+
+    test('should return default distance if center missing', () => {
+      const distance = mlProcessor.calculateDistanceToEntrance(null, []);
+      expect(distance).toBe(10);
     });
   });
 
