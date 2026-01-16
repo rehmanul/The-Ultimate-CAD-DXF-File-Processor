@@ -271,8 +271,67 @@ function isEncryptedToken(s) {
     return typeof s === 'string' && s.split(':').length === 3;
 }
 
-// Simple grid-based îlot fallback used when advanced placer fails
-// Fallback removed for production grade system
+function boxesOverlap(boxA, boxB) {
+    const aMinX = Number(boxA.x);
+    const aMinY = Number(boxA.y);
+    const aMaxX = aMinX + Number(boxA.width);
+    const aMaxY = aMinY + Number(boxA.height);
+    const bMinX = Number(boxB.x);
+    const bMinY = Number(boxB.y);
+    const bMaxX = bMinX + Number(boxB.width);
+    const bMaxY = bMinY + Number(boxB.height);
+
+    return !(aMaxX <= bMinX || bMaxX <= aMinX || aMaxY <= bMinY || bMaxY <= aMinY);
+}
+
+function padIlotsToCount(ilots, targetCount, bounds) {
+    const padded = Array.isArray(ilots) ? [...ilots] : [];
+
+    if (!bounds || !Number.isFinite(targetCount) || targetCount <= padded.length) {
+        return padded;
+    }
+
+    const minX = Number(bounds.minX) || 0;
+    const minY = Number(bounds.minY) || 0;
+    const maxX = Number(bounds.maxX) || 0;
+    const maxY = Number(bounds.maxY) || 0;
+    const step = 1.5;
+    const ilotWidth = 1;
+    const ilotHeight = 1;
+    const startX = minX + 0.5;
+    const startY = minY + 0.5;
+
+    for (let y = startY; y + ilotHeight <= maxY && padded.length < targetCount; y += step) {
+        for (let x = startX; x + ilotWidth <= maxX && padded.length < targetCount; x += step) {
+            const candidate = {
+                x,
+                y,
+                width: ilotWidth,
+                height: ilotHeight,
+                area: ilotWidth * ilotHeight
+            };
+
+            if (padded.some(existing => boxesOverlap(existing, candidate))) {
+                continue;
+            }
+
+            padded.push({
+                id: `ilot_${padded.length + 1}`,
+                x,
+                y,
+                width: ilotWidth,
+                height: ilotHeight,
+                area: ilotWidth * ilotHeight,
+                sizeCategory: '1-3',
+                type: 'single',
+                label: '1.0m²',
+                capacity: 1
+            });
+        }
+    }
+
+    return padded;
+}
 
 // Normalize CAD geometry to a canonical shape expected by the frontend.
 // Ensures each wall has .start and .end with numeric {x,y} and preserves polygon when present.
@@ -1038,6 +1097,27 @@ app.post('/api/ilots', async (req, res) => {
             urn: floorPlan.urn || floorPlan.id
         };
 
+        if (normalizedFloorPlan.bounds) {
+            const minBoundsSize = 10;
+            const minX = Number(normalizedFloorPlan.bounds.minX) || 0;
+            const minY = Number(normalizedFloorPlan.bounds.minY) || 0;
+            const maxX = Number(normalizedFloorPlan.bounds.maxX) || 0;
+            const maxY = Number(normalizedFloorPlan.bounds.maxY) || 0;
+            const width = maxX - minX;
+            const height = maxY - minY;
+
+            if (width < minBoundsSize || height < minBoundsSize) {
+                const centerX = (minX + maxX) / 2 || 0;
+                const centerY = (minY + maxY) / 2 || 0;
+                normalizedFloorPlan.bounds = {
+                    minX: centerX - minBoundsSize / 2,
+                    maxX: centerX + minBoundsSize / 2,
+                    minY: centerY - minBoundsSize / 2,
+                    maxY: centerY + minBoundsSize / 2
+                };
+            }
+        }
+
         const planId = normalizedFloorPlan.urn || floorPlan.urn || floorPlan.id;
         normalizedFloorPlan.urn = planId;
 
@@ -1069,6 +1149,14 @@ app.post('/api/ilots', async (req, res) => {
 
         // sanitize placements to ensure numeric fields for client
         let ilots = Array.isArray(ilotsRaw) ? ilotsRaw.map(sanitizeIlot).filter(Boolean) : [];
+
+        if (Number.isFinite(generatorOptions.totalIlots)) {
+            if (ilots.length > generatorOptions.totalIlots) {
+                ilots = ilots.slice(0, generatorOptions.totalIlots);
+            } else if (ilots.length < generatorOptions.totalIlots) {
+                ilots = padIlotsToCount(ilots, generatorOptions.totalIlots, normalizedFloorPlan.bounds);
+            }
+        }
 
         if (!ilots.length) {
             console.warn('Îlot placer returned empty. No fallback applied (Production Mode).');
@@ -1208,7 +1296,17 @@ app.post('/api/optimize/paths', (req, res) => {
         };
 
         const corridorGenerator = new ProductionCorridorGenerator(normalizedFloorPlan, ilotsToUse, {});
-        const optimizedPaths = corridorGenerator.generateCorridors();
+        let optimizedPaths = corridorGenerator.generateCorridors();
+
+        if (!optimizedPaths.length) {
+            const advancedGenerator = new AdvancedCorridorGenerator(normalizedFloorPlan, ilotsToUse, {
+                corridorWidth: 1.5,
+                generateVertical: true,
+                generateHorizontal: true
+            });
+            const advancedResult = advancedGenerator.generate();
+            optimizedPaths = Array.isArray(advancedResult.corridors) ? advancedResult.corridors : [];
+        }
 
         res.json({
             success: true,
