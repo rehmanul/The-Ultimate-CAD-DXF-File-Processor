@@ -1,0 +1,10 @@
+{
+  "layers": {
+    "ENVELOPE": {"color": 7, "linetype": "CONTINUOUS"},
+    "OBSTACLES": {"color": 1, "linetype": "CONTINUOUS"},
+    "FORBIDDEN": {"color": 1, "linetype": "DASHED"},
+    "EXITS": {"color": 3, "linetype": "CONTINUOUS"},
+    "BOXES": {"color": 3, "linetype": "CONTINUOUS"},
+    "CORRIDORS": {"color": 4, "linetype": "CONTINUOUS"}
+  }
+}

@@ -1,0 +1,11 @@
+ezdxf>=1.1.0
+shapely>=2.0.0
+rtree>=1.0.0
+scipy>=1.10.0
+numpy>=1.24.0
+pandas>=2.0.0
+openpyxl>=3.1.0
+PyQt6>=6.5.0
+svgwrite>=1.4.0
+reportlab>=4.0.0
+pytest>=7.4.0
