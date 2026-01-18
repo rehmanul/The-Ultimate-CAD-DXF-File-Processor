@@ -31,7 +31,7 @@
 
 <body>
     <!-- Top Navigation Bar -->
-    <nav class="top-nav">
+    <nav class="top-nav pinned">
         <div class="nav-brand">
             <i class="fas fa-cube"></i>
             <div class="brand-text">
@@ -41,6 +41,7 @@
         </div>
 
         <div class="nav-center">
+            <!-- Visual Controls -->
             <div class="nav-control-group">
                 <span class="group-label">Visual:</span>
                 <button class="nav-icon-btn" id="gridToggleBtn" title="Toggle Grid">
@@ -54,6 +55,7 @@
                 </button>
             </div>
 
+            <!-- View Controls -->
             <div class="nav-control-group">
                 <span class="group-label">View:</span>
                 <button class="nav-icon-btn" id="toggle3DBtn" title="3D View">
@@ -62,8 +64,12 @@
                 <button class="nav-icon-btn" id="resetCameraBtn" title="Reset Camera">
                     <i class="fas fa-crosshairs"></i>
                 </button>
+                <button class="nav-icon-btn" id="fitViewBtn" title="Fit to View">
+                    <i class="fas fa-expand-arrows-alt"></i>
+                </button>
             </div>
 
+            <!-- Measure Tools -->
             <div class="nav-control-group">
                 <span class="group-label">Measure:</span>
                 <button class="nav-icon-btn" id="measureBtn" title="Distance">
@@ -76,13 +82,32 @@
                     <i class="fas fa-drafting-compass"></i>
                 </button>
                 <button class="nav-icon-btn" id="clearMeasureBtn" title="Clear">
-                    <i class="fas fa-trash"></i>
+                    <i class="fas fa-eraser"></i>
+                </button>
+            </div>
+
+            <!-- Heat Map & Advanced -->
+            <div class="nav-control-group">
+                <span class="group-label">Analysis:</span>
+                <button class="nav-icon-btn" id="heatMapBtn" title="Density Heat Map">
+                    <i class="fas fa-fire"></i>
+                </button>
+                <button class="nav-icon-btn" id="keyboardShortcutsBtn" title="Keyboard Shortcuts">
+                    <i class="fas fa-keyboard"></i>
                 </button>
             </div>
         </div>
 
         <div class="nav-actions">
-            <button class="nav-pin-btn" id="navPinBtn" title="Pin/Unpin Navigation">
+            <!-- Quick Action Buttons -->
+            <button class="btn btn-success btn-sm" id="topGenerateIlotsBtn" title="Generate Storage Units">
+                <i class="fas fa-th"></i> Generate Ilots
+            </button>
+            <button class="btn btn-info btn-sm" id="topGenerateCorridorsBtn" title="Generate Circulation">
+                <i class="fas fa-project-diagram"></i> Corridors
+            </button>
+
+            <button class="nav-pin-btn active" id="navPinBtn" title="Pin/Unpin Navigation">
                 <i class="fas fa-thumbtack"></i>
             </button>
             <input type="file" id="fileInput" accept=".dxf,.dwg" style="display: none;">
@@ -99,6 +124,31 @@
             <button class="sidebar-toggle" id="leftSidebarToggle" title="Pin/Unpin Sidebar">
                 <i class="fas fa-thumbtack"></i>
             </button>
+
+            <!-- Unit Mix Import -->
+            <div class="sidebar-section">
+                <h3>
+                    <i class="fas fa-file-excel"></i> Unit Mix
+                    <i class="fas fa-chevron-down collapse-icon"></i>
+                </h3>
+
+                <div class="section-content">
+                    <div class="config-group">
+                        <label class="config-label">Import Configuration</label>
+                        <p class="config-help">Load Excel/CSV with target surfaces</p>
+
+                        <input type="file" id="unitMixFileInput" accept=".csv,.xlsx,.xls" style="display:none">
+                        <button class="btn btn-block btn-info btn-sm" id="importUnitMixBtn">
+                            <i class="fas fa-upload"></i> Import Unit Mix
+                        </button>
+
+                        <div id="unitMixPreview" style="display:none; margin-top: 10px;">
+                            <h4 style="font-size: 10px; margin-bottom: 5px;">Loaded Mix:</h4>
+                            <div id="unitMixSummary" style="font-size: 9px; color: #10b981;"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
 
             <!-- Distribution Configuration -->
             <div class="sidebar-section collapsed">
@@ -392,6 +442,50 @@
                             <span>Total Arrows</span>
                             <strong id="statsArrowCount">0</strong>
                         </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Variance Report (Unit Mix Conformity) -->
+            <div class="sidebar-section collapsed">
+                <h3>
+                    <i class="fas fa-chart-line"></i> Conformity
+                    <i class="fas fa-chevron-down collapse-icon"></i>
+                </h3>
+                <div class="section-content">
+                    <div id="varianceReport" style="font-size: 10px;">
+                        <div style="text-align: center; color: #9ca3af; padding: 20px;">
+                            Import unit mix + generate ilots to see variance
+                        </div>
+                    </div>
+                    <button class="btn btn-block btn-sm btn-info" id="refreshVarianceBtn"
+                        style="margin-top: 10px; display: none;">
+                        <i class="fas fa-sync"></i> Refresh Report
+                    </button>
+                </div>
+            </div>
+
+            <!-- Excel/CSV Exports -->
+            <div class="sidebar-section collapsed">
+                <h3>
+                    <i class="fas fa-file-excel"></i> Excel Exports
+                    <i class="fas fa-chevron-down collapse-icon"></i>
+                </h3>
+                <div class="section-content">
+                    <div style="display: flex; flex-direction: column; gap: 8px;">
+                        <button class="btn btn-success btn-sm btn-block" id="exportBoxListBtn">
+                            <i class="fas fa-list"></i> Box List
+                        </button>
+                        <button class="btn btn-success btn-sm btn-block" id="exportTypologyBtn">
+                            <i class="fas fa-chart-pie"></i> Typologie Summary
+                        </button>
+                        <button class="btn btn-success btn-sm btn-block" id="exportVarianceBtn">
+                            <i class="fas fa-chart-bar"></i> Variance Report
+                        </button>
+                        <hr style="margin: 5px 0; border-color: #e5e7eb;">
+                        <button class="btn btn-info btn-sm btn-block" id="exportAllReportsBtn">
+                            <i class="fas fa-download"></i> Download All Reports
+                        </button>
                     </div>
                 </div>
             </div>

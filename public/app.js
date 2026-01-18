@@ -103,6 +103,15 @@ function initializeModules() {
         }
     }
 
+    // Initialize Edit Tools
+    initializeEditTools();
+
+    // Initialize Unit Mix Import
+    initializeUnitMixImport();
+
+    // Initialize Excel Export Buttons
+    initializeExportButtons();
+
     // Phase 2: Distribution input event listeners
     document.querySelectorAll('.distribution-input').forEach(input => {
         input.addEventListener('input', () => {
@@ -758,20 +767,37 @@ async function handleFileUpload(e) {
         });
 
         const result = await response.json();
-        // Use CAD data directly from upload response
-        const analysisData = result.cadData;
+
+        if (result.success === false) {
+            throw new Error(result.error || 'Server processing failed');
+        }
+
+        // Handle different response structures
+        let analysisData;
+        if (result.cadData) {
+            analysisData = result.cadData;
+        } else if (result.walls || result.bounds) {
+            // Response is the data itself
+            analysisData = result;
+        } else if (result.data && result.data.cadData) {
+            // Nested data structure
+            analysisData = result.data.cadData;
+        } else {
+            console.error('Unexpected response structure:', result);
+            throw new Error('Invalid server response format');
+        }
 
         currentFloorPlan = {
-            urn: result.urn, // Store the URN for Autodesk Viewer
+            urn: result.urn || result.id || `local_${Date.now()}`,
             walls: analysisData.walls || [],
             forbiddenZones: analysisData.forbiddenZones || [],
             entrances: analysisData.entrances || [],
-            bounds: analysisData.bounds,
+            bounds: analysisData.bounds || { minX: 0, minY: 0, maxX: 100, maxY: 100 },
             totalArea: analysisData.totalArea || 0,
             rooms: analysisData.rooms || [],
             placementTransform: analysisData.placementTransform || null,
             sourceFile: file.name,
-            name: file.name ? file.name.replace(/\.[^.]+$/, '') : result.urn,
+            name: file.name ? file.name.replace(/\.[^.]+$/, '') : (result.urn || 'Untitled'),
             uploadedAt: new Date().toISOString()
         };
 
@@ -904,6 +930,11 @@ function renderCurrentState() {
         }
     }
     updateConnectorVisualization();
+
+    // Update variance display after rendering ilots
+    if (generatedIlots.length > 0) {
+        updateVarianceDisplay();
+    }
 }
 
 function getFilteredCorridors() {
@@ -923,17 +954,27 @@ function getFilteredCorridors() {
 function computeCorridorCounts(sourceCorridors) {
     const counts = {
         main: 0,
+        vertical: 0,
         connecting: 0,
-        access: 0,
-        vertical: 0
+        access: 0
     };
 
-    (sourceCorridors || []).forEach((corridor) => {
-        const type = (corridor?.type || '').toLowerCase();
-        if (type === 'main') counts.main += 1;
-        else if (type === 'connecting') counts.connecting += 1;
-        else if (type === 'access') counts.access += 1;
-        else if (type === 'vertical' || type === 'vertical_spine') counts.vertical += 1;
+    if (!Array.isArray(sourceCorridors) || sourceCorridors.length === 0) {
+        return counts;
+    }
+
+    sourceCorridors.forEach((c) => {
+        const type = (c?.type || '').toLowerCase();
+        if (type.includes('main') || type.includes('vertical') || type.includes('spine')) {
+            counts.main++;
+        } else if (type.includes('connecting')) {
+            counts.connecting++;
+        } else if (type.includes('access') || type.includes('entrance')) {
+            counts.access++;
+        } else {
+            // Default unclassified corridors to access
+            counts.access++;
+        }
     });
 
     return counts;
@@ -947,18 +988,28 @@ function updateCorridorStatsPanel() {
 
     if (!mainEl || !connectingEl || !accessEl || !arrowEl) return;
 
-    if (corridorStatistics) {
+    // Use corridorArrows to classify when corridorNetwork is empty
+    const sourceData = corridorNetwork.length > 0 ? corridorNetwork : corridorArrows;
+
+    if (corridorStatistics && corridorNetwork.length > 0) {
         mainEl.textContent = String((corridorStatistics.main_corridors ?? 0) + (corridorStatistics.vertical_corridors ?? 0));
         connectingEl.textContent = String(corridorStatistics.connecting_corridors ?? 0);
         accessEl.textContent = String(corridorStatistics.access_corridors ?? 0);
     } else {
-        const counts = computeCorridorCounts(corridorNetwork);
+        const counts = computeCorridorCounts(sourceData);
         mainEl.textContent = String(counts.main + counts.vertical);
         connectingEl.textContent = String(counts.connecting);
         accessEl.textContent = String(counts.access);
     }
 
     arrowEl.textContent = String(corridorArrows.length || 0);
+
+    // Update the main statistics card "Corridors" count
+    const totalCorridorCount = document.getElementById('corridorCount');
+    if (totalCorridorCount) {
+        const count = corridorNetwork.length > 0 ? corridorNetwork.length : (corridorArrows.length > 0 ? corridorArrows.length : 0);
+        totalCorridorCount.textContent = String(count);
+    }
 }
 
 function initializeMultiFloorControls() {
@@ -2635,4 +2686,698 @@ function hideLegend() {
     }
 }
 
+function initializeEditTools() {
+    const undoBtn = document.getElementById('undoBtn');
+    const redoBtn = document.getElementById('redoBtn');
+    const editBtn = document.getElementById('editModeBtn');
+    const snapBtn = document.getElementById('snapGridBtn');
 
+    if (undoBtn) {
+        undoBtn.addEventListener('click', () => {
+            if (undoManager && undoManager.canUndo()) {
+                undoManager.undo();
+                showNotification('Undo successful', 'info');
+            } else {
+                showNotification('Nothing to undo', 'warning');
+            }
+        });
+    }
+
+    if (redoBtn) {
+        redoBtn.addEventListener('click', () => {
+            if (undoManager && undoManager.canRedo()) {
+                undoManager.redo();
+                showNotification('Redo successful', 'info');
+            } else {
+                showNotification('Nothing to redo', 'warning');
+            }
+        });
+    }
+
+    if (editBtn) {
+        let editModeActive = false;
+        editBtn.addEventListener('click', () => {
+            if (editor) {
+                editModeActive = !editModeActive;
+                editor.enableEditMode(editModeActive);
+                editBtn.classList.toggle('active', editModeActive);
+                showNotification(editModeActive ? 'Edit mode enabled' : 'Edit mode disabled', 'info');
+            }
+        });
+    }
+
+    if (snapBtn) {
+        snapBtn.addEventListener('click', () => {
+            if (editor) {
+                editor.enableSnapping = !editor.enableSnapping;
+                snapBtn.classList.toggle('active', editor.enableSnapping);
+                showNotification(editor.enableSnapping ? 'Snap to grid enabled' : 'Snap to grid disabled', 'info');
+            }
+        });
+    }
+
+    // Delete key listener
+    document.addEventListener('keydown', (e) => {
+        if ((e.key === 'Delete' || e.key === 'Backspace') && !e.target.matches('input, textarea')) {
+            if (renderer && renderer.selectedIlots && renderer.selectedIlots.length > 0) {
+                const selectedMesh = renderer.selectedIlots[0];
+                const selectedIlot = selectedMesh.userData.ilot;
+                const index = selectedMesh.userData.index;
+
+                if (selectedIlot && typeof index === 'number' && index >= 0 && index < generatedIlots.length) {
+                    // Remove from array
+                    generatedIlots.splice(index, 1);
+
+                    // Re-render
+                    renderer.renderIlots(generatedIlots);
+                    updateStats();
+
+                    showNotification('Ilot deleted', 'success');
+                    e.preventDefault();
+                }
+            }
+        }
+    });
+}
+
+// ===== UNIT MIX IMPORT SYSTEM =====
+let activeUnitMix = null;
+
+function initializeUnitMixImport() {
+    const importBtn = document.getElementById('importUnitMixBtn');
+    const fileInput = document.getElementById('unitMixFileInput');
+    const preview = document.getElementById('unitMixPreview');
+    const summary = document.getElementById('unitMixSummary');
+
+    if (!importBtn || !fileInput) return;
+
+    importBtn.addEventListener('click', () => {
+        fileInput.click();
+    });
+
+    fileInput.addEventListener('change', async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        try {
+            const unitMix = await parseUnitMixFile(file);
+            activeUnitMix = unitMix;
+
+            // Display preview
+            const totalArea = unitMix.totals.targetArea.toFixed(1);
+            const typeCount = unitMix.typologies.length;
+            const typesList = unitMix.typologies.map(t => t.name).join(', ');
+
+            summary.innerHTML = `
+                <div style="margin-bottom: 5px;"><strong>${typeCount} typologies</strong>: ${typesList}</div>
+                <div>Total target: <strong>${totalArea} m²</strong></div>
+                <div style="margin-top: 5px; padding: 5px; background: rgba(16, 185, 129, 0.1); border-radius: 4px;">
+                    ✓ Unit mix loaded successfully
+                </div>
+            `;
+            preview.style.display = 'block';
+
+            showNotification(`Unit mix loaded: ${typeCount} typologies, ${totalArea} m² target`, 'success');
+
+            // Update distribution inputs to match unit mix
+            updateDistributionFromUnitMix(unitMix);
+
+        } catch (error) {
+            console.error('Unit mix import error:', error);
+            showNotification(`Import failed: ${error.message}`, 'error');
+            preview.style.display = 'none';
+        }
+
+        fileInput.value = ''; // Reset input
+    });
+}
+
+async function parseUnitMixFile(file) {
+    const ext = file.name.split('.').pop().toLowerCase();
+
+    if (ext === 'csv') {
+        return parseCSVUnitMix(file);
+    } else if (ext === 'xlsx' || ext === 'xls') {
+        return parseExcelUnitMix(file);
+    } else {
+        throw new Error('Unsupported file format. Use .csv, .xlsx, or .xls');
+    }
+}
+
+async function parseCSVUnitMix(file) {
+    const text = await file.text();
+    const lines = text.trim().split(/\r?\n/);
+
+    if (lines.length < 2) {
+        throw new Error('CSV must contain header and at least one row');
+    }
+
+    const header = lines[0].split(',').map(h => h.trim().toLowerCase());
+    const rows = lines.slice(1).map(line => {
+        const values = line.split(',').map(v => v.trim());
+        const row = {};
+        header.forEach((col, i) => {
+            row[col] = values[i] || '';
+        });
+        return row;
+    });
+
+    return validateAndNormalizeUnitMix(rows);
+}
+
+async function parseExcelUnitMix(file) {
+    // For browser-based Excel parsing, we'd need to use a library like SheetJS
+    // For now, provide clear error message
+    throw new Error('Excel import requires server-side processing. Please convert to CSV or use the desktop version.');
+}
+
+function validateAndNormalizeUnitMix(rows) {
+    const typologies = [];
+    let totalSurface = 0;
+
+    for (let i = 0; i < rows.length; i++) {
+        const row = rows[i];
+        const lineNum = i + 2;
+
+        if (!row.typologie && !row.typology) {
+            throw new Error(`Line ${lineNum}: Missing typologie column`);
+        }
+
+        const name = (row.typologie || row.typology || '').trim();
+        if (!name) continue;
+
+        // Parse surface
+        const surfaceStr = String(row.surface_cible || row.surface || row.target_area || '').replace(',', '.');
+        const surface = parseFloat(surfaceStr);
+        if (isNaN(surface) || surface <= 0) {
+            throw new Error(`Line ${lineNum}: Invalid surface "${surfaceStr}"`);
+        }
+
+        // Parse tolerance
+        let tolerance = 0;
+        const toleranceStr = String(row.tolerance || '10%').replace(',', '.');
+        if (toleranceStr.includes('%')) {
+            const pct = parseFloat(toleranceStr.replace('%', ''));
+            tolerance = !isNaN(pct) ? (surface * pct) / 100 : surface * 0.1;
+        } else {
+            tolerance = parseFloat(toleranceStr) || surface * 0.1;
+        }
+
+        // Parse priority
+        const priorite = String(row.priorite || row.priority || 'souhaitable').toLowerCase();
+        const isRequired = priorite.includes('oblig') || priorite.includes('required');
+
+        totalSurface += surface;
+
+        typologies.push({
+            name,
+            targetArea: surface,
+            tolerance,
+            minArea: Math.max(0, surface - tolerance),
+            maxArea: surface + tolerance,
+            priority: isRequired ? 'obligatoire' : 'souhaitable',
+            count: 0
+        });
+    }
+
+    if (typologies.length === 0) {
+        throw new Error('No valid typologies found');
+    }
+
+    return {
+        typologies,
+        totals: {
+            targetArea: totalSurface,
+            typeCount: typologies.length
+        },
+        metadata: {
+            parsedAt: new Date().toISOString(),
+            format: 'COSTO V1'
+        }
+    };
+}
+
+function updateDistributionFromUnitMix(unitMix) {
+    // Convert unit mix to distribution percentages
+    const total = unitMix.totals.targetArea;
+
+    // Clear existing distribution
+    document.querySelectorAll('.distribution-input').forEach(input => {
+        input.value = 0;
+    });
+
+    // Map typologies to distribution ranges (approximate)
+    // This is a simplified mapping - in production, would need more sophisticated logic
+    unitMix.typologies.forEach(typo => {
+        const pct = (typo.targetArea / total * 100).toFixed(0);
+        console.log(`Unit mix: ${typo.name} = ${pct}% (${typo.targetArea}m²)`);
+    });
+
+    showNotification('Unit mix loaded. Adjust distribution or generate ilots directly.', 'info');
+}
+
+function calculateUnitMixVariance() {
+    if (!activeUnitMix || !generatedIlots.length) {
+        return null;
+    }
+
+    const report = {
+        conformity: 0,
+        gaps: [],
+        extras: [],
+        details: []
+    };
+
+    // Group ilots by type
+    const ilotsByType = {};
+    generatedIlots.forEach(ilot => {
+        const type = ilot.type || 'unknown';
+        if (!ilotsByType[type]) ilotsByType[type] = [];
+        ilotsByType[type].push(ilot);
+    });
+
+    let totalConformity = 0;
+
+    activeUnitMix.typologies.forEach(typo => {
+        const actual = ilotsByType[typo.name] || [];
+        const actualArea = actual.reduce((sum, ilot) => sum + (ilot.area || ilot.width * ilot.height), 0);
+        const deviation = actualArea - typo.targetArea;
+        const isWithinTolerance = Math.abs(deviation) <= typo.tolerance;
+        const conformityPct = isWithinTolerance ? 100 : Math.max(0, 100 - (Math.abs(deviation) / typo.targetArea) * 100);
+
+        totalConformity += conformityPct;
+
+        report.details.push({
+            typologie: typo.name,
+            target: typo.targetArea,
+            actual: actualArea,
+            deviation,
+            conformity: conformityPct,
+            withinTolerance: isWithinTolerance,
+            count: actual.length
+        });
+
+        if (deviation < -typo.tolerance) {
+            report.gaps.push({
+                typologie: typo.name,
+                missing: Math.abs(deviation + typo.tolerance)
+            });
+        } else if (deviation > typo.tolerance) {
+            report.extras.push({
+                typologie: typo.name,
+                excess: deviation - typo.tolerance
+            });
+        }
+    });
+
+    report.conformity = totalConformity / activeUnitMix.typologies.length;
+    return report;
+}
+
+// ===== EXCEL EXPORT AND VARIANCE REPORTING =====
+import { ExcelExporter } from './excelExporter.js';
+
+function initializeExportButtons() {
+    const exportBoxListBtn = document.getElementById('exportBoxListBtn');
+    const exportTypologyBtn = document.getElementById('exportTypologyBtn');
+    const exportVarianceBtn = document.getElementById('exportVarianceBtn');
+    const exportAllBtn = document.getElementById('exportAllReportsBtn');
+    const refreshVarianceBtn = document.getElementById('refreshVarianceBtn');
+
+    if (exportBoxListBtn) {
+        exportBoxListBtn.addEventListener('click', () => {
+            if (!generatedIlots.length) {
+                showNotification('No ilots to export', 'warning');
+                return;
+            }
+            ExcelExporter.downloadCSV(
+                ExcelExporter.exportBoxList(generatedIlots, activeUnitMix),
+                'box-list.csv'
+            );
+            showNotification('Box list exported', 'success');
+        });
+    }
+
+    if (exportTypologyBtn) {
+        exportTypologyBtn.addEventListener('click', () => {
+            if (!generatedIlots.length) {
+                showNotification('No ilots to export', 'warning');
+                return;
+            }
+            ExcelExporter.downloadCSV(
+                ExcelExporter.exportTypologySummary(generatedIlots, activeUnitMix),
+                'typologie-summary.csv'
+            );
+            showNotification('Typologie summary exported', 'success');
+        });
+    }
+
+    if (exportVarianceBtn) {
+        exportVarianceBtn.addEventListener('click', () => {
+            if (!activeUnitMix) {
+                showNotification('Import unit mix first', 'warning');
+                return;
+            }
+            if (!generatedIlots.length) {
+                showNotification('Generate ilots first', 'warning');
+                return;
+            }
+            ExcelExporter.downloadCSV(
+                ExcelExporter.exportVarianceReport(generatedIlots, activeUnitMix),
+                'variance-report.csv'
+            );
+            showNotification('Variance report exported', 'success');
+        });
+    }
+
+    if (exportAllBtn) {
+        exportAllBtn.addEventListener('click', () => {
+            if (!generatedIlots.length) {
+                showNotification('Generate ilots first', 'warning');
+                return;
+            }
+            ExcelExporter.downloadAllReports(generatedIlots, activeUnitMix);
+            showNotification('All reports exported!', 'success');
+        });
+    }
+
+    if (refreshVarianceBtn) {
+        refreshVarianceBtn.addEventListener('click', () => {
+            updateVarianceDisplay();
+        });
+    }
+}
+
+function updateVarianceDisplay() {
+    const varianceReport = document.getElementById('varianceReport');
+    const refreshBtn = document.getElementById('refreshVarianceBtn');
+
+    if (!activeUnitMix || !generatedIlots.length) {
+        varianceReport.innerHTML = `
+            <div style="text-align: center; color: #9ca3af; padding: 20px;">
+                Import unit mix + generate ilots to see variance
+            </div>
+        `;
+        refreshBtn.style.display = 'none';
+        return;
+    }
+
+    const variance = calculateUnitMixVariance();
+
+    let html = `
+        <div style="background: ${variance.conformity >= 80 ? '#d1fae5' : '#fee2e2'}; padding: 10px; border-radius: 6px; margin-bottom: 10px;">
+            <div style="font-size: 12px; font-weight: 700; color: ${variance.conformity >= 80 ? '#065f46' : '#991b1b'};">
+                Overall Conformity
+            </div>
+            <div style="font-size: 20px; font-weight: 800; color: ${variance.conformity >= 80 ? '#065f46' : '#991b1b'};">
+                ${variance.conformity.toFixed(1)}%
+            </div>
+        </div>
+        <div style="max-height: 300px; overflow-y: auto;">
+    `;
+
+    variance.details.forEach(detail => {
+        const statusColor = detail.withinTolerance ? '#10b981' : '#ef4444';
+        const statusIcon = detail.withinTolerance ? '✓' : '⚠';
+
+        html += `
+            <div style="padding: 8px; margin-bottom: 6px; background: #f9fafb; border-left: 3px solid ${statusColor}; border-radius: 4px;">
+                <div style="font-weight: 600; margin-bottom: 3px;">${statusIcon} ${detail.typologie}</div>
+                <div style="color: #6b7280; font-size: 9px;">
+                    Target: ${detail.target.toFixed(1)} m² | Actual: ${detail.actual.toFixed(1)} m²
+                </div>
+                <div style="color: ${detail.deviation >= 0 ? '#ef4444' : '#3b82f6'}; font-size: 9px; font-weight: 600;">
+                    ${detail.deviation >= 0 ? '+' : ''}${detail.deviation.toFixed(1)} m² (${detail.conformity.toFixed(0)}%)
+                </div>
+            </div>
+        `;
+    });
+
+    html += '</div>';
+    varianceReport.innerHTML = html;
+    refreshBtn.style.display = 'block';
+}
+
+// Hook up top bar Generate buttons to trigger sidebar button clicks
+const topGenerateIlotsBtn = document.getElementById('topGenerateIlotsBtn');
+const topGenerateCorridorsBtn = document.getElementById('topGenerateCorridorsBtn');
+
+if (topGenerateIlotsBtn) {
+    topGenerateIlotsBtn.addEventListener('click', () => {
+        const sidebarBtn = document.querySelector('#generateIlotsBtn, button[onclick*="generateIlots"]');
+        if (sidebarBtn) {
+            sidebarBtn.click();
+        } else {
+            // Fallback: trigger generation directly if available
+            if (typeof window.generateIlots === 'function') {
+                window.generateIlots();
+            }
+        }
+    });
+}
+
+if (topGenerateCorridorsBtn) {
+    topGenerateCorridorsBtn.addEventListener('click', () => {
+        const sidebarBtn = document.querySelector('#generateCorridorsBtn, button[onclick*="generateCorridors"]');
+        if (sidebarBtn) {
+            sidebarBtn.click();
+        } else {
+            // Fallback: trigger generation directly if available
+            if (typeof window.generateCorridors === 'function') {
+                window.generateCorridors();
+            }
+        }
+    });
+}
+
+// ============ ADVANCED FEATURES ============
+
+// Heat Map Visualization Toggle
+let heatMapEnabled = false;
+const heatMapBtn = document.getElementById('heatMapBtn');
+if (heatMapBtn) {
+    heatMapBtn.addEventListener('click', () => {
+        heatMapEnabled = !heatMapEnabled;
+        heatMapBtn.classList.toggle('active', heatMapEnabled);
+
+        if (renderer && renderer.ilotMeshes) {
+            renderer.ilotMeshes.forEach(mesh => {
+                if (heatMapEnabled) {
+                    // Color by density (size-based heat map)
+                    const ilot = mesh.userData.ilot;
+                    const area = ilot.width * ilot.height;
+                    const maxArea = 15; // Max expected area
+                    const ratio = Math.min(area / maxArea, 1);
+
+                    // Gradient from green (small) to yellow to red (large)
+                    const r = ratio < 0.5 ? ratio * 2 : 1;
+                    const g = ratio < 0.5 ? 1 : 1 - (ratio - 0.5) * 2;
+                    const b = 0.2;
+
+                    mesh.material.color.setRGB(r, g, b);
+                    mesh.material.opacity = 0.85;
+                } else {
+                    // Reset to default color
+                    mesh.material.color.setHex(0x22c55e);
+                    mesh.material.opacity = 0.75;
+                }
+            });
+            renderer.render();
+        }
+
+        showNotification(heatMapEnabled ? 'Heat Map: Showing density by size' : 'Heat Map disabled', 'info');
+    });
+}
+
+// Keyboard Shortcuts Modal
+const keyboardShortcutsBtn = document.getElementById('keyboardShortcutsBtn');
+if (keyboardShortcutsBtn) {
+    keyboardShortcutsBtn.addEventListener('click', () => {
+        // Create modal if doesn't exist
+        let modal = document.getElementById('shortcutsModal');
+        if (!modal) {
+            modal = document.createElement('div');
+            modal.id = 'shortcutsModal';
+            modal.style.cssText = `
+                position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+                background: white; padding: 30px; border-radius: 12px; z-index: 10000;
+                box-shadow: 0 25px 50px rgba(0,0,0,0.25); max-width: 500px; width: 90%;
+            `;
+            modal.innerHTML = `
+                <h2 style="margin: 0 0 20px; color: #1e293b; display: flex; justify-content: space-between; align-items: center;">
+                    <span><i class="fas fa-keyboard"></i> Keyboard Shortcuts</span>
+                    <button id="closeShortcutsModal" style="background: none; border: none; font-size: 24px; cursor: pointer;">&times;</button>
+                </h2>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+                    <div style="padding: 12px; background: #f8fafc; border-radius: 8px; border-left: 3px solid #6366f1;">
+                        <strong style="color: #6366f1;">G</strong> - Move mode
+                    </div>
+                    <div style="padding: 12px; background: #f8fafc; border-radius: 8px; border-left: 3px solid #6366f1;">
+                        <strong style="color: #6366f1;">S</strong> - Scale mode
+                    </div>
+                    <div style="padding: 12px; background: #f8fafc; border-radius: 8px; border-left: 3px solid #6366f1;">
+                        <strong style="color: #6366f1;">R</strong> - Rotate mode
+                    </div>
+                    <div style="padding: 12px; background: #f8fafc; border-radius: 8px; border-left: 3px solid #6366f1;">
+                        <strong style="color: #6366f1;">3</strong> - Toggle 3D view
+                    </div>
+                    <div style="padding: 12px; background: #f8fafc; border-radius: 8px; border-left: 3px solid #10b981;">
+                        <strong style="color: #10b981;">M</strong> - Measure distance
+                    </div>
+                    <div style="padding: 12px; background: #f8fafc; border-radius: 8px; border-left: 3px solid #10b981;">
+                        <strong style="color: #10b981;">A</strong> - Measure area
+                    </div>
+                    <div style="padding: 12px; background: #f8fafc; border-radius: 8px; border-left: 3px solid #10b981;">
+                        <strong style="color: #10b981;">N</strong> - Measure angle
+                    </div>
+                    <div style="padding: 12px; background: #f8fafc; border-radius: 8px; border-left: 3px solid #10b981;">
+                        <strong style="color: #10b981;">H</strong> - Reset view
+                    </div>
+                    <div style="padding: 12px; background: #f8fafc; border-radius: 8px; border-left: 3px solid #ef4444;">
+                        <strong style="color: #ef4444;">DEL</strong> - Delete selected
+                    </div>
+                    <div style="padding: 12px; background: #f8fafc; border-radius: 8px; border-left: 3px solid #ef4444;">
+                        <strong style="color: #ef4444;">ESC</strong> - Deselect
+                    </div>
+                    <div style="padding: 12px; background: #f8fafc; border-radius: 8px; border-left: 3px solid #f59e0b;">
+                        <strong style="color: #f59e0b;">Ctrl+Z</strong> - Undo
+                    </div>
+                    <div style="padding: 12px; background: #f8fafc; border-radius: 8px; border-left: 3px solid #f59e0b;">
+                        <strong style="color: #f59e0b;">Ctrl+Y</strong> - Redo
+                    </div>
+                    <div style="padding: 12px; background: #f8fafc; border-radius: 8px; border-left: 3px solid #3b82f6;">
+                        <strong style="color: #3b82f6;">Ctrl+D</strong> - Duplicate
+                    </div>
+                    <div style="padding: 12px; background: #f8fafc; border-radius: 8px; border-left: 3px solid #3b82f6;">
+                        <strong style="color: #3b82f6;">B</strong> - Toggle bloom
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(modal);
+
+            // Backdrop
+            const backdrop = document.createElement('div');
+            backdrop.id = 'shortcutsBackdrop';
+            backdrop.style.cssText = 'position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 9999;';
+            document.body.appendChild(backdrop);
+
+            // Close handlers
+            document.getElementById('closeShortcutsModal').addEventListener('click', closeModal);
+            backdrop.addEventListener('click', closeModal);
+        } else {
+            modal.style.display = 'block';
+            document.getElementById('shortcutsBackdrop').style.display = 'block';
+        }
+
+        function closeModal() {
+            document.getElementById('shortcutsModal').style.display = 'none';
+            document.getElementById('shortcutsBackdrop').style.display = 'none';
+        }
+    });
+}
+
+// Fit View Button
+const fitViewBtn = document.getElementById('fitViewBtn');
+if (fitViewBtn && renderer) {
+    fitViewBtn.addEventListener('click', () => {
+        if (renderer.fitToBounds) {
+            renderer.fitToBounds();
+            showNotification('View fitted to content', 'info');
+        }
+    });
+}
+
+// Reset Camera Button
+const resetCameraBtn = document.getElementById('resetCameraBtn');
+if (resetCameraBtn && renderer) {
+    resetCameraBtn.addEventListener('click', () => {
+        if (renderer.controls) {
+            renderer.controls.reset();
+            showNotification('Camera reset to default', 'info');
+        }
+    });
+}
+
+// Make top nav pinned by default
+document.addEventListener('DOMContentLoaded', () => {
+    const topNav = document.querySelector('.top-nav');
+    if (topNav) {
+        topNav.classList.add('pinned');
+    }
+});
+
+// ============ SHADOW & BLOOM CONTROLS ============
+let shadowsEnabled = true;
+let bloomEnabled = false;
+
+const toggleShadowsBtn = document.getElementById('toggleShadowsBtn');
+if (toggleShadowsBtn) {
+    toggleShadowsBtn.addEventListener('click', () => {
+        shadowsEnabled = !shadowsEnabled;
+        toggleShadowsBtn.classList.toggle('active', shadowsEnabled);
+        if (renderer && renderer.toggleShadows) {
+            renderer.toggleShadows(shadowsEnabled);
+            showNotification(shadowsEnabled ? 'Shadows enabled' : 'Shadows disabled', 'info');
+        }
+    });
+}
+
+const bloomBtnEl = document.getElementById('bloomBtn');
+if (bloomBtnEl) {
+    bloomBtnEl.addEventListener('click', () => {
+        bloomEnabled = !bloomEnabled;
+        bloomBtnEl.classList.toggle('active', bloomEnabled);
+        if (renderer && renderer.toggleBloom) {
+            renderer.toggleBloom(bloomEnabled);
+            showNotification(bloomEnabled ? 'Bloom effect enabled' : 'Bloom effect disabled', 'info');
+        }
+    });
+}
+
+// Grid Toggle
+let gridVisible = true;
+const gridToggleBtnEl = document.getElementById('gridToggleBtn');
+if (gridToggleBtnEl) {
+    gridToggleBtnEl.addEventListener('click', () => {
+        gridVisible = !gridVisible;
+        gridToggleBtnEl.classList.toggle('active', gridVisible);
+        if (renderer && renderer.gridHelper) {
+            renderer.gridHelper.visible = gridVisible;
+            renderer.render();
+        }
+        showNotification(gridVisible ? 'Grid visible' : 'Grid hidden', 'info');
+    });
+}
+
+// ============ ADVANCED KEYBOARD SHORTCUTS FOR CAD-STYLE EDITING ============
+document.addEventListener('keydown', (e) => {
+    if (!editor || !editor.transformControl) return;
+    
+    switch(e.key.toLowerCase()) {
+        case 'g':
+            editor.transformControl.setMode('translate');
+            showNotification('Move mode (G)', 'info');
+            break;
+        case 'r':
+            editor.transformControl.setMode('rotate');
+            showNotification('Rotate mode (R)', 'info');
+            break;
+        case 's':
+            if (!e.ctrlKey) {
+                editor.transformControl.setMode('scale');
+                showNotification('Scale mode (S)', 'info');
+            }
+            break;
+        case 'b':
+            bloomEnabled = !bloomEnabled;
+            if (bloomBtnEl) bloomBtnEl.classList.toggle('active', bloomEnabled);
+            if (renderer && renderer.toggleBloom) renderer.toggleBloom(bloomEnabled);
+            break;
+        case '3':
+            if (renderer && renderer.toggle3DMode) renderer.toggle3DMode();
+            break;
+        case 'h':
+            if (renderer && renderer.fitToBounds) renderer.fitToBounds();
+            break;
+    }
+});

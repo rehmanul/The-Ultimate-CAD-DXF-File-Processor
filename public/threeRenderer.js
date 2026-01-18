@@ -6,6 +6,7 @@ import { TransformControls } from 'three/addons/controls/TransformControls.js';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { OutlinePass } from 'three/addons/postprocessing/OutlinePass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { GLTFExporter } from 'three/addons/exporters/GLTFExporter.js';
 import { SVGRenderer } from 'three/addons/renderers/SVGRenderer.js';
 
@@ -36,9 +37,18 @@ export class FloorPlanRenderer {
         this.perspectiveCamera.position.set(0, -200, 150);
         this.perspectiveCamera.lookAt(0, 0, 0);
 
-        this.renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+        this.renderer = new THREE.WebGLRenderer({
+            antialias: true,
+            preserveDrawingBuffer: true,
+            alpha: false,
+            powerPreference: 'high-performance'
+        });
         this.renderer.setSize(container.clientWidth, container.clientHeight);
-        this.renderer.setPixelRatio(window.devicePixelRatio);
+        this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2)); // Limit for performance
+        this.renderer.shadowMap.enabled = true;
+        this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+        this.renderer.toneMappingExposure = 1.2;
         container.appendChild(this.renderer.domElement);
 
         this.controls = new OrbitControls(this.camera, this.renderer.domElement);
@@ -60,6 +70,19 @@ export class FloorPlanRenderer {
         this.outlinePass.edgeThickness = 2;
         this.outlinePass.visibleEdgeColor.set('#00ff00');
         this.composer.addPass(this.outlinePass);
+
+        // Bloom pass for glow effects (disabled by default)
+        this.bloomPass = new UnrealBloomPass(
+            new THREE.Vector2(container.clientWidth, container.clientHeight),
+            0.5,  // strength
+            0.4,  // radius
+            0.85  // threshold
+        );
+        this.bloomPass.enabled = false;
+        this.composer.addPass(this.bloomPass);
+
+        // Shadow settings
+        this.shadowsEnabled = true;
 
         this.wallsGroup = new THREE.Group();
         this.entrancesGroup = new THREE.Group();
@@ -109,16 +132,64 @@ export class FloorPlanRenderer {
             this.crossFloorPathsGroup
         );
 
-        const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
-        const directionalLight = new THREE.DirectionalLight(0xffffff, 0.4);
-        directionalLight.position.set(50, 50, 100);
-        this.scene.add(ambientLight, directionalLight);
+        // Advanced lighting setup
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.3);
+        const hemiLight = new THREE.HemisphereLight(0xffffff, 0x888888, 0.5);
+        hemiLight.position.set(0, 0, 50);
+
+        // Key light (main directional)
+        const keyLight = new THREE.DirectionalLight(0xffffff, 1.0);
+        keyLight.position.set(50, -50, 100);
+        keyLight.castShadow = true;
+        keyLight.shadow.mapSize.width = 2048;
+        keyLight.shadow.mapSize.height = 2048;
+        keyLight.shadow.camera.near = 0.5;
+        keyLight.shadow.camera.far = 500;
+        keyLight.shadow.camera.left = -100;
+        keyLight.shadow.camera.right = 100;
+        keyLight.shadow.camera.top = 100;
+        keyLight.shadow.camera.bottom = -100;
+        keyLight.shadow.bias = -0.0001;
+
+        // Fill light (softer, from opposite side)
+        const fillLight = new THREE.DirectionalLight(0xffffff, 0.4);
+        fillLight.position.set(-30, 30, 80);
+
+        // Rim light (for depth)
+        const rimLight = new THREE.DirectionalLight(0xffffff, 0.3);
+        rimLight.position.set(0, 100, -50);
+
+        // Fog for depth perception in 3D
+        this.scene.fog = new THREE.Fog(0xffffff, 50, 300);
+
+        this.scene.add(ambientLight, hemiLight, keyLight, fillLight, rimLight);
+
+        // Add ground plane with grid
+        this.createGroundPlane();
 
         this.renderer.domElement.addEventListener('click', (e) => this.onMouseClick(e));
         this.renderer.domElement.addEventListener('mousemove', (e) => this.onMouseMove(e));
         window.addEventListener('resize', () => this.onResize());
 
         this.render();
+    }
+
+    createGroundPlane() {
+        // Infinite grid helper for architectural feel
+        const gridHelper = new THREE.GridHelper(200, 40, 0xcccccc, 0xeeeeee);
+        gridHelper.position.z = -0.1; // Slightly below floor
+        gridHelper.visible = false; // Only show in 3D mode
+        this.gridHelper = gridHelper;
+        this.scene.add(gridHelper);
+
+        // Ground plane to receive shadows
+        const groundGeo = new THREE.PlaneGeometry(300, 300);
+        const groundMat = new THREE.ShadowMaterial({ opacity: 0.15 });
+        this.groundPlane = new THREE.Mesh(groundGeo, groundMat);
+        this.groundPlane.receiveShadow = true;
+        this.groundPlane.position.z = -0.2;
+        this.groundPlane.visible = false; // Only show in 3D mode
+        this.scene.add(this.groundPlane);
     }
 
     onResize() {
@@ -243,10 +314,29 @@ export class FloorPlanRenderer {
 
         const linePoints = points.map(p => new THREE.Vector3(p.x, p.y, 0));
         linePoints.push(linePoints[0]);
-        group.add(new THREE.Line(
-            new THREE.BufferGeometry().setFromPoints(linePoints),
-            new THREE.LineBasicMaterial({ color, linewidth: 2 })
-        ));
+
+        if (this.is3DMode) {
+            // Extrude walls in 3D
+            const shape = new THREE.Shape(points);
+            const extrudeSettings = { depth: 3.0, bevelEnabled: false }; // 3m wall height
+            const geometry = new THREE.ExtrudeGeometry(shape, extrudeSettings);
+            const material = new THREE.MeshStandardMaterial({
+                color: 0xeeeeee, // White walls
+                roughness: 0.9,
+                metalness: 0.0,
+                side: THREE.DoubleSide
+            });
+            const mesh = new THREE.Mesh(geometry, material);
+            mesh.castShadow = true;
+            mesh.receiveShadow = true;
+            group.add(mesh);
+        } else {
+            // 2D Line
+            group.add(new THREE.Line(
+                new THREE.BufferGeometry().setFromPoints(linePoints),
+                new THREE.LineBasicMaterial({ color, linewidth: 2 })
+            ));
+        }
     }
 
     renderIlots(ilots) {
@@ -284,12 +374,14 @@ export class FloorPlanRenderer {
 
             let geometry, material;
             if (this.is3DMode) {
-                const extrudeSettings = { depth: 2.5, bevelEnabled: false };
+                const extrudeSettings = { depth: 2.8, bevelEnabled: true, bevelThickness: 0.1, bevelSize: 0.1, bevelSegments: 2 };
                 geometry = new THREE.ExtrudeGeometry(shape, extrudeSettings);
-                material = new THREE.MeshLambertMaterial({
+                material = new THREE.MeshStandardMaterial({
                     color: colorMap[ilot.type] || 0x10b981,
+                    metalness: 0.1,
+                    roughness: 0.4,
                     transparent: true,
-                    opacity: 0.85
+                    opacity: 0.95
                 });
             } else {
                 geometry = new THREE.ShapeGeometry(shape);
@@ -303,6 +395,10 @@ export class FloorPlanRenderer {
 
             const mesh = new THREE.Mesh(geometry, material);
             mesh.userData = { ilot, index, type: 'ilot' };
+
+            // Enable shadow casting for 3D mode
+            mesh.castShadow = true;
+            mesh.receiveShadow = true;
 
             // Position mesh from ilot data (source of truth)
             mesh.position.set(ilot.x, ilot.y, 0);
@@ -375,6 +471,17 @@ export class FloorPlanRenderer {
             // Draw center-line through corridor (walking path style)
             const centerLine = [];
 
+            // Use dashed lines for a "schematic" technical look
+            const lineMaterial = new THREE.LineDashedMaterial({
+                color: 0xec4899, // Pink/Magenta
+                linewidth: 2,
+                scale: 1,
+                dashSize: 0.5,
+                gapSize: 0.25
+            });
+
+
+
             if (corridor.type === 'horizontal' || corridor.width > corridor.height) {
                 // Horizontal corridor - draw horizontal line through center
                 const centerY = corridor.y + (corridor.height || this.corridorWidth || 1) / 2;
@@ -388,10 +495,22 @@ export class FloorPlanRenderer {
             }
 
             if (centerLine.length >= 2) {
-                this.corridorsGroup.add(new THREE.Line(
-                    new THREE.BufferGeometry().setFromPoints(centerLine),
-                    lineMaterial
-                ));
+                const geometry = new THREE.BufferGeometry().setFromPoints(centerLine);
+                const line = new THREE.Line(geometry, lineMaterial);
+                line.computeLineDistances(); // Essential for dashed lines
+                this.corridorsGroup.add(line);
+
+                // Add small nodes at start/end for schematic look
+                const nodeGeo = new THREE.CircleGeometry(0.15, 8);
+                const nodeMat = new THREE.MeshBasicMaterial({ color: 0xec4899 });
+
+                const startNode = new THREE.Mesh(nodeGeo, nodeMat);
+                startNode.position.copy(centerLine[0]);
+                this.corridorsGroup.add(startNode);
+
+                const endNode = new THREE.Mesh(nodeGeo, nodeMat);
+                endNode.position.copy(centerLine[centerLine.length - 1]);
+                this.corridorsGroup.add(endNode);
             }
         });
 
@@ -559,7 +678,8 @@ export class FloorPlanRenderer {
         }
 
         const aspect = this.container.clientWidth / this.container.clientHeight;
-        const frustumSize = Math.max(width / aspect, height) * 1.2;
+        // Increase padding factor from 1.2 to 1.6 for a "smaller" view (zoomed out)
+        const frustumSize = Math.max(width / aspect, height) * 1.6;
 
         this.camera.left = frustumSize * aspect / -2;
         this.camera.right = frustumSize * aspect / 2;
@@ -644,11 +764,25 @@ export class FloorPlanRenderer {
             this.outlinePass.renderCamera = this.perspectiveCamera;
             this.controls.enabled = false;
             this.perspectiveControls.enabled = true;
+
+            // Show ground grid and shadow plane in 3D
+            if (this.gridHelper) this.gridHelper.visible = true;
+            if (this.groundPlane) this.groundPlane.visible = true;
+
+            // Reduce fog visibility in 3D
+            if (this.scene.fog) this.scene.fog.far = 300;
         } else {
             this.renderPass.camera = this.camera;
             this.outlinePass.renderCamera = this.camera;
             this.controls.enabled = true;
             this.perspectiveControls.enabled = false;
+
+            // Hide ground elements in 2D
+            if (this.gridHelper) this.gridHelper.visible = false;
+            if (this.groundPlane) this.groundPlane.visible = false;
+
+            // Disable fog in 2D
+            if (this.scene.fog) this.scene.fog.far = 1000;
         }
 
         const currentIlots = this.ilotMeshes.map(m => m.userData.ilot).filter(Boolean);
@@ -1297,5 +1431,50 @@ export class FloorPlanRenderer {
         const sprite = new THREE.Sprite(spriteMaterial);
 
         return sprite;
+    }
+
+    // Toggle bloom effect
+    toggleBloom(enabled) {
+        if (this.bloomPass) {
+            this.bloomPass.enabled = enabled;
+            if (enabled) {
+                this.bloomPass.strength = 0.6;
+                this.bloomPass.radius = 0.5;
+                this.bloomPass.threshold = 0.7;
+            }
+            this.render();
+        }
+        return this.bloomPass?.enabled || false;
+    }
+
+    // Toggle shadows
+    toggleShadows(enabled) {
+        this.shadowsEnabled = enabled;
+        this.renderer.shadowMap.enabled = enabled;
+
+        // Update all ilot meshes
+        this.ilotMeshes.forEach(mesh => {
+            mesh.castShadow = enabled;
+            mesh.receiveShadow = enabled;
+        });
+
+        // Update the ground plane shadow receiving
+        if (this.groundPlane) {
+            this.groundPlane.receiveShadow = enabled;
+        }
+
+        this.renderer.shadowMap.needsUpdate = true;
+        this.render();
+        return enabled;
+    }
+
+    // Set bloom intensity
+    setBloomIntensity(strength = 0.5, radius = 0.4, threshold = 0.85) {
+        if (this.bloomPass) {
+            this.bloomPass.strength = strength;
+            this.bloomPass.radius = radius;
+            this.bloomPass.threshold = threshold;
+            this.render();
+        }
     }
 }

@@ -1,0 +1,5 @@
+typologie,surface_cible,tolerance,priorite
+S (<2m²),50,10%,obligatoire
+M (2-3m²),80,5,obligatoire
+L (3-5m²),120,15%,souhaitable
+XL (5-10m²),100,20,souhaitable
