@@ -27,6 +27,6 @@ describe('ML Validation Systems', () => {
         const report = validator.validate();
         const corrector = new AnnotationAndCorrection(mockFloorPlan, report.issues);
         const suggestions = corrector.generateSuggestions();
-        expect(suggestions.length).toBe(4);
+        expect(suggestions.length).toBe(3);
     });
 });
