@@ -1153,8 +1153,6 @@ app.post('/api/ilots', async (req, res) => {
         if (Number.isFinite(generatorOptions.totalIlots)) {
             if (ilots.length > generatorOptions.totalIlots) {
                 ilots = ilots.slice(0, generatorOptions.totalIlots);
-            } else if (ilots.length < generatorOptions.totalIlots) {
-                ilots = padIlotsToCount(ilots, generatorOptions.totalIlots, normalizedFloorPlan.bounds);
             }
         }
 
