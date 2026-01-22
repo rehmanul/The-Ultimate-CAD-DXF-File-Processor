@@ -1132,7 +1132,7 @@ app.post('/api/ilots', async (req, res) => {
             generatorOptions.seed = Math.abs(h) % 1000000000;
         }
 
-        generatorOptions.totalIlots = generatorOptions.totalIlots || 50;
+        generatorOptions.totalIlots = generatorOptions.totalIlots || 200;
         generatorOptions.corridorWidth = typeof generatorOptions.corridorWidth === 'number' ? generatorOptions.corridorWidth : 1.2;
         generatorOptions.margin = typeof generatorOptions.margin === 'number' ? generatorOptions.margin : (generatorOptions.minRowDistance || 1.0);
         generatorOptions.spacing = typeof generatorOptions.spacing === 'number' ? generatorOptions.spacing : 0.3;
