@@ -769,7 +769,7 @@ app.post('/api/import/mix', upload.single('file'), (req, res) => {
     try {
         if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
 
-        const mix = UnitMixParser.parseFile(req.file.path);
+        const mix = UnitMixParser.parseFile(req.file.path, req.file.originalname);
 
         // Clean up
         try { fs.unlinkSync(req.file.path); } catch (e) { }
@@ -1027,10 +1027,68 @@ app.post('/api/ilots', async (req, res) => {
         generatorOptions.corridorWidth = typeof generatorOptions.corridorWidth === 'number' ? generatorOptions.corridorWidth : 1.2;
         generatorOptions.margin = typeof generatorOptions.margin === 'number' ? generatorOptions.margin : (generatorOptions.minRowDistance || 1.0);
         generatorOptions.spacing = typeof generatorOptions.spacing === 'number' ? generatorOptions.spacing : 0.3;
+        generatorOptions.allowPartial = true;
 
-        const ilotPlacer = new RowBasedIlotPlacer(normalizedFloorPlan, generatorOptions);
-        const ilotsRaw = await ilotPlacer.generateIlots(normalizedDistribution, generatorOptions.totalIlots, unitMix);
-        const placementSummary = ilotPlacer.stats || null;
+        const buildEnvelopeRoom = (bounds) => {
+            const minX = Number(bounds.minX);
+            const minY = Number(bounds.minY);
+            const maxX = Number(bounds.maxX);
+            const maxY = Number(bounds.maxY);
+            return {
+                id: 'envelope_room',
+                name: 'Envelope',
+                type: 'hall',
+                bounds: { minX, minY, maxX, maxY },
+                polygon: [
+                    [minX, minY],
+                    [maxX, minY],
+                    [maxX, maxY],
+                    [minX, maxY]
+                ],
+                area: Math.max(0, (maxX - minX) * (maxY - minY)),
+                center: { x: (minX + maxX) / 2, y: (minY + maxY) / 2 }
+            };
+        };
+
+        let ilotsRaw = null;
+        let placementSummary = null;
+
+        try {
+            const ilotPlacer = new RowBasedIlotPlacer(normalizedFloorPlan, generatorOptions);
+            ilotsRaw = await ilotPlacer.generateIlots(normalizedDistribution, generatorOptions.totalIlots, unitMix);
+            placementSummary = ilotPlacer.stats || null;
+        } catch (error) {
+            const msg = (error && error.message) ? error.message : String(error);
+            const shouldFallback =
+                msg.includes('No placements available within detected rooms') ||
+                msg.includes('No rooms detected');
+
+            if (!shouldFallback) throw error;
+
+            console.warn('[Ilots] Primary placement failed, retrying with envelope fallback:', msg);
+
+            const fallbackFloorPlan = {
+                ...normalizedFloorPlan,
+                rooms: [buildEnvelopeRoom(normalizedFloorPlan.bounds)]
+            };
+
+            const fallbackOptions = {
+                ...generatorOptions,
+                // Relax constraints for envelope fallback
+                wallClearance: typeof generatorOptions.wallClearance === 'number' ? Math.min(0.2, generatorOptions.wallClearance) : 0.2,
+                margin: typeof generatorOptions.margin === 'number' ? Math.min(0.8, generatorOptions.margin) : 0.8,
+                spacing: typeof generatorOptions.spacing === 'number' ? Math.min(0.3, generatorOptions.spacing) : 0.3,
+                corridorWidth: typeof generatorOptions.corridorWidth === 'number' ? Math.max(1.0, generatorOptions.corridorWidth) : 1.0,
+                allowPartial: true
+            };
+
+            const ilotPlacer = new RowBasedIlotPlacer(fallbackFloorPlan, fallbackOptions);
+            ilotsRaw = await ilotPlacer.generateIlots(normalizedDistribution, fallbackOptions.totalIlots, unitMix);
+            placementSummary = ilotPlacer.stats || { fallback: true };
+
+            // persist fallback floor plan for downstream corridor generation consistency
+            normalizedFloorPlan.rooms = fallbackFloorPlan.rooms;
+        }
 
         // sanitize placements to ensure numeric fields for client
         let ilots = Array.isArray(ilotsRaw) ? ilotsRaw.map(sanitizeIlot).filter(Boolean) : [];
