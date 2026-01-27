@@ -633,6 +633,7 @@ app.use('/libs', express.static(path.join(PUBLIC_DIR, 'libs'), {
     }
 }));
 app.use('/exports', express.static(path.join(__dirname, 'exports')));
+app.use('/Samples', express.static(path.join(__dirname, 'Samples')));
 
 // Phase 2: Register preset management routes
 app.use('/api', presetRoutes);
@@ -973,8 +974,15 @@ app.post('/api/ilots', async (req, res) => {
         if (!floorPlan) {
             return res.status(400).json({ error: 'Floor plan data required' });
         }
-        if (!distribution) {
-            return res.status(400).json({ error: 'Distribution data required' });
+        let resolvedDistribution = distribution;
+        if (!resolvedDistribution || typeof resolvedDistribution !== 'object' || Object.keys(resolvedDistribution).length === 0) {
+            resolvedDistribution = {
+                '0-2': 25,
+                '2-5': 35,
+                '5-10': 30,
+                '10-20': 10
+            };
+            console.warn('[Ilots] Distribution missing; using default distribution.');
         }
         if (!floorPlan.bounds) {
             return res.status(400).json({ error: 'Floor plan bounds required' });
@@ -1006,7 +1014,7 @@ app.post('/api/ilots', async (req, res) => {
 
         let normalizedDistribution;
         try {
-            normalizedDistribution = normalizeDistribution(distribution);
+            normalizedDistribution = normalizeDistribution(resolvedDistribution);
         } catch (error) {
             return res.status(400).json({ error: error.message || 'Invalid distribution' });
         }
@@ -1102,19 +1110,36 @@ app.post('/api/ilots', async (req, res) => {
 
         // If placement is extremely sparse, switch to grid-cell extraction (fills coverage like COSTO reference)
         const minExpected = Math.max(20, Math.floor(generatorOptions.totalIlots * 0.35));
+        console.log(`[Ilots] Checking sparse: ilots=${ilots.length}, minExpected=${minExpected}, totalIlots=${generatorOptions.totalIlots}`);
         if (ilots.length < minExpected) {
             try {
+                console.log('[Ilots] Attempting grid extraction...');
+                const corridorWidth = Number.isFinite(generatorOptions.corridorWidth) ? generatorOptions.corridorWidth : 1.2;
                 const gridCells = extractGridCells(
                     normalizedFloorPlan,
-                    distribution,
+                    resolvedDistribution,
                     unitMix,
                     {
-                        snapTolerance: 0.05,
-                        minCellSize: 0.6,
-                        minCellArea: 0.5,
-                        maxCellArea: 40
+                        snapTolerance: 0.15, // increased tolerance for better matching
+                        minCellSize: 0.4,    // smaller minimum cell size
+                        minCellArea: 0.2,    // smaller minimum area to capture small cells
+                        maxCellArea: 60,     // larger maximum area
+                        strictValidation: false, // relaxed edge validation
+                        corridorWidth,
+                        cellAspectRatio: 0.5,
+                        cellWidth: Math.max(0.9, corridorWidth * 0.9),
+                        cellHeight: Math.max(1.8, corridorWidth * 2.0),
+                        mainRowGapEvery: 4,
+                        mainRowGapWidth: corridorWidth * 1.6,
+                        columnGapEvery: 8,
+                        columnGapWidth: corridorWidth * 1.2,
+                        entranceClearance: 1.2,
+                        forbiddenClearance: 0.25,
+                        wallClearance: 0.3
                     }
                 ).map(sanitizeIlot).filter(Boolean);
+
+                console.log(`[Ilots] Grid extraction returned ${gridCells.length} cells`);
 
                 if (gridCells.length > ilots.length) {
                     console.warn(`[Ilots] Sparse placement (${ilots.length}); using grid extraction (${gridCells.length}) for full coverage.`);
@@ -1123,6 +1148,8 @@ app.post('/api/ilots', async (req, res) => {
                         mode: 'grid-extraction',
                         placedCount: ilots.length
                     });
+                } else {
+                    console.log(`[Ilots] Grid extraction did not improve (${gridCells.length} <= ${ilots.length})`);
                 }
             } catch (gridErr) {
                 console.warn('[Ilots] Grid extraction failed, keeping sparse placement:', gridErr.message || gridErr);

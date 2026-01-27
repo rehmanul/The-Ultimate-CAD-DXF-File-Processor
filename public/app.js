@@ -862,8 +862,9 @@ async function handleFileUpload(e) {
             }
         }
 
-        // Add room labels
-        if (textLabels && currentFloorPlan.rooms) {
+        // Room labels are off by default for clean plan output
+        const showRoomLabels = false;
+        if (showRoomLabels && textLabels && currentFloorPlan.rooms) {
             currentFloorPlan.rooms.forEach((room, i) => textLabels.addRoomLabel(room, i));
         }
 
@@ -1259,8 +1260,11 @@ function selectStackFloor(floorId) {
     }
 
     if (textLabels) {
+        const showRoomLabels = false;
         textLabels.clear();
-        (currentFloorPlan.rooms || []).forEach((room, index) => textLabels.addRoomLabel(room, index));
+        if (showRoomLabels) {
+            (currentFloorPlan.rooms || []).forEach((room, index) => textLabels.addRoomLabel(room, index));
+        }
     }
 
     const levelInput = document.getElementById('floorLevelInput');
@@ -2342,16 +2346,32 @@ function initializeHeaderActions() {
     const uploadBtn = document.getElementById('uploadBtn');
     const fileInput = document.getElementById('fileInput');
     if (uploadBtn && fileInput) {
-        uploadBtn.addEventListener('click', (event) => {
-            event?.preventDefault();
+        if (!uploadBtn.type) {
+            uploadBtn.type = 'button';
+        }
+        const triggerUpload = (event) => {
+            event?.preventDefault?.();
+            event?.stopPropagation?.();
+            fileInput.value = '';
             fileInput.click();
+        };
+        uploadBtn.addEventListener('click', triggerUpload);
+        uploadBtn.addEventListener('pointerdown', triggerUpload);
+        uploadBtn.addEventListener('touchstart', triggerUpload, { passive: false });
+        uploadBtn.addEventListener('keydown', (event) => {
+            if (event.key === 'Enter' || event.key === ' ') {
+                triggerUpload(event);
+            }
         });
     }
     const uploadTriggers = document.querySelectorAll('[data-trigger="upload"]');
     uploadTriggers.forEach(trigger => {
         trigger.addEventListener('click', (event) => {
-            event?.preventDefault();
-            if (fileInput) fileInput.click();
+            event?.preventDefault?.();
+            if (fileInput) {
+                fileInput.value = '';
+                fileInput.click();
+            }
         });
     });
 
@@ -2867,9 +2887,32 @@ function initializeUnitMixImport() {
 
     fileInput.addEventListener('change', async (e) => {
         const file = e.target.files[0];
-        if (!file) return;
+        if (!file) {
+            fileInput.value = ''; // Reset input
+            return;
+        }
+
+        // Validate file extension
+        const fileName = (file.name || '').toLowerCase();
+        const validExtensions = ['.csv', '.xlsx', '.xls'];
+        const extIndex = fileName.lastIndexOf('.');
+        const fileExtension = extIndex >= 0 ? fileName.substring(extIndex) : '';
+        const validMimeTypes = [
+            'text/csv',
+            'application/csv',
+            'application/vnd.ms-excel',
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        ];
+        const hasValidMime = validMimeTypes.includes((file.type || '').toLowerCase());
+
+        if (!validExtensions.includes(fileExtension) && !hasValidMime) {
+            showNotification(`Unsupported file format: ${fileExtension || '(no extension)'}. Use .csv, .xlsx, or .xls`, 'error');
+            fileInput.value = ''; // Reset input
+            return;
+        }
 
         try {
+            showLoader('Importing unit mix...', 5);
             const unitMix = await parseUnitMixFile(file);
             activeUnitMix = unitMix;
 
@@ -2891,11 +2934,14 @@ function initializeUnitMixImport() {
 
             // Update distribution inputs to match unit mix
             updateDistributionFromUnitMix(unitMix);
+            hideLoader();
 
         } catch (error) {
             console.error('Unit mix import error:', error);
-            showNotification(`Import failed: ${error.message}`, 'error');
+            const errorMsg = error.message || 'Unit mix import failed';
+            showNotification(`Import failed: ${errorMsg}`, 'error');
             preview.style.display = 'none';
+            hideLoader();
         }
 
         fileInput.value = ''; // Reset input

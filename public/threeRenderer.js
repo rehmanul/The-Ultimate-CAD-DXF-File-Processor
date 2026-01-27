@@ -147,10 +147,10 @@ export class FloorPlanRenderer {
         this.corridorArrowsVisible = true;
         this.arrowMeshes = [];
         this.arrowMaterials = {
-            green: new THREE.MeshBasicMaterial({ color: 0xec4899 }), // Pink/Magenta to match corridors
-            bright_green: new THREE.MeshBasicMaterial({ color: 0xec4899 }), // Pink/Magenta
-            blue: new THREE.MeshBasicMaterial({ color: 0xec4899 }),
-            teal: new THREE.MeshBasicMaterial({ color: 0xec4899 })
+            green: new THREE.MeshBasicMaterial({ color: 0xef4444 }), // Red arrows like reference plans
+            bright_green: new THREE.MeshBasicMaterial({ color: 0xef4444 }),
+            blue: new THREE.MeshBasicMaterial({ color: 0xef4444 }),
+            teal: new THREE.MeshBasicMaterial({ color: 0xef4444 })
         };
         this.arrowClock = new THREE.Clock(false);
         this.arrowAnimationActive = false;
@@ -388,8 +388,10 @@ export class FloorPlanRenderer {
         this.ilotMeshes = [];
         this.selectedIlots = [];
 
-        // All workstations render as green to match legend
-        const colorMap = { single: 0x10b981, double: 0x10b981, team: 0x10b981, meeting: 0x10b981 };
+        // Render storage units in clean plan style (white fill with dark outline)
+        const colorMap = { single: 0xf8fafc, double: 0xf8fafc, team: 0xf8fafc, meeting: 0xf8fafc };
+        const outlineColor = 0x111827;
+        const showLabels = ilots.length <= 200;
 
         if (!ilots || ilots.length === 0) {
             this.render();
@@ -417,18 +419,18 @@ export class FloorPlanRenderer {
                 const extrudeSettings = { depth: 2.8, bevelEnabled: true, bevelThickness: 0.1, bevelSize: 0.1, bevelSegments: 2 };
                 geometry = new THREE.ExtrudeGeometry(shape, extrudeSettings);
                 material = new THREE.MeshStandardMaterial({
-                    color: colorMap[ilot.type] || 0x10b981,
+                    color: colorMap[ilot.type] || 0xf8fafc,
                     metalness: 0.1,
-                    roughness: 0.4,
+                    roughness: 0.6,
                     transparent: true,
-                    opacity: 0.95
+                    opacity: 0.98
                 });
             } else {
                 geometry = new THREE.ShapeGeometry(shape);
                 material = new THREE.MeshBasicMaterial({
-                    color: colorMap[ilot.type] || 0x10b981,
+                    color: colorMap[ilot.type] || 0xf8fafc,
                     transparent: true,
-                    opacity: 0.7,
+                    opacity: 0.98,
                     side: THREE.DoubleSide
                 });
             }
@@ -455,27 +457,29 @@ export class FloorPlanRenderer {
             ];
             const line = new THREE.Line(
                 new THREE.BufferGeometry().setFromPoints(linePoints),
-                new THREE.LineBasicMaterial({ color: 0x000000, linewidth: 1 })
+                new THREE.LineBasicMaterial({ color: outlineColor, linewidth: 1 })
             );
             line.position.set(ilot.x, ilot.y, 0);
             this.ilotsGroup.add(line);
 
             // Add area label in center of ilot
-            const areaText = ilot.label || `${(ilot.area || ilot.width * ilot.height).toFixed(1)}m²`;
-            const labelSprite = this.createTextSprite(areaText, {
-                fontsize: 24,
-                fillStyle: '#1f2937',
-                backgroundColor: 'rgba(255, 255, 255, 0.85)'
-            });
-            labelSprite.position.set(
-                ilot.x + ilot.width / 2,
-                ilot.y + ilot.height / 2,
-                0.2
-            );
-            // Scale based on ilot size
-            const scale = Math.min(ilot.width, ilot.height) * 0.3;
-            labelSprite.scale.set(scale, scale * 0.5, 1);
-            this.ilotsGroup.add(labelSprite);
+            if (showLabels) {
+                const areaText = ilot.label || `${(ilot.area || ilot.width * ilot.height).toFixed(1)}m²`;
+                const labelSprite = this.createTextSprite(areaText, {
+                    fontsize: 24,
+                    fillStyle: '#1f2937',
+                    backgroundColor: 'rgba(255, 255, 255, 0.85)'
+                });
+                labelSprite.position.set(
+                    ilot.x + ilot.width / 2,
+                    ilot.y + ilot.height / 2,
+                    0.2
+                );
+                // Scale based on ilot size
+                const scale = Math.min(ilot.width, ilot.height) * 0.3;
+                labelSprite.scale.set(scale, scale * 0.5, 1);
+                this.ilotsGroup.add(labelSprite);
+            }
         });
 
         // Restore selection if there was one (visual only, no event dispatch)
@@ -503,24 +507,13 @@ export class FloorPlanRenderer {
     renderCorridors(corridors) {
         this.corridorsGroup.clear();
 
-        // Pink/Magenta color for corridors (matches professional plans: #ec4899)
-        const corridorColor = 0xec4899;
+        // Blue corridors to match reference plans
+        const corridorColor = 0x2563eb;
         const lineMaterial = new THREE.LineBasicMaterial({ color: corridorColor, linewidth: 2 });
 
         corridors.forEach(corridor => {
             // Draw center-line through corridor (walking path style)
             const centerLine = [];
-
-            // Use dashed lines for a "schematic" technical look
-            const lineMaterial = new THREE.LineDashedMaterial({
-                color: 0xec4899, // Pink/Magenta
-                linewidth: 2,
-                scale: 1,
-                dashSize: 0.5,
-                gapSize: 0.25
-            });
-
-
 
             if (corridor.type === 'horizontal' || corridor.width > corridor.height) {
                 // Horizontal corridor - draw horizontal line through center
@@ -537,20 +530,7 @@ export class FloorPlanRenderer {
             if (centerLine.length >= 2) {
                 const geometry = new THREE.BufferGeometry().setFromPoints(centerLine);
                 const line = new THREE.Line(geometry, lineMaterial);
-                line.computeLineDistances(); // Essential for dashed lines
                 this.corridorsGroup.add(line);
-
-                // Add small nodes at start/end for schematic look
-                const nodeGeo = new THREE.CircleGeometry(0.15, 8);
-                const nodeMat = new THREE.MeshBasicMaterial({ color: 0xec4899 });
-
-                const startNode = new THREE.Mesh(nodeGeo, nodeMat);
-                startNode.position.copy(centerLine[0]);
-                this.corridorsGroup.add(startNode);
-
-                const endNode = new THREE.Mesh(nodeGeo, nodeMat);
-                endNode.position.copy(centerLine[centerLine.length - 1]);
-                this.corridorsGroup.add(endNode);
             }
         });
 
