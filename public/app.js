@@ -772,10 +772,14 @@ async function handleFileUpload(e) {
         const formData = new FormData();
         formData.append('file', file);
 
-        const API = (window.__API_BASE__) ? window.__API_BASE__ : 'http://localhost:3001';
+        // Use current origin for API (works in production)
+        const API = window.__API_BASE__ || window.location.origin;
+        console.log('Uploading to:', `${API}/api/jobs`);
+        
         const response = await fetch(`${API}/api/jobs`, {
             method: 'POST',
-            body: formData
+            body: formData,
+            // Don't set Content-Type - let browser set it with boundary for multipart/form-data
         });
 
         const result = await response.json();

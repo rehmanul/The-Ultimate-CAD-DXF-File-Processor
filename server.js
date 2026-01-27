@@ -749,7 +749,18 @@ app.post('/api/multi-floor/report', (req, res) => {
     }
 });
 
-const upload = multer({ dest: 'uploads/' });
+// Ensure uploads directory exists
+const uploadsDir = path.join(__dirname, 'uploads');
+if (!fs.existsSync(uploadsDir)) {
+    fs.mkdirSync(uploadsDir, { recursive: true });
+}
+
+const upload = multer({ 
+    dest: uploadsDir,
+    limits: {
+        fileSize: 50 * 1024 * 1024 // 50MB limit
+    }
+});
 
 // No APS functions needed - using local DXF processing only
 
