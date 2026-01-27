@@ -47,7 +47,7 @@ describe('Phase 1 Integration Tests', () => {
 
             // Create minimal DXF file for testing
             if (!fs.existsSync(mockDxfPath)) {
-                const minimalDxf = `0
+            const minimalDxf = `0
 SECTION
 2
 ENTITIES
@@ -63,6 +63,18 @@ WALLS
 10.0
 21
 0.0
+0
+LINE
+8
+WALLS
+10
+0.0
+20
+0.0
+11
+0.0
+21
+10.0
 0
 ENDSEC
 0

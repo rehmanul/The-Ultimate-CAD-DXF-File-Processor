@@ -22,9 +22,8 @@ class DXFProcessor:
 
         query = '*'
         if layer:
-            # ezdxf query string format is slightly different, let's keep it simple
-            # We will iterate if query is complex, but ezdxf supports attribute queries
-            pass
+            # Layer filtering is handled later via manual filtering.
+            # No additional query processing needed here.
 
         # Simple manual filtering
         entities = self.msp

@@ -32,8 +32,7 @@ export class RendererManager {
             return this.viewerHandle;
         } catch (error) {
             console.error('Failed to initialize Autodesk Viewer:', error);
-            // Fallback to Three.js
-            return this.switchToThreeJS();
+            throw error;
         }
     }
 

@@ -83,15 +83,13 @@ describe('MLProcessor', () => {
       expect(['office', 'meeting', 'utility', 'hall', 'entry', 'circulation', 'storage', 'other']).toContain(result.type);
     });
 
-    test('should fallback to rule-based classification when not initialized', async () => {
+    test('should throw when not initialized', async () => {
       const uninitializedProcessor = new MLProcessor.constructor();
       const roomData = { area: 25 };
 
-      const result = await uninitializedProcessor.classifyRoom(roomData);
-
-      expect(result).toHaveProperty('type');
-      expect(result).toHaveProperty('confidence');
-      expect(result.type).toBe('office'); // Based on area 25
+      await expect(uninitializedProcessor.classifyRoom(roomData))
+        .rejects
+        .toThrow('Room classifier model is not initialized');
     });
   });
 
@@ -119,15 +117,12 @@ describe('MLProcessor', () => {
       expect(['wall', 'forbidden', 'entrance']).toContain(result.type);
     });
 
-    test('should fallback to rule-based classification when not initialized', () => {
+    test('should throw when not initialized', () => {
       const uninitializedProcessor = new MLProcessor.constructor();
       const entityData = { color: 0xFF0000, layer: 'ENTRANCE' };
 
-      const result = uninitializedProcessor.classifyCADEntity(entityData);
-
-      expect(result).toHaveProperty('type');
-      expect(result).toHaveProperty('confidence');
-      expect(result.type).toBe('entrance'); // Based on red color and layer
+      expect(() => uninitializedProcessor.classifyCADEntity(entityData))
+        .toThrow('CAD entity classifier model is not initialized');
     });
   });
 
@@ -254,27 +249,18 @@ describe('MLProcessor', () => {
     });
   });
 
-  describe('fallback methods', () => {
-    describe('fallbackRoomClassification', () => {
-      test('should classify based on area ranges', () => {
-        expect(mlProcessor.fallbackRoomClassification({ area: 3 })).toEqual({ type: 'utility', confidence: 0.8 });
-        expect(mlProcessor.fallbackRoomClassification({ area: 15 })).toEqual({ type: 'office', confidence: 0.7 });
-        expect(mlProcessor.fallbackRoomClassification({ area: 35 })).toEqual({ type: 'meeting', confidence: 0.75 });
-        expect(mlProcessor.fallbackRoomClassification({ area: 80 })).toEqual({ type: 'hall', confidence: 0.6 });
+  describe('disabled methods', () => {
+    describe('disabledRoomClassification', () => {
+      test('should throw when called', () => {
+        expect(() => mlProcessor.disabledRoomClassification({ area: 3 }))
+          .toThrow('Room classification requires initialized models');
       });
     });
 
-    describe('fallbackCADEntityClassification', () => {
-      test('should classify based on color', () => {
-        expect(mlProcessor.fallbackCADEntityClassification({ color: 0xFF0000 })).toEqual({ type: 'entrance', confidence: 0.9 });
-        expect(mlProcessor.fallbackCADEntityClassification({ color: 0x0000FF })).toEqual({ type: 'forbidden', confidence: 0.9 });
-        expect(mlProcessor.fallbackCADEntityClassification({ color: 0x00FF00 })).toEqual({ type: 'wall', confidence: 0.7 });
-      });
-
-      test('should classify based on layer name', () => {
-        expect(mlProcessor.fallbackCADEntityClassification({ layer: 'ENTRANCE_LAYER' })).toEqual({ type: 'entrance', confidence: 0.8 });
-        expect(mlProcessor.fallbackCADEntityClassification({ layer: 'FORBIDDEN_ZONE' })).toEqual({ type: 'forbidden', confidence: 0.8 });
-        expect(mlProcessor.fallbackCADEntityClassification({ layer: 'WALLS' })).toEqual({ type: 'wall', confidence: 0.7 });
+    describe('disabledCADEntityClassification', () => {
+      test('should throw when called', () => {
+        expect(() => mlProcessor.disabledCADEntityClassification({ color: 0xFF0000 }))
+          .toThrow('CAD entity classification requires initialized models');
       });
     });
   });
@@ -298,18 +284,13 @@ describe('MLProcessor', () => {
       expect(result.y).toBeGreaterThanOrEqual(0);
     });
 
-    test('should fallback to rule-based placement when not initialized', async () => {
+    test('should throw when not initialized', async () => {
       const uninitializedProcessor = new MLProcessor.constructor();
       const room = { bounds: { minX: 0, minY: 0, maxX: 5, maxY: 4 } };
 
-      const result = await uninitializedProcessor.suggestFurniturePlacement(room, 'desk');
-
-      expect(result).toEqual({
-        x: 1, // minX + 1
-        y: 1, // minY + 1
-        rotation: 0,
-        confidence: 0.6
-      });
+      await expect(uninitializedProcessor.suggestFurniturePlacement(room, 'desk'))
+        .rejects
+        .toThrow('Furniture placement model is not initialized');
     });
   });
 
@@ -329,16 +310,14 @@ describe('MLProcessor', () => {
       expect(score).toBeLessThanOrEqual(1);
     });
 
-    test('should fallback to rule-based scoring when not initialized', async () => {
+    test('should throw when not initialized', async () => {
       const uninitializedProcessor = new MLProcessor.constructor();
       const layout = { ilots: testUtils.createMockIlots(3) };
       const floorPlan = testUtils.createMockFloorPlan();
 
-      const score = await uninitializedProcessor.scoreLayout(layout, floorPlan);
-
-      expect(typeof score).toBe('number');
-      expect(score).toBeGreaterThanOrEqual(0);
-      expect(score).toBeLessThanOrEqual(1);
+      await expect(uninitializedProcessor.scoreLayout(layout, floorPlan))
+        .rejects
+        .toThrow('Layout optimizer model is not initialized');
     });
   });
 });

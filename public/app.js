@@ -9,13 +9,6 @@ import { UndoRedoManager, MoveIlotCommand, DeleteIlotCommand, AddIlotCommand, Re
 import { ProfessionalExport } from './professionalExport.js';
 
 
-const DEFAULT_DISTRIBUTION = {
-    '0-1': 0.10,
-    '1-3': 0.25,
-    '3-5': 0.30,
-    '5-10': 0.35
-};
-
 let currentFloorPlan = null;
 let generatedIlots = [];
 let corridorNetwork = [];
@@ -40,21 +33,16 @@ let activePresetConfig = null;
 
 const deepClone = (data) => {
     if (data === null || data === undefined) return data;
-    try {
-        if (typeof structuredClone === 'function') {
-            return structuredClone(data);
-        }
-        if (typeof window !== 'undefined' && typeof window.structuredClone === 'function') {
-            return window.structuredClone(data);
-        }
-    } catch (e) {
-        // Fallback below
+    if (typeof structuredClone === 'function') {
+        return structuredClone(data);
+    }
+    if (typeof window !== 'undefined' && typeof window.structuredClone === 'function') {
+        return window.structuredClone(data);
     }
     try {
         return JSON.parse(JSON.stringify(data));
     } catch (err) {
-        console.warn('Deep clone fallback failed, returning original reference.', err);
-        return data;
+        throw new Error(`Deep clone failed: ${err.message}`);
     }
 };
 
@@ -338,7 +326,13 @@ function initializeModules() {
                 distribution[ranges[index]] = percentage;
             });
 
-            const normalized = normalizePresetDistribution(distribution);
+            let normalized;
+            try {
+                normalized = normalizePresetDistribution(distribution);
+            } catch (error) {
+                showNotification(error.message || 'Invalid distribution', 'error');
+                return;
+            }
             const normalizedPercentages = {};
             Object.entries(normalized).forEach(([range, weight]) => {
                 normalizedPercentages[range] = +(weight * 100).toFixed(2);
@@ -376,7 +370,7 @@ function initializeModules() {
     const distributionEditor = document.createElement('textarea');
     distributionEditor.id = 'distributionEditor';
     distributionEditor.style.display = 'none';
-    distributionEditor.value = JSON.stringify(DEFAULT_DISTRIBUTION, null, 2);
+    distributionEditor.value = JSON.stringify({}, null, 2);
     document.body.appendChild(distributionEditor);
 
     // Initialize total display
@@ -387,14 +381,6 @@ function initializeModules() {
 
     const exportImageBtn = document.getElementById('exportImageBtn');
     if (exportImageBtn) exportImageBtn.onclick = exportToImage;
-
-    // Debug button
-    window.debugIlots = function () {
-        console.log('=== DEBUG INFO ===');
-        console.log('Generated ilots:', generatedIlots.slice(0, 3).map(i => ({ x: i.x, y: i.y, width: i.width, height: i.height, capacity: i.capacity })));
-        console.log('FloorPlan bounds:', currentFloorPlan?.bounds);
-        console.log('Renderer type:', renderer?.constructor?.name, 'Scene children:', renderer?.scene?.children?.length);
-    };
 
     // Enhancement: Export high-res image
     window.exportHighRes = function () {
@@ -921,7 +907,7 @@ function renderCurrentState() {
             // Hide solid corridors when arrows are available
             renderer.renderCorridors([]);
         } else {
-            // Fallback to solid corridors if no arrows available
+            // Render solid corridors when arrows are unavailable
             renderer.renderCorridors(getFilteredCorridors());
         }
 
@@ -1800,8 +1786,22 @@ async function generateIlots() {
     try {
         showLoader('Generating îlots...', 10);
 
-        // Use DXF bounds directly
-        let bounds = currentFloorPlan.bounds || { minX: 0, minY: 0, maxX: 100, maxY: 100 };
+        const bounds = currentFloorPlan.bounds;
+        if (!bounds) {
+            hideLoader();
+            showNotification('Floor plan bounds missing.', 'error');
+            return;
+        }
+        const minX = Number(bounds.minX);
+        const minY = Number(bounds.minY);
+        const maxX = Number(bounds.maxX);
+        const maxY = Number(bounds.maxY);
+        if (![minX, minY, maxX, maxY].every(Number.isFinite) || maxX <= minX || maxY <= minY) {
+            hideLoader();
+            showNotification('Floor plan bounds are invalid.', 'error');
+            return;
+        }
+
         console.log('Using DXF bounds:', bounds);
 
         // Ensure floorPlan has required arrays (even if empty)
@@ -1813,19 +1813,23 @@ async function generateIlots() {
             bounds: bounds
         };
 
-        // Calculate target ilots based on actual room area
-        let floorArea = floorPlan.totalArea || 0;
+        // Calculate target ilots based on actual usable area
+        let floorArea = Number(floorPlan.totalArea) || 0;
         if (floorArea === 0 && floorPlan.rooms && floorPlan.rooms.length > 0) {
-            floorArea = floorPlan.rooms.reduce((sum, r) => sum + (r.area || 0), 0);
+            floorArea = floorPlan.rooms.reduce((sum, r) => sum + (Number(r.area) || 0), 0);
         }
-        if (floorArea === 0 || floorArea > 100000) {
-            // Fallback: use 30% of bounding box area as usable space
-            const width = floorPlan.bounds.maxX - floorPlan.bounds.minX;
-            const height = floorPlan.bounds.maxY - floorPlan.bounds.minY;
-            floorArea = width * height * 0.3;
+        if (floorArea === 0 && floorPlan.bounds) {
+            const width = Number(floorPlan.bounds.maxX) - Number(floorPlan.bounds.minX);
+            const height = Number(floorPlan.bounds.maxY) - Number(floorPlan.bounds.minY);
+            if (Number.isFinite(width) && Number.isFinite(height) && width > 0 && height > 0) {
+                floorArea = width * height;
+            }
         }
-        // Increase density: 1 ilot per 10 m² (standard office density), max 500
-        const targetIlots = Math.max(20, Math.min(500, Math.floor(floorArea / 10)));
+        if (!Number.isFinite(floorArea) || floorArea <= 0) {
+            showNotification('Unable to compute usable area. Check room detection and bounds.', 'error');
+            return;
+        }
+        const targetIlots = Math.max(1, Math.floor(floorArea / 10));
 
         const distribution = parseDistribution();
         console.log('Using distribution configuration:', distribution);
@@ -1833,12 +1837,22 @@ async function generateIlots() {
         console.log(`Generating ${targetIlots} ilots for ${floorArea.toFixed(2)} m² floor area`);
 
         const API = (window.__API_BASE__) ? window.__API_BASE__ : 'http://localhost:3001';
+        const unitMixPayload = activeUnitMix && Array.isArray(activeUnitMix.typologies)
+            ? activeUnitMix.typologies.map(typo => ({
+                type: typo.name,
+                targetArea: typo.targetArea,
+                tolerance: typo.tolerance,
+                priority: typo.priority
+            }))
+            : null;
+
         const response = await fetch(`${API}/api/ilots`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 floorPlan: floorPlan,
                 distribution: distribution,
+                unitMix: unitMixPayload,
                 options: buildIlotOptions(targetIlots)
             })
         });
@@ -1903,19 +1917,25 @@ function parseDistribution() {
         return activePresetConfig.normalizedDistribution;
     }
     const txt = document.getElementById('distributionEditor')?.value;
-    if (!txt) return { '1-3': 0.25, '3-5': 0.35, '5-10': 0.40 };
-    try {
-        const obj = JSON.parse(txt);
-        if (typeof obj === 'object') return obj;
-    } catch (e) {
-        console.warn('Invalid distribution JSON, falling back to default');
+    if (!txt) {
+        throw new Error('Distribution not configured');
     }
-    return { '1-3': 0.25, '3-5': 0.35, '5-10': 0.40 };
+    let obj;
+    try {
+        obj = JSON.parse(txt);
+    } catch (e) {
+        throw new Error('Distribution JSON is invalid');
+    }
+    return normalizePresetDistribution(obj);
 }
 
 async function generateCorridors() {
     if (!generatedIlots.length) {
         showNotification('Please generate îlots first', 'warning');
+        return;
+    }
+    if (!currentFloorPlan || !currentFloorPlan.bounds) {
+        showNotification('Floor plan bounds missing.', 'error');
         return;
     }
 
@@ -1949,15 +1969,6 @@ async function generateCorridors() {
         corridorNetwork = Array.isArray(result.corridors) ? result.corridors : [];
         corridorArrows = Array.isArray(result.arrows) ? result.arrows : [];
         corridorStatistics = result.statistics || null;
-        if (result.metadata && result.metadata.engine === 'js-fallback') {
-            showNotification('Using built-in JS corridor generator (Python engine unavailable).', 'info', {
-                title: 'Fallback Corridor Engine',
-                description: 'Install Python 3 and set PYTHON_EXECUTABLE to enable the advanced path planner.',
-                duration: 7000,
-                icon: 'fa-route'
-            });
-        }
-
         console.log(`Generated ${corridorNetwork.length} corridors`);
         console.log('First corridor:', corridorNetwork[0]);
 
@@ -2064,7 +2075,13 @@ function applyPresetDistribution(preset) {
     // Update corridor width
     setupCorridorWidthSlider(preset.corridorWidth);
 
-    const normalized = normalizePresetDistribution(preset.distribution);
+    let normalized;
+    try {
+        normalized = normalizePresetDistribution(preset.distribution);
+    } catch (error) {
+        showNotification(error.message || 'Invalid preset distribution', 'error');
+        return;
+    }
     if (document.getElementById('distributionEditor')) {
         document.getElementById('distributionEditor').value = JSON.stringify(normalized, null, 2);
     }
@@ -2121,12 +2138,15 @@ function setupCorridorWidthSlider(initialWidth) {
 }
 
 function normalizePresetDistribution(distribution) {
-    const fallback = { '1-3': 0.25, '3-5': 0.35, '5-10': 0.40 };
-    if (!distribution || typeof distribution !== 'object') return fallback;
+    if (!distribution || typeof distribution !== 'object') {
+        throw new Error('Distribution must be an object with numeric weights');
+    }
 
     const ordered = Object.entries(distribution).map(([range, value]) => {
         let weight = Number(value);
-        if (Number.isNaN(weight) || weight < 0) weight = 0;
+        if (Number.isNaN(weight) || weight < 0) {
+            throw new Error(`Invalid distribution weight for ${range}`);
+        }
         if (weight > 1.01) weight = weight / 100;
         return [range, weight];
     }).sort((a, b) => {
@@ -2135,8 +2155,14 @@ function normalizePresetDistribution(distribution) {
         return aMin - bMin;
     });
 
+    if (!ordered.length) {
+        throw new Error('Distribution must include at least one size range');
+    }
+
     const total = ordered.reduce((sum, [, weight]) => sum + weight, 0);
-    if (total <= 0) return fallback;
+    if (total <= 0) {
+        throw new Error('Distribution weights must sum to a positive value');
+    }
 
     const normalized = {};
     ordered.forEach(([range, weight]) => {
@@ -2813,127 +2839,97 @@ function initializeUnitMixImport() {
 }
 
 async function parseUnitMixFile(file) {
-    const ext = file.name.split('.').pop().toLowerCase();
+    const API = (window.__API_BASE__) ? window.__API_BASE__ : 'http://localhost:3001';
+    const formData = new FormData();
+    formData.append('file', file);
 
-    if (ext === 'csv') {
-        return parseCSVUnitMix(file);
-    } else if (ext === 'xlsx' || ext === 'xls') {
-        return parseExcelUnitMix(file);
-    } else {
-        throw new Error('Unsupported file format. Use .csv, .xlsx, or .xls');
-    }
-}
-
-async function parseCSVUnitMix(file) {
-    const text = await file.text();
-    const lines = text.trim().split(/\r?\n/);
-
-    if (lines.length < 2) {
-        throw new Error('CSV must contain header and at least one row');
-    }
-
-    const header = lines[0].split(',').map(h => h.trim().toLowerCase());
-    const rows = lines.slice(1).map(line => {
-        const values = line.split(',').map(v => v.trim());
-        const row = {};
-        header.forEach((col, i) => {
-            row[col] = values[i] || '';
-        });
-        return row;
+    const response = await fetch(`${API}/api/import/mix`, {
+        method: 'POST',
+        body: formData
     });
 
-    return validateAndNormalizeUnitMix(rows);
-}
-
-async function parseExcelUnitMix(file) {
-    // For browser-based Excel parsing, we'd need to use a library like SheetJS
-    // For now, provide clear error message
-    throw new Error('Excel import requires server-side processing. Please convert to CSV or use the desktop version.');
-}
-
-function validateAndNormalizeUnitMix(rows) {
-    const typologies = [];
-    let totalSurface = 0;
-
-    for (let i = 0; i < rows.length; i++) {
-        const row = rows[i];
-        const lineNum = i + 2;
-
-        if (!row.typologie && !row.typology) {
-            throw new Error(`Line ${lineNum}: Missing typologie column`);
-        }
-
-        const name = (row.typologie || row.typology || '').trim();
-        if (!name) continue;
-
-        // Parse surface
-        const surfaceStr = String(row.surface_cible || row.surface || row.target_area || '').replace(',', '.');
-        const surface = parseFloat(surfaceStr);
-        if (isNaN(surface) || surface <= 0) {
-            throw new Error(`Line ${lineNum}: Invalid surface "${surfaceStr}"`);
-        }
-
-        // Parse tolerance
-        let tolerance = 0;
-        const toleranceStr = String(row.tolerance || '10%').replace(',', '.');
-        if (toleranceStr.includes('%')) {
-            const pct = parseFloat(toleranceStr.replace('%', ''));
-            tolerance = !isNaN(pct) ? (surface * pct) / 100 : surface * 0.1;
-        } else {
-            tolerance = parseFloat(toleranceStr) || surface * 0.1;
-        }
-
-        // Parse priority
-        const priorite = String(row.priorite || row.priority || 'souhaitable').toLowerCase();
-        const isRequired = priorite.includes('oblig') || priorite.includes('required');
-
-        totalSurface += surface;
-
-        typologies.push({
-            name,
-            targetArea: surface,
-            tolerance,
-            minArea: Math.max(0, surface - tolerance),
-            maxArea: surface + tolerance,
-            priority: isRequired ? 'obligatoire' : 'souhaitable',
-            count: 0
-        });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok || !payload.success) {
+        throw new Error(payload.error || 'Unit mix import failed');
     }
 
-    if (typologies.length === 0) {
-        throw new Error('No valid typologies found');
+    if (!payload.mix || !payload.mix.typologies) {
+        throw new Error('Invalid unit mix response');
     }
 
-    return {
-        typologies,
-        totals: {
-            targetArea: totalSurface,
-            typeCount: typologies.length
-        },
-        metadata: {
-            parsedAt: new Date().toISOString(),
-            format: 'COSTO V1'
-        }
-    };
+    return payload.mix;
 }
 
 function updateDistributionFromUnitMix(unitMix) {
     // Convert unit mix to distribution percentages
     const total = unitMix.totals.targetArea;
 
-    // Clear existing distribution
-    document.querySelectorAll('.distribution-input').forEach(input => {
-        input.value = 0;
+    const inputs = Array.from(document.querySelectorAll('.distribution-input'));
+    const ranges = inputs.map(input => input.dataset.range).filter(Boolean);
+
+    if (!Number.isFinite(total) || total <= 0 || ranges.length === 0) {
+        showNotification('Unit mix loaded, but distribution ranges could not be updated.', 'warning');
+        return;
+    }
+
+    const parsedRanges = ranges.map(range => {
+        const parts = range.split('-').map(Number);
+        return {
+            range,
+            min: Number.isFinite(parts[0]) ? parts[0] : 0,
+            max: Number.isFinite(parts[1]) ? parts[1] : parts[0],
+            center: (Number.isFinite(parts[0]) && Number.isFinite(parts[1]))
+                ? (parts[0] + parts[1]) / 2
+                : parts[0] || 0
+        };
     });
 
-    // Map typologies to distribution ranges (approximate)
-    // This is a simplified mapping - in production, would need more sophisticated logic
+    const distribution = {};
+    parsedRanges.forEach(item => {
+        distribution[item.range] = 0;
+    });
+
     unitMix.typologies.forEach(typo => {
-        const pct = (typo.targetArea / total * 100).toFixed(0);
-        console.log(`Unit mix: ${typo.name} = ${pct}% (${typo.targetArea}m²)`);
+        const area = Number(typo.targetArea);
+        if (!Number.isFinite(area) || area <= 0) return;
+
+        let match = parsedRanges.find(item => area >= item.min && area <= item.max);
+        if (!match) {
+            match = parsedRanges.reduce((best, item) => {
+                const delta = Math.abs(area - item.center);
+                if (!best || delta < best.delta) {
+                    return { range: item.range, delta };
+                }
+                return best;
+            }, null);
+            match = match ? parsedRanges.find(item => item.range === match.range) : null;
+        }
+
+        if (match) {
+            distribution[match.range] += (area / total) * 100;
+        }
     });
 
-    showNotification('Unit mix loaded. Adjust distribution or generate ilots directly.', 'info');
+    inputs.forEach(input => {
+        const range = input.dataset.range;
+        const value = distribution[range] || 0;
+        input.value = value.toFixed(1);
+    });
+
+    let normalized;
+    try {
+        normalized = normalizePresetDistribution(distribution);
+    } catch (error) {
+        showNotification(error.message || 'Unit mix distribution invalid', 'error');
+        return;
+    }
+    const distributionEditor = document.getElementById('distributionEditor');
+    if (distributionEditor) {
+        distributionEditor.value = JSON.stringify(normalized, null, 2);
+    }
+
+    updateDistributionTotal();
+    showNotification('Unit mix loaded and distribution updated.', 'success');
 }
 
 function calculateUnitMixVariance() {
@@ -2948,10 +2944,18 @@ function calculateUnitMixVariance() {
         details: []
     };
 
-    // Group ilots by type
+    // Group ilots by type - normalize type names for matching
+    const normalizeTypeName = (name) => {
+        if (!name) return 'unknown';
+        const str = String(name).trim();
+        // Extract base type (e.g., "S (<2m²)" -> "S")
+        const match = str.match(/^([A-Za-z0-9]+)/);
+        return match ? match[1] : str;
+    };
+
     const ilotsByType = {};
     generatedIlots.forEach(ilot => {
-        const type = ilot.type || 'unknown';
+        const type = normalizeTypeName(ilot.type || 'unknown');
         if (!ilotsByType[type]) ilotsByType[type] = [];
         ilotsByType[type].push(ilot);
     });
@@ -2959,7 +2963,22 @@ function calculateUnitMixVariance() {
     let totalConformity = 0;
 
     activeUnitMix.typologies.forEach(typo => {
-        const actual = ilotsByType[typo.name] || [];
+        // Normalize typology name for matching
+        const typoBaseName = normalizeTypeName(typo.name);
+        
+        // Try exact match first, then normalized match
+        let actual = ilotsByType[typo.name] || ilotsByType[typoBaseName] || [];
+        
+        // If still no match, try case-insensitive match
+        if (actual.length === 0) {
+            for (const [type, ilots] of Object.entries(ilotsByType)) {
+                if (type.toLowerCase() === typoBaseName.toLowerCase()) {
+                    actual = ilots;
+                    break;
+                }
+            }
+        }
+        
         const actualArea = actual.reduce((sum, ilot) => sum + (ilot.area || ilot.width * ilot.height), 0);
         const deviation = actualArea - typo.targetArea;
         const isWithinTolerance = Math.abs(deviation) <= typo.tolerance;
@@ -3128,7 +3147,7 @@ if (topGenerateIlotsBtn) {
         if (sidebarBtn) {
             sidebarBtn.click();
         } else {
-            // Fallback: trigger generation directly if available
+            // Trigger generation directly if available
             if (typeof window.generateIlots === 'function') {
                 window.generateIlots();
             }
@@ -3142,7 +3161,7 @@ if (topGenerateCorridorsBtn) {
         if (sidebarBtn) {
             sidebarBtn.click();
         } else {
-            // Fallback: trigger generation directly if available
+            // Trigger generation directly if available
             if (typeof window.generateCorridors === 'function') {
                 window.generateCorridors();
             }

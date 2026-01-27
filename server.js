@@ -15,7 +15,6 @@ const ArchitecturalValidator = require('./lib/architecturalValidator');
 const AnnotationAndCorrection = require('./lib/annotationAndCorrection');
 const sqliteAdapter = require('./lib/sqliteAdapter');
 const presetRoutes = require('./lib/presetRoutes');
-const mlRoutes = require('./lib/mlRoutes');
 const CrossFloorRouter = require('./lib/crossFloorRouter');
 const MultiFloorProfiler = require('./lib/multiFloorProfiler');
 const MultiFloorReporter = require('./lib/multiFloorReporter');
@@ -23,15 +22,18 @@ const { performance } = require('perf_hooks');
 const MultiFloorManager = require('./lib/multiFloorManager');
 const floorPlanStore = require('./lib/floorPlanStore');
 const ProductionInitializer = require('./lib/productionInitializer');
-const MLProcessor = require('./lib/mlProcessor');
-const UnitMixManager = require('./lib/unitMixManager');
+const UnitMixParser = require('./lib/unitMixParser');
 const UnitMixReport = require('./lib/unitMixReport');
 const ComplianceReport = require('./lib/complianceReport');
 const RuleManager = require('./lib/ruleManager');
 const { sanitizeIlot, sanitizeCorridor, sanitizeArrow } = require('./lib/sanitizers');
-const ML_BOOT_PREFIX = '[Production ML System]';
-let mlBootstrapPromise = null;
-let mlBootstrapFinished = false;
+const CostoAPI = require('./lib/costoAPI');
+const CostoLayerStandard = require('./lib/costoLayerStandard');
+const CostoBoxCatalog = require('./lib/costoBoxCatalog');
+const CostoExports = require('./lib/costoExports');
+const CostoNumbering = require('./lib/costoNumbering');
+const CostoProjectManager = require('./lib/costoProjectManager');
+
 
 
 // --- RESTORED INITIALIZATION ---
@@ -45,20 +47,9 @@ const app = express();
 app.locals.staticRoot = STATIC_ROOT;
 app.locals.bootTime = SERVER_BOOT_TIME.toISOString();
 
-// DEBUG: Verify public directory and index.html
-console.log('[Startup] PUBLIC_DIR:', PUBLIC_DIR);
 const indexHtmlPath = path.join(PUBLIC_DIR, 'index.html');
-console.log('[Startup] Checking index.html at:', indexHtmlPath);
-if (fs.existsSync(indexHtmlPath)) {
-    console.log('[Startup] index.html exists!');
-} else {
-    console.error('[Startup] index.html MISSING!');
-    // List contents of public dir
-    if (fs.existsSync(PUBLIC_DIR)) {
-        console.log('[Startup] Contents of public:', fs.readdirSync(PUBLIC_DIR));
-    } else {
-        console.error('[Startup] public directory MISSING!');
-    }
+if (!fs.existsSync(indexHtmlPath)) {
+    throw new Error(`[Startup] Missing index.html at ${indexHtmlPath}`);
 }
 // -------------------------------
 
@@ -134,6 +125,9 @@ function resolveStoredIlots(planId) {
 }
 
 function buildProductionCorridorNetwork(floorPlanData, generationOptions = {}) {
+    if (!floorPlanData || !floorPlanData.bounds) {
+        throw new Error('Floor plan bounds required for corridor generation');
+    }
     const corridorWidth = typeof generationOptions.corridor_width === 'number'
         ? generationOptions.corridor_width
         : (typeof generationOptions.corridorWidth === 'number' ? generationOptions.corridorWidth : 1.5);
@@ -164,7 +158,7 @@ function buildProductionCorridorNetwork(floorPlanData, generationOptions = {}) {
             ? floorPlanData.forbiddenZones
             : (Array.isArray(floorPlanData?.forbidden_zones) ? floorPlanData.forbidden_zones : []),
         entrances: Array.isArray(floorPlanData?.entrances) ? floorPlanData.entrances : [],
-        bounds: floorPlanData?.bounds || { minX: 0, minY: 0, maxX: 100, maxY: 100 },
+        bounds: floorPlanData.bounds,
         rooms: Array.isArray(floorPlanData?.rooms) ? floorPlanData.rooms : [],
         urn: planId
     };
@@ -271,68 +265,6 @@ function isEncryptedToken(s) {
     return typeof s === 'string' && s.split(':').length === 3;
 }
 
-function boxesOverlap(boxA, boxB) {
-    const aMinX = Number(boxA.x);
-    const aMinY = Number(boxA.y);
-    const aMaxX = aMinX + Number(boxA.width);
-    const aMaxY = aMinY + Number(boxA.height);
-    const bMinX = Number(boxB.x);
-    const bMinY = Number(boxB.y);
-    const bMaxX = bMinX + Number(boxB.width);
-    const bMaxY = bMinY + Number(boxB.height);
-
-    return !(aMaxX <= bMinX || bMaxX <= aMinX || aMaxY <= bMinY || bMaxY <= aMinY);
-}
-
-function padIlotsToCount(ilots, targetCount, bounds) {
-    const padded = Array.isArray(ilots) ? [...ilots] : [];
-
-    if (!bounds || !Number.isFinite(targetCount) || targetCount <= padded.length) {
-        return padded;
-    }
-
-    const minX = Number(bounds.minX) || 0;
-    const minY = Number(bounds.minY) || 0;
-    const maxX = Number(bounds.maxX) || 0;
-    const maxY = Number(bounds.maxY) || 0;
-    const step = 1.5;
-    const ilotWidth = 1;
-    const ilotHeight = 1;
-    const startX = minX + 0.5;
-    const startY = minY + 0.5;
-
-    for (let y = startY; y + ilotHeight <= maxY && padded.length < targetCount; y += step) {
-        for (let x = startX; x + ilotWidth <= maxX && padded.length < targetCount; x += step) {
-            const candidate = {
-                x,
-                y,
-                width: ilotWidth,
-                height: ilotHeight,
-                area: ilotWidth * ilotHeight
-            };
-
-            if (padded.some(existing => boxesOverlap(existing, candidate))) {
-                continue;
-            }
-
-            padded.push({
-                id: `ilot_${padded.length + 1}`,
-                x,
-                y,
-                width: ilotWidth,
-                height: ilotHeight,
-                area: ilotWidth * ilotHeight,
-                sizeCategory: '1-3',
-                type: 'single',
-                label: '1.0m²',
-                capacity: 1
-            });
-        }
-    }
-
-    return padded;
-}
-
 // Normalize CAD geometry to a canonical shape expected by the frontend.
 // Ensures each wall has .start and .end with numeric {x,y} and preserves polygon when present.
 function normalizeCadData(cad) {
@@ -402,7 +334,7 @@ function normalizeCadData(cad) {
                     }
                 }
 
-                // fallback: try to infer from segment fields (startX/startY/endX/endY)
+                // Attempt to derive from segment fields (startX/startY/endX/endY)
                 if (typeof out.x1 === 'number' && typeof out.y1 === 'number' && typeof out.x2 === 'number' && typeof out.y2 === 'number') {
                     out.start = { x: Number(out.x1), y: Number(out.y1) };
                     out.end = { x: Number(out.x2), y: Number(out.y2) };
@@ -467,12 +399,15 @@ async function convertDwgToDxfBuffer(buffer) {
 }
 
 function normalizeDistribution(distribution) {
-    const fallback = { '1-3': 0.25, '3-5': 0.35, '5-10': 0.40 };
-    if (!distribution || typeof distribution !== 'object') return fallback;
+    if (!distribution || typeof distribution !== 'object') {
+        throw new Error('Distribution must be an object with numeric weights');
+    }
 
     const ordered = Object.entries(distribution).map(([range, value]) => {
         let weight = Number(value);
-        if (Number.isNaN(weight) || weight < 0) weight = 0;
+        if (Number.isNaN(weight) || weight < 0) {
+            throw new Error(`Invalid distribution weight for ${range}`);
+        }
         if (weight > 1.01) weight = weight / 100;
         return [range, weight];
     }).sort((a, b) => {
@@ -481,8 +416,14 @@ function normalizeDistribution(distribution) {
         return aMin - bMin;
     });
 
+    if (!ordered.length) {
+        throw new Error('Distribution must include at least one size range');
+    }
+
     const total = ordered.reduce((sum, [, weight]) => sum + weight, 0);
-    if (total <= 0) return fallback;
+    if (total <= 0) {
+        throw new Error('Distribution weights must sum to a positive value');
+    }
 
     const normalized = {};
     ordered.forEach(([range, weight]) => {
@@ -601,14 +542,8 @@ function verifyWebhookSignature(req) {
         }
 
         if (!secretToUse) {
-            // In non-production allow missing secret only for local demos
-            if ((process.env.NODE_ENV || 'development') === 'production') {
-                console.error('No webhook secret available for verification');
-                return false;
-            } else {
-                console.warn('No webhook secret available; skipping verification in non-production');
-                return true;
-            }
+            console.error('No webhook secret available for verification');
+            return false;
         }
 
         // header may be like 'sha256=...' or 'sha1=...'
@@ -664,41 +599,6 @@ app.use(express.urlencoded({
     }
 }));
 
-// DEBUG: Explicit root route to diagnose 404
-// DEBUG: Explicit root route to diagnose 404
-// DEBUG: Explicit root route to diagnose 404
-app.get('/', (req, res) => {
-    console.log('[Debug] GET / request received');
-    const indexHtmlPath = path.join(PUBLIC_DIR, 'index.html');
-    try {
-        if (fs.existsSync(indexHtmlPath)) {
-            const stats = fs.statSync(indexHtmlPath);
-            console.log('[Debug] File stats:', JSON.stringify(stats));
-            const content = fs.readFileSync(indexHtmlPath, 'utf8');
-            console.log('[Debug] Read file success, length:', content.length);
-            res.setHeader('Content-Type', 'text/html');
-            res.send(content);
-        } else {
-            console.error('[Debug] File not found via existsSync');
-            res.status(404).send('Debug: index.html not found at ' + indexHtmlPath);
-        }
-    } catch (err) {
-        console.error('[Debug] Error serving index.html:', err);
-        res.status(500).send('Debug: Error serving file: ' + err.message);
-    }
-});
-
-app.get('/debug-file', (req, res) => {
-    // ... keep existing or similar
-    const indexHtmlPath = path.join(PUBLIC_DIR, 'index.html');
-    res.sendFile(indexHtmlPath, (err) => {
-        if (err) {
-            console.error('[Debug] sendFile error:', err);
-            res.status(500).send('sendFile error: ' + err.message);
-        }
-    });
-});
-
 // Fix MIME types for ES modules - CRITICAL for Three.js
 express.static.mime.define({
     'application/javascript': ['js', 'mjs'],
@@ -736,8 +636,7 @@ app.use('/exports', express.static(path.join(__dirname, 'exports')));
 // Phase 2: Register preset management routes
 app.use('/api', presetRoutes);
 
-// Phase 3: Register ML training and optimization routes
-app.use('/api/ml', mlRoutes);
+// ML training routes are disabled in production builds.
 
 // Phase 4 foundation: stack multiple floors and compute vertical circulation
 app.post('/api/multi-floor/stack', (req, res) => {
@@ -859,14 +758,7 @@ app.post('/api/import/mix', upload.single('file'), (req, res) => {
     try {
         if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
 
-        const buffer = fs.readFileSync(req.file.path);
-        // Default to checking extension if mimetype is generic, but passing mimetype for now
-        // Basic extension check for robustness
-        let mime = req.file.mimetype;
-        if (req.file.originalname.endsWith('.csv')) mime = 'text/csv';
-        if (req.file.originalname.endsWith('.xlsx')) mime = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
-
-        const mix = UnitMixManager.parseMix(buffer, mime);
+        const mix = UnitMixParser.parseFile(req.file.path);
 
         // Clean up
         try { fs.unlinkSync(req.file.path); } catch (e) { }
@@ -920,23 +812,10 @@ app.post('/api/jobs', upload.single('file'), async (req, res) => {
                 });
             }
         } else if (fileExtension !== 'dxf') {
-            // Gracefully handle unsupported files: return success with empty CAD payload
-            const urn = `local_${Date.now()}`;
-            const emptyCad = {
-                walls: [],
-                forbiddenZones: [],
-                entrances: [],
-                rooms: [],
-                bounds: { minX: 0, minY: 0, maxX: 0, maxY: 0 },
-                inferredData: {}
-            };
-            cadCache.set(urn, emptyCad);
             cleanupUpload();
-            return res.status(200).json({
-                success: true,
-                urn,
-                cadData: emptyCad,
-                message: 'Unsupported file type. Returned empty CAD dataset.'
+            return res.status(415).json({
+                success: false,
+                error: 'Unsupported file type. Upload a DXF or DWG file.'
             });
         }
 
@@ -1077,14 +956,16 @@ app.post('/api/analyze', async (req, res) => {
 // Advanced îlot generation endpoint
 app.post('/api/ilots', async (req, res) => {
     try {
-        const { floorPlan, distribution = {
-            '1-3': 0.25,
-            '3-5': 0.35,
-            '5-10': 0.40
-        }, unitMix, rules, options = {} } = req.body;
+        const { floorPlan, distribution, unitMix, rules, options = {} } = req.body || {};
 
         if (!floorPlan) {
             return res.status(400).json({ error: 'Floor plan data required' });
+        }
+        if (!distribution) {
+            return res.status(400).json({ error: 'Distribution data required' });
+        }
+        if (!floorPlan.bounds) {
+            return res.status(400).json({ error: 'Floor plan bounds required' });
         }
 
         // Ensure required arrays exist (even if empty)
@@ -1092,36 +973,31 @@ app.post('/api/ilots', async (req, res) => {
             walls: floorPlan.walls || [],
             forbiddenZones: floorPlan.forbiddenZones || [],
             entrances: floorPlan.entrances || [],
-            bounds: floorPlan.bounds || { minX: 0, minY: 0, maxX: 100, maxY: 100 },
+            bounds: floorPlan.bounds,
             rooms: floorPlan.rooms || [],
             urn: floorPlan.urn || floorPlan.id
         };
 
-        if (normalizedFloorPlan.bounds) {
-            const minBoundsSize = 10;
-            const minX = Number(normalizedFloorPlan.bounds.minX) || 0;
-            const minY = Number(normalizedFloorPlan.bounds.minY) || 0;
-            const maxX = Number(normalizedFloorPlan.bounds.maxX) || 0;
-            const maxY = Number(normalizedFloorPlan.bounds.maxY) || 0;
-            const width = maxX - minX;
-            const height = maxY - minY;
-
-            if (width < minBoundsSize || height < minBoundsSize) {
-                const centerX = (minX + maxX) / 2 || 0;
-                const centerY = (minY + maxY) / 2 || 0;
-                normalizedFloorPlan.bounds = {
-                    minX: centerX - minBoundsSize / 2,
-                    maxX: centerX + minBoundsSize / 2,
-                    minY: centerY - minBoundsSize / 2,
-                    maxY: centerY + minBoundsSize / 2
-                };
-            }
+        const minX = Number(normalizedFloorPlan.bounds.minX);
+        const minY = Number(normalizedFloorPlan.bounds.minY);
+        const maxX = Number(normalizedFloorPlan.bounds.maxX);
+        const maxY = Number(normalizedFloorPlan.bounds.maxY);
+        if (![minX, minY, maxX, maxY].every(Number.isFinite)) {
+            return res.status(400).json({ error: 'Floor plan bounds must be numeric' });
+        }
+        if (maxX <= minX || maxY <= minY) {
+            return res.status(400).json({ error: 'Floor plan bounds must have positive width and height' });
         }
 
         const planId = normalizedFloorPlan.urn || floorPlan.urn || floorPlan.id;
         normalizedFloorPlan.urn = planId;
 
-        const normalizedDistribution = normalizeDistribution(distribution);
+        let normalizedDistribution;
+        try {
+            normalizedDistribution = normalizeDistribution(distribution);
+        } catch (error) {
+            return res.status(400).json({ error: error.message || 'Invalid distribution' });
+        }
 
         const generatorOptions = Object.assign({}, options);
 
@@ -1132,20 +1008,18 @@ app.post('/api/ilots', async (req, res) => {
             generatorOptions.seed = Math.abs(h) % 1000000000;
         }
 
-        generatorOptions.totalIlots = generatorOptions.totalIlots || 50;
+        const totalIlots = Number(generatorOptions.totalIlots);
+        if (!Number.isFinite(totalIlots) || totalIlots <= 0) {
+            return res.status(400).json({ error: 'options.totalIlots must be a positive number' });
+        }
+        generatorOptions.totalIlots = Math.floor(totalIlots);
         generatorOptions.corridorWidth = typeof generatorOptions.corridorWidth === 'number' ? generatorOptions.corridorWidth : 1.2;
         generatorOptions.margin = typeof generatorOptions.margin === 'number' ? generatorOptions.margin : (generatorOptions.minRowDistance || 1.0);
         generatorOptions.spacing = typeof generatorOptions.spacing === 'number' ? generatorOptions.spacing : 0.3;
 
         const ilotPlacer = new RowBasedIlotPlacer(normalizedFloorPlan, generatorOptions);
-        let ilotsRaw;
-        try {
-            // Attempt to generate ilots using the advanced placer
-            ilotsRaw = await ilotPlacer.generateIlots(normalizedDistribution, generatorOptions.totalIlots);
-        } catch (ilotError) {
-            console.warn('Advanced îlot placer failed:', ilotError.message);
-            ilotsRaw = [];
-        }
+        const ilotsRaw = await ilotPlacer.generateIlots(normalizedDistribution, generatorOptions.totalIlots, unitMix);
+        const placementSummary = ilotPlacer.stats || null;
 
         // sanitize placements to ensure numeric fields for client
         let ilots = Array.isArray(ilotsRaw) ? ilotsRaw.map(sanitizeIlot).filter(Boolean) : [];
@@ -1153,13 +1027,7 @@ app.post('/api/ilots', async (req, res) => {
         if (Number.isFinite(generatorOptions.totalIlots)) {
             if (ilots.length > generatorOptions.totalIlots) {
                 ilots = ilots.slice(0, generatorOptions.totalIlots);
-            } else if (ilots.length < generatorOptions.totalIlots) {
-                ilots = padIlotsToCount(ilots, generatorOptions.totalIlots, normalizedFloorPlan.bounds);
             }
-        }
-
-        if (!ilots.length) {
-            console.warn('Îlot placer returned empty. No fallback applied (Production Mode).');
         }
 
         // Calculate total area
@@ -1173,12 +1041,12 @@ app.post('/api/ilots', async (req, res) => {
                 ilots,
                 distribution: normalizedDistribution,
                 options: generatorOptions,
-                unitMixReport
+                unitMixReport,
+                placementSummary
             });
         }
 
         console.log(`Îlot generation: ${ilots.length} placed, total area: ${totalArea.toFixed(2)} m²`);
-        if (ilots.length > 0) console.log('First ilot sample:', JSON.stringify(ilots[0]));
 
 
         const validator = new ArchitecturalValidator({ ...normalizedFloorPlan, ilots });
@@ -1194,6 +1062,7 @@ app.post('/api/ilots', async (req, res) => {
             distribution: normalizedDistribution,
             options: generatorOptions,
             unitMixReport: unitMixReport,
+            placementSummary: placementSummary,
             validation: validationReport,
             suggestions: suggestions,
             message: `Generated ${ilots.length} ilots with ${totalArea.toFixed(2)} m² total area`
@@ -1245,13 +1114,16 @@ app.post('/api/optimize/layout', (req, res) => {
         if (!floorPlan || !ilots) {
             return res.status(400).json({ error: 'Floor plan and ilots data required' });
         }
+        if (!floorPlan.bounds) {
+            return res.status(400).json({ error: 'Floor plan bounds required' });
+        }
 
         // Normalize floor plan
         const normalizedFloorPlan = {
             walls: floorPlan.walls || [],
             forbiddenZones: floorPlan.forbiddenZones || [],
             entrances: floorPlan.entrances || [],
-            bounds: floorPlan.bounds || { minX: 0, minY: 0, maxX: 100, maxY: 100 },
+            bounds: floorPlan.bounds,
             rooms: floorPlan.rooms || [],
             urn: floorPlan.urn
         };
@@ -1279,6 +1151,9 @@ app.post('/api/optimize/paths', (req, res) => {
         if (!floorPlan) {
             return res.status(400).json({ error: 'Floor plan data required' });
         }
+        if (!floorPlan.bounds) {
+            return res.status(400).json({ error: 'Floor plan bounds required' });
+        }
 
         const ilotsToUse = ilots || global.lastPlacedIlots || [];
         if (!ilotsToUse || ilotsToUse.length === 0) {
@@ -1290,7 +1165,7 @@ app.post('/api/optimize/paths', (req, res) => {
             walls: floorPlan.walls || [],
             forbiddenZones: floorPlan.forbiddenZones || [],
             entrances: floorPlan.entrances || [],
-            bounds: floorPlan.bounds || { minX: 0, minY: 0, maxX: 100, maxY: 100 },
+            bounds: floorPlan.bounds,
             rooms: floorPlan.rooms || [],
             urn: floorPlan.urn
         };
@@ -1331,13 +1206,16 @@ app.post('/api/corridors/advanced', async (req, res) => {
         if (!floorPlan) {
             return res.status(400).json({ error: 'Floor plan data required' });
         }
+        if (!floorPlan.bounds) {
+            return res.status(400).json({ error: 'Floor plan bounds required' });
+        }
 
         const normalizedFloorPlan = {
             walls: Array.isArray(floorPlan.walls) ? floorPlan.walls : [],
             forbidden_zones: Array.isArray(floorPlan.forbidden_zones) ? floorPlan.forbidden_zones : (Array.isArray(floorPlan.forbiddenZones) ? floorPlan.forbiddenZones : []),
             forbiddenZones: Array.isArray(floorPlan.forbiddenZones) ? floorPlan.forbiddenZones : (Array.isArray(floorPlan.forbidden_zones) ? floorPlan.forbidden_zones : []),
             entrances: Array.isArray(floorPlan.entrances) ? floorPlan.entrances : [],
-            bounds: floorPlan.bounds || { minX: 0, minY: 0, maxX: 100, maxY: 100 },
+            bounds: floorPlan.bounds,
             rooms: Array.isArray(floorPlan.rooms) ? floorPlan.rooms : [],
             urn: floorPlan.urn || floorPlan.id || null,
             id: floorPlan.id || floorPlan.urn || null
@@ -1506,7 +1384,7 @@ app.post('/api/corridors', (req, res) => {
         let corridors = result.corridors.map(sanitizeCorridor).filter(Boolean);
         let totalArea = result.totalArea;
 
-        // Fallback removed: strict production mode requires actual generation
+        // Strict production mode requires actual generation
         if (!corridors.length && options.strictMode) {
             console.warn('[Corridor API] No corridors generated.');
         }
@@ -1587,7 +1465,7 @@ app.options('/api/aps/manifest', (req, res) => {
     return res.status(204).send();
 });
 
-// Viewer token endpoint removed - using Three.js instead of Autodesk Viewer
+// Viewer token endpoint for Autodesk Viewer integration
 
 // Viewer transform endpoints - store/retrieve overlay transforms used by the frontend viewer
 app.get('/viewer/transform/:urn', async (req, res) => {
@@ -1623,6 +1501,7 @@ app.post('/api/jobs/:urn/automate', async (req, res) => {
     const { distribution, options = {}, corridorWidth = 1.2, timeoutMs = 120000 } = req.body || {};
 
     if (!urn) return res.status(400).json({ error: 'URN required' });
+    if (!distribution) return res.status(400).json({ error: 'Distribution data required' });
 
     try {
         // Use helper to run the full pipeline with APS polling (default behavior)
@@ -1636,8 +1515,9 @@ app.post('/api/jobs/:urn/automate', async (req, res) => {
 });
 
 // Helper: runs the analysis -> ilot placement -> corridor generation -> export pipeline for a URN
-async function runAutomationForUrn(urn, { distribution = { '1-3': 10 }, options = {}, corridorWidth = 1.2, timeoutMs = 120000, waitForAPS = false, analysisData: providedAnalysis = null } = {}) {
+async function runAutomationForUrn(urn, { distribution, options = {}, corridorWidth = 1.2, timeoutMs = 120000, waitForAPS = false, analysisData: providedAnalysis = null } = {}) {
     if (!urn) throw new Error('URN required');
+    if (!distribution) throw new Error('Distribution data required');
 
     console.log(`runAutomationForUrn called for urn=${urn} providedAnalysisPresent=${!!providedAnalysis} waitForAPS=${waitForAPS}`);
 
@@ -1680,23 +1560,33 @@ async function runAutomationForUrn(urn, { distribution = { '1-3': 10 }, options 
     }
 
     // analysisData now contains walls, forbiddenZones, entrances, bounds, totalArea
+    if (!analysisData.bounds) {
+        throw new Error('Analysis bounds missing; cannot run automation');
+    }
+
     const floorPlan = {
         walls: analysisData.walls || [],
         forbiddenZones: analysisData.forbiddenZones || [],
         entrances: analysisData.entrances || [],
-        bounds: analysisData.bounds || { minX: 0, minY: 0, maxX: 100, maxY: 100 },
+        bounds: analysisData.bounds,
         rooms: analysisData.rooms || [],
         placementTransform: analysisData.placementTransform || null
     };
 
+    const normalizedDistribution = normalizeDistribution(distribution);
+    const totalIlots = Number(options.totalIlots);
+    if (!Number.isFinite(totalIlots) || totalIlots <= 0) {
+        throw new Error('options.totalIlots must be a positive number');
+    }
+
     const ilotPlacer = new RowBasedIlotPlacer(floorPlan, options || {});
-    const ilots = ilotPlacer.generateIlots(distribution || { '1-3': 0.25, '3-5': 0.35, '5-10': 0.40 }, options.totalIlots || 100);
+    const ilots = ilotPlacer.generateIlots(normalizedDistribution, Math.floor(totalIlots));
     global.lastPlacedIlots = ilots;
 
     const corridorGenerator = new ProductionCorridorGenerator(floorPlan, ilots, { corridorWidth });
     const corridors = corridorGenerator.generateCorridors();
 
-    // expose last placed corridors for demo/debug overlays
+    // expose last placed corridors for overlays
     global.lastPlacedCorridors = corridors;
 
     // Export results (PDF + SVG)
@@ -1754,13 +1644,11 @@ app.post('/api/aps/webhook/callback', async (req, res) => {
             // Enqueue into webhook worker for reliable processing
             try {
                 const webhookWorker = require('./lib/webhookWorker');
-                webhookWorker.enqueue(urn, eventId, payload);
+                await webhookWorker.enqueue(urn, eventId, payload);
                 console.log('Enqueued webhook job for urn', urn, 'eventId', eventId);
             } catch (e) {
-                // fallback to fire-and-forget
-                runAutomationForUrn(urn, { distribution: { '1-3': 10 }, options: {}, corridorWidth: 1.2, waitForAPS: false })
-                    .then(result => console.log('Webhook automation finished for', urn, result))
-                    .catch(err => console.error('Webhook automation error for', urn, err.message || err));
+                console.error('Webhook queue error:', e && e.message ? e.message : e);
+                return res.status(500).json({ success: false, error: 'Webhook queue unavailable' });
             }
 
             // mark the event processed (best-effort)
@@ -1780,39 +1668,19 @@ app.post('/api/aps/webhook/callback', async (req, res) => {
 
 // Simulation endpoints removed to enforce processing only from real APS translations and uploaded CAD files.
 
-// Debug endpoint to return last placed ilots/corridors (useful for viewer overlay demo)
-app.get('/api/debug/last-placements', adminAuth, (req, res) => {
-    try {
-        const rawIlots = Array.isArray(global.lastPlacedIlots) ? global.lastPlacedIlots : [];
-        const rawCorridors = Array.isArray(global.lastPlacedCorridors) ? global.lastPlacedCorridors : [];
-        const ilots = rawIlots.map(sanitizeIlot).filter(Boolean);
-        const corridors = rawCorridors.map(sanitizeCorridor).filter(Boolean);
-
-        // If any items were filtered, log details to logs/filtered_placements.log for debugging
-        try {
-            const pathLogs = path.join(__dirname, 'logs');
-            if (!fs.existsSync(pathLogs)) fs.mkdirSync(pathLogs, { recursive: true });
-            const now = new Date().toISOString();
-            const filteredIlots = rawIlots.length - ilots.length;
-            const filteredCorr = rawCorridors.length - corridors.length;
-            if (filteredIlots > 0 || filteredCorr > 0) {
-                const entry = { timestamp: now, filteredIlots, filteredCorr, rawIlots: rawIlots.filter((r, i) => !ilots[i]), rawCorridors: rawCorridors.filter((r, i) => !corridors[i]) };
-                try { fs.appendFileSync(path.join(pathLogs, 'filtered_placements.log'), JSON.stringify(entry) + '\n'); } catch (e) { /* ignore logging errors */ }
-            }
-        } catch (e) { /* ignore logging errors */ }
-
-        return res.json({ ilots, corridors });
-    } catch (e) {
-        return res.status(500).json({ error: 'Failed to fetch last placements', detail: e.message || String(e) });
-    }
-});
-
-// No auth token needed for Three.js
 app.get('/api/auth/token', async (req, res) => {
-    res.json({
-        access_token: 'not_needed_for_threejs',
-        expires_in: 3600
-    });
+    try {
+        const token = await getAPSToken();
+        res.json({
+            access_token: token,
+            expires_in: 3600
+        });
+    } catch (error) {
+        const message = error && error.message === 'APS_NOT_CONFIGURED'
+            ? 'APS credentials not configured'
+            : (error && error.message ? error.message : 'Failed to acquire APS token');
+        res.status(500).json({ error: message });
+    }
 });
 
 // Health endpoint
@@ -1828,8 +1696,7 @@ app.get('/health', (req, res) => {
         staticRoot: path.relative(__dirname, STATIC_ROOT),
         cachedFloorPlans: summaries.length,
         sqliteReady: Boolean(sqliteAdapter && typeof sqliteAdapter.dbFilePath === 'function' && sqliteAdapter.dbFilePath()),
-        sqlite: Boolean(sqliteAdapter && typeof sqliteAdapter.dbFilePath === 'function' && sqliteAdapter.dbFilePath()),
-        mlBootstrapFinished
+        sqlite: Boolean(sqliteAdapter && typeof sqliteAdapter.dbFilePath === 'function' && sqliteAdapter.dbFilePath())
     });
 });
 
@@ -1880,7 +1747,7 @@ app.post('/api/admin/migrate-transforms', adminAuth, (req, res) => {
     }
 });
 
-// Per-URN transform debug endpoints
+// Per-URN transform endpoints
 app.get('/api/transforms/:urn', async (req, res) => {
     try {
         const urn = req.params.urn;
@@ -1957,7 +1824,7 @@ app.get('/api/transforms/:urn/effective', async (req, res) => {
     }
 });
 
-// Create a webhook on APS and store the secret locally (demo only)
+// Create a webhook on APS and store the secret locally
 app.post('/api/aps/webhooks/register', adminAuth, async (req, res) => {
     try {
         const { system = 'derivative', event = 'extraction.finished', callbackUrl, scope = {}, secret } = req.body || {};
@@ -2148,12 +2015,11 @@ app.get('*', (req, res, next) => {
 const BIND_ADDRESS = process.env.BIND_ADDRESS || '0.0.0.0';
 
 async function startServer() {
+    await ProductionInitializer.initialize();
     return new Promise((resolve, reject) => {
         const server = app.listen(PORT, BIND_ADDRESS, () => {
             console.log(`FloorPlan Pro Clean with Three.js running on http://${BIND_ADDRESS}:${PORT}`);
             console.log('✅ Server Startup Complete');
-
-            setImmediate(() => scheduleMLBootstrap());
             resolve(server);
         });
 
@@ -2165,62 +2031,365 @@ async function startServer() {
 }
 
 // Start server automatically only when run directly
-console.log('[Server] Startup check: require.main === module?', require.main === module);
 if (require.main === module) {
-    console.log('[Server] Starting server...');
     startServer()
         .catch((error) => {
             console.error('Failed to start server:', error);
             process.exit(1);
         });
-} else {
-    console.log('[Server] Not starting server (module required by another script)');
 }
+
+// ===== COSTO V1 API ENDPOINTS =====
+
+// COSTO: Process CAD file with layer standard
+app.post('/api/costo/process', upload.single('file'), async (req, res) => {
+    try {
+        if (!req.file) {
+            return res.status(400).json({ error: 'No file uploaded' });
+        }
+
+        const layerMapping = req.body.layerMapping ? JSON.parse(req.body.layerMapping) : null;
+        const floorPlan = await CostoAPI.processCADFile(req.file.path, layerMapping);
+
+        // Cleanup
+        try { fs.unlinkSync(req.file.path); } catch (e) { }
+
+        res.json({
+            success: true,
+            floorPlan,
+            layerMapping: CostoAPI.getLayerMapping()
+        });
+    } catch (error) {
+        if (req.file && req.file.path) try { fs.unlinkSync(req.file.path); } catch (e) { }
+        console.error('COSTO process error:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// COSTO: Generate optimized layout
+app.post('/api/costo/generate', async (req, res) => {
+    try {
+        const { floorPlan, unitMix, rules, options } = req.body;
+
+        if (!floorPlan || !unitMix) {
+            return res.status(400).json({ error: 'Floor plan and unit mix required' });
+        }
+
+        const result = CostoAPI.generateLayout(floorPlan, unitMix, rules, options);
+
+        res.json({
+            success: true,
+            ...result
+        });
+    } catch (error) {
+        console.error('COSTO generation error:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// COSTO: Get/Update box catalog
+app.get('/api/costo/catalog', (req, res) => {
+    try {
+        const catalog = CostoAPI.getCatalog();
+        res.json({ success: true, catalog });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+app.post('/api/costo/catalog', (req, res) => {
+    try {
+        const { catalog } = req.body;
+        CostoAPI.updateCatalog(catalog);
+        res.json({ success: true, message: 'Catalog updated' });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// COSTO: Get/Update layer mapping
+app.get('/api/costo/layers', (req, res) => {
+    try {
+        const mapping = CostoAPI.getLayerMapping();
+        const standardTypes = CostoLayerStandard.getStandardTypes();
+        res.json({ success: true, mapping, standardTypes });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+app.post('/api/costo/layers', (req, res) => {
+    try {
+        const { mapping } = req.body;
+        CostoAPI.setLayerMapping(mapping);
+        res.json({ success: true, message: 'Layer mapping updated' });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// COSTO: Export to DWG
+app.post('/api/costo/export/dwg', async (req, res) => {
+    try {
+        const { solution, floorPlan, options } = req.body;
+        if (!solution || !floorPlan) {
+            return res.status(400).json({ error: 'Solution and floor plan required' });
+        }
+
+        const dwgContent = CostoExports.exportToDWG(solution, floorPlan, options);
+        const filename = `costo_layout_${Date.now()}.dxf`;
+        const filepath = path.join(__dirname, 'exports', filename);
+        
+        if (!fs.existsSync(path.dirname(filepath))) {
+            fs.mkdirSync(path.dirname(filepath), { recursive: true });
+        }
+        fs.writeFileSync(filepath, dwgContent);
+
+        res.json({
+            success: true,
+            filename,
+            filepath,
+            message: 'DWG exported successfully'
+        });
+    } catch (error) {
+        console.error('COSTO DWG export error:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// COSTO: Export to PDF
+app.post('/api/costo/export/pdf', async (req, res) => {
+    try {
+        const { solution, floorPlan, metrics, options } = req.body;
+        if (!solution || !floorPlan) {
+            return res.status(400).json({ error: 'Solution and floor plan required' });
+        }
+
+        const pdfBytes = await CostoExports.exportToPDF(solution, floorPlan, metrics, options);
+        const filename = `costo_layout_${Date.now()}.pdf`;
+        const filepath = path.join(__dirname, 'exports', filename);
+        
+        if (!fs.existsSync(path.dirname(filepath))) {
+            fs.mkdirSync(path.dirname(filepath), { recursive: true });
+        }
+        fs.writeFileSync(filepath, pdfBytes);
+
+        res.json({
+            success: true,
+            filename,
+            filepath,
+            message: 'PDF exported successfully'
+        });
+    } catch (error) {
+        console.error('COSTO PDF export error:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// COSTO: Export to Interactive SVG
+app.post('/api/costo/export/svg', (req, res) => {
+    try {
+        const { solution, floorPlan, options } = req.body;
+        if (!solution || !floorPlan) {
+            return res.status(400).json({ error: 'Solution and floor plan required' });
+        }
+
+        const svgContent = CostoExports.exportToInteractiveSVG(solution, floorPlan, options);
+        const filename = `costo_layout_${Date.now()}.svg`;
+        const filepath = path.join(__dirname, 'exports', filename);
+        
+        if (!fs.existsSync(path.dirname(filepath))) {
+            fs.mkdirSync(path.dirname(filepath), { recursive: true });
+        }
+        fs.writeFileSync(filepath, svgContent);
+
+        res.json({
+            success: true,
+            filename,
+            filepath,
+            message: 'SVG exported successfully'
+        });
+    } catch (error) {
+        console.error('COSTO SVG export error:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// COSTO: Export to Excel
+app.post('/api/costo/export/excel', (req, res) => {
+    try {
+        const { solution, unitMix, deviation, options } = req.body;
+        if (!solution) {
+            return res.status(400).json({ error: 'Solution required' });
+        }
+
+        const excelBuffer = CostoExports.exportToExcel(solution, unitMix, deviation, options);
+        const filename = `costo_data_${Date.now()}.xlsx`;
+        const filepath = path.join(__dirname, 'exports', filename);
+        
+        if (!fs.existsSync(path.dirname(filepath))) {
+            fs.mkdirSync(path.dirname(filepath), { recursive: true });
+        }
+        fs.writeFileSync(filepath, excelBuffer);
+
+        res.json({
+            success: true,
+            filename,
+            filepath,
+            message: 'Excel exported successfully'
+        });
+    } catch (error) {
+        console.error('COSTO Excel export error:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// COSTO: Export to CSV
+app.post('/api/costo/export/csv', (req, res) => {
+    try {
+        const { solution, options } = req.body;
+        if (!solution) {
+            return res.status(400).json({ error: 'Solution required' });
+        }
+
+        const csvContent = CostoExports.exportToCSV(solution, options);
+        const filename = `costo_data_${Date.now()}.csv`;
+        const filepath = path.join(__dirname, 'exports', filename);
+        
+        if (!fs.existsSync(path.dirname(filepath))) {
+            fs.mkdirSync(path.dirname(filepath), { recursive: true });
+        }
+        fs.writeFileSync(filepath, csvContent);
+
+        res.json({
+            success: true,
+            filename,
+            filepath,
+            message: 'CSV exported successfully'
+        });
+    } catch (error) {
+        console.error('COSTO CSV export error:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// COSTO: Export Report PDF
+app.post('/api/costo/export/report', async (req, res) => {
+    try {
+        const { solution, metrics, compliance, deviation, options } = req.body;
+        if (!solution) {
+            return res.status(400).json({ error: 'Solution required' });
+        }
+
+        const pdfBytes = await CostoExports.exportReportPDF(solution, metrics, compliance, deviation, options);
+        const filename = `costo_report_${Date.now()}.pdf`;
+        const filepath = path.join(__dirname, 'exports', filename);
+        
+        if (!fs.existsSync(path.dirname(filepath))) {
+            fs.mkdirSync(path.dirname(filepath), { recursive: true });
+        }
+        fs.writeFileSync(filepath, pdfBytes);
+
+        res.json({
+            success: true,
+            filename,
+            filepath,
+            message: 'Report PDF exported successfully'
+        });
+    } catch (error) {
+        console.error('COSTO Report PDF export error:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// COSTO: Apply numbering
+app.post('/api/costo/numbering', (req, res) => {
+    try {
+        const { boxes, options } = req.body;
+        if (!boxes || !Array.isArray(boxes)) {
+            return res.status(400).json({ error: 'Boxes array required' });
+        }
+
+        const numberedBoxes = CostoNumbering.applyNumbering(boxes, options);
+        const statistics = CostoNumbering.getStatistics(numberedBoxes);
+
+        res.json({
+            success: true,
+            boxes: numberedBoxes,
+            statistics,
+            message: `Numbered ${numberedBoxes.length} boxes`
+        });
+    } catch (error) {
+        console.error('COSTO numbering error:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// COSTO: Project management
+app.post('/api/costo/project/save', (req, res) => {
+    try {
+        const { projectId, projectData } = req.body;
+        if (!projectId || !projectData) {
+            return res.status(400).json({ error: 'Project ID and data required' });
+        }
+
+        const filepath = CostoProjectManager.saveProject(projectId, projectData);
+        res.json({
+            success: true,
+            projectId,
+            filepath,
+            message: 'Project saved successfully'
+        });
+    } catch (error) {
+        console.error('COSTO project save error:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+app.get('/api/costo/project/:projectId', (req, res) => {
+    try {
+        const { projectId } = req.params;
+        const project = CostoProjectManager.loadProject(projectId);
+        
+        if (!project) {
+            return res.status(404).json({ error: 'Project not found' });
+        }
+
+        res.json({ success: true, project });
+    } catch (error) {
+        console.error('COSTO project load error:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+app.get('/api/costo/projects', (req, res) => {
+    try {
+        const projects = CostoProjectManager.listProjects();
+        res.json({ success: true, projects });
+    } catch (error) {
+        console.error('COSTO projects list error:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+app.delete('/api/costo/project/:projectId', (req, res) => {
+    try {
+        const { projectId } = req.params;
+        const deleted = CostoProjectManager.deleteProject(projectId);
+        
+        if (!deleted) {
+            return res.status(404).json({ error: 'Project not found' });
+        }
+
+        res.json({ success: true, message: 'Project deleted successfully' });
+    } catch (error) {
+        console.error('COSTO project delete error:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
 
 // Export automation helper and server controls for tests/worker scripts
 app.startServer = startServer;
 app.runAutomationForUrn = runAutomationForUrn;
 
 module.exports = app;
-
-function scheduleMLBootstrap(reason = 'server-start') {
-    if (process.env.SKIP_ML_BOOTSTRAP === '1') {
-        if (!mlBootstrapFinished) {
-            console.log(`${ML_BOOT_PREFIX} Skipped (SKIP_ML_BOOTSTRAP=1)`);
-        }
-        return;
-    }
-
-    const env = (process.env.NODE_ENV || '').toLowerCase();
-    if (env === 'test' && !process.env.FORCE_ML_BOOTSTRAP) {
-        if (!mlBootstrapFinished) {
-            console.log(`${ML_BOOT_PREFIX} Skipped (NODE_ENV=test)`);
-        }
-        return;
-    }
-
-    if (mlBootstrapFinished) return;
-
-    if (!mlBootstrapPromise) {
-        mlBootstrapPromise = (async () => {
-            const startedAt = Date.now();
-            console.log(`${ML_BOOT_PREFIX} Initializing production ML models (${reason})...`);
-            try {
-                const success = await ProductionInitializer.initialize();
-                const duration = Date.now() - startedAt;
-                if (success) {
-                    mlBootstrapFinished = true;
-                    console.log(`${ML_BOOT_PREFIX} Production system ready in ${duration}ms`);
-                } else {
-                    mlBootstrapFinished = true;
-                    console.log(`${ML_BOOT_PREFIX} System ready with rule-based algorithms after ${duration}ms`);
-                }
-            } catch (error) {
-                console.error(`${ML_BOOT_PREFIX} Initialization error:`, error && error.stack ? error.stack : error);
-                mlBootstrapFinished = true;
-            }
-        })().finally(() => {
-            mlBootstrapPromise = null;
-        });
-    }
-}
