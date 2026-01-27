@@ -37,12 +37,34 @@ export class FloorPlanRenderer {
         this.perspectiveCamera.position.set(0, -200, 150);
         this.perspectiveCamera.lookAt(0, 0, 0);
 
-        this.renderer = new THREE.WebGLRenderer({
-            antialias: true,
-            preserveDrawingBuffer: true,
-            alpha: false,
-            powerPreference: 'high-performance'
-        });
+        // Try WebGL with error handling
+        try {
+            this.renderer = new THREE.WebGLRenderer({
+                antialias: true,
+                preserveDrawingBuffer: true,
+                alpha: false,
+                powerPreference: 'high-performance'
+            });
+            this.rendererType = 'webgl';
+        } catch (webglError) {
+            console.warn('WebGL renderer failed, trying software fallback:', webglError);
+            // Try with forceSoftwareRenderer option
+            try {
+                this.renderer = new THREE.WebGLRenderer({
+                    antialias: false,
+                    preserveDrawingBuffer: true,
+                    alpha: false,
+                    powerPreference: 'default',
+                    failIfMajorPerformanceCaveat: false
+                });
+                this.rendererType = 'webgl-software';
+                console.log('Using WebGL with software fallback');
+            } catch (fallbackError) {
+                console.error('WebGL initialization completely failed:', fallbackError);
+                throw new Error('WebGL is not available. Please enable hardware acceleration in your browser settings or update your graphics drivers.');
+            }
+        }
+        
         this.renderer.setSize(container.clientWidth, container.clientHeight);
         this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2)); // Limit for performance
         this.renderer.shadowMap.enabled = true;

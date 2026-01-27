@@ -64,8 +64,34 @@ document.addEventListener('DOMContentLoaded', function () {
                 initializeModules();
             }, 100);
         } else {
-            renderer = new FloorPlanRenderer(container);
-            initializeModules();
+            try {
+                renderer = new FloorPlanRenderer(container);
+                initializeModules();
+            } catch (error) {
+                console.error('Failed to initialize renderer:', error);
+                // Show user-friendly error message
+                const errorDiv = document.createElement('div');
+                errorDiv.style.cssText = 'position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: #f44336; color: white; padding: 30px; border-radius: 8px; z-index: 10000; text-align: center; max-width: 500px; box-shadow: 0 4px 20px rgba(0,0,0,0.3);';
+                errorDiv.innerHTML = `
+                    <h3 style="margin-top: 0;">⚠️ Graphics Initialization Error</h3>
+                    <p>Unable to initialize 3D graphics. This may be due to:</p>
+                    <ul style="text-align: left; margin: 15px 0; padding-left: 20px;">
+                        <li>WebGL disabled in browser settings</li>
+                        <li>Outdated graphics drivers</li>
+                        <li>Hardware acceleration disabled</li>
+                        <li>Browser compatibility issues</li>
+                    </ul>
+                    <p><strong>Try:</strong></p>
+                    <ul style="text-align: left; margin: 15px 0; padding-left: 20px;">
+                        <li>Enable hardware acceleration in browser settings</li>
+                        <li>Update your graphics drivers</li>
+                        <li>Try a different browser (Chrome, Firefox, Edge)</li>
+                        <li>Check browser console for more details</li>
+                    </ul>
+                    <button onclick="this.parentElement.remove(); location.reload();" style="margin-top: 15px; padding: 10px 20px; background: white; color: #f44336; border: none; border-radius: 4px; cursor: pointer; font-weight: bold;">Reload Page</button>
+                `;
+                document.body.appendChild(errorDiv);
+            }
         }
     }, 0);
 });
