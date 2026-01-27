@@ -29,9 +29,9 @@ COPY lib ./lib
 COPY scripts ./scripts
 COPY server.js ./server.js
 
-RUN mkdir -p models
+RUN mkdir -p models projects
 
-RUN mkdir -p uploads exports logs models checkpoints && chown -R node:node uploads exports logs models checkpoints
+RUN mkdir -p uploads exports logs models checkpoints projects && chown -R node:node uploads exports logs models checkpoints projects
 
 USER node
 
