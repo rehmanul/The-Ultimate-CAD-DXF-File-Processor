@@ -57,59 +57,51 @@ document.addEventListener('DOMContentLoaded', function () {
 
     // Initialize renderer
     setTimeout(() => {
-        if (container.clientWidth === 0 || container.clientHeight === 0) {
-            console.warn('Container has zero size, waiting...');
-            setTimeout(() => {
-                renderer = new FloorPlanRenderer(container);
-                initializeModules();
-                if (renderer && renderer.rendererType === 'svg') {
-                    showNotification('WebGL disabled. Running in 2D fallback mode.', 'warning');
-                }
-            }, 100);
-        } else {
+        const initRenderer = () => {
             try {
                 renderer = new FloorPlanRenderer(container);
-                initializeModules();
-                if (renderer && renderer.rendererType === 'svg') {
-                    showNotification('WebGL disabled. Running in 2D fallback mode.', 'warning');
-                }
             } catch (error) {
                 console.error('Failed to initialize renderer:', error);
-                // Show user-friendly error message
-                const errorDiv = document.createElement('div');
-                errorDiv.style.cssText = 'position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: #f44336; color: white; padding: 30px; border-radius: 8px; z-index: 10000; text-align: center; max-width: 500px; box-shadow: 0 4px 20px rgba(0,0,0,0.3);';
-                errorDiv.innerHTML = `
-                    <h3 style="margin-top: 0;">⚠️ Graphics Initialization Error</h3>
-                    <p>Unable to initialize 3D graphics. This may be due to:</p>
-                    <ul style="text-align: left; margin: 15px 0; padding-left: 20px;">
-                        <li>WebGL disabled in browser settings</li>
-                        <li>Outdated graphics drivers</li>
-                        <li>Hardware acceleration disabled</li>
-                        <li>Browser compatibility issues</li>
-                    </ul>
-                    <p><strong>Try:</strong></p>
-                    <ul style="text-align: left; margin: 15px 0; padding-left: 20px;">
-                        <li>Enable hardware acceleration in browser settings</li>
-                        <li>Update your graphics drivers</li>
-                        <li>Try a different browser (Chrome, Firefox, Edge)</li>
-                        <li>Check browser console for more details</li>
-                    </ul>
-                    <button onclick="this.parentElement.remove(); location.reload();" style="margin-top: 15px; padding: 10px 20px; background: white; color: #f44336; border: none; border-radius: 4px; cursor: pointer; font-weight: bold;">Reload Page</button>
-                `;
-                document.body.appendChild(errorDiv);
+                renderer = null;
             }
+
+            initializeModules();
+
+            if (renderer && renderer.rendererType === 'svg') {
+                showNotification('WebGL disabled. Running in 2D fallback mode.', 'warning');
+            }
+
+            if (!renderer) {
+                showNotification('Graphics disabled (WebGL unavailable). Upload and processing still work, but 3D view is off.', 'warning');
+            }
+        };
+
+        if (container.clientWidth === 0 || container.clientHeight === 0) {
+            console.warn('Container has zero size, waiting...');
+            setTimeout(initRenderer, 100);
+        } else {
+            initRenderer();
         }
     }, 0);
 });
 
 function initializeModules() {
     // Initialize all production modules
-    textLabels = new TextLabels(renderer);
+    const hasRenderer = !!renderer;
     undoManager = new UndoRedoManager();
-    professionalExport = new ProfessionalExport(renderer);
-    editor = new InteractiveEditor(renderer, null);
-    effects = new AdvancedEffects(renderer);
-    shortcuts = new KeyboardShortcuts(renderer, editor, effects, undoManager);
+    if (hasRenderer) {
+        textLabels = new TextLabels(renderer);
+        professionalExport = new ProfessionalExport(renderer);
+        editor = new InteractiveEditor(renderer, null);
+        effects = new AdvancedEffects(renderer);
+        shortcuts = new KeyboardShortcuts(renderer, editor, effects, undoManager);
+    } else {
+        textLabels = null;
+        professionalExport = null;
+        editor = null;
+        effects = null;
+        shortcuts = null;
+    }
 
     // Phase 2: Initialize preset selector
     if (window.PresetSelector) {
@@ -123,8 +115,10 @@ function initializeModules() {
         }
     }
 
-    // Initialize Edit Tools
-    initializeEditTools();
+    // Initialize Edit Tools (requires renderer)
+    if (hasRenderer) {
+        initializeEditTools();
+    }
 
     // Initialize Unit Mix Import
     initializeUnitMixImport();
@@ -143,7 +137,8 @@ function initializeModules() {
 
 
     // Setup editor callbacks with collision detection and undo/redo
-    editor.onIlotModified = (ilot, index, changeData) => {
+    if (editor) {
+        editor.onIlotModified = (ilot, index, changeData) => {
         // Validate new position
         if (collisionDetector) {
             const validation = collisionDetector.isIlotValid(ilot, generatedIlots.filter((_, i) => i !== index));
@@ -268,9 +263,10 @@ function initializeModules() {
         showNotification('Ilot duplicated (Ctrl+Z to undo)', 'success');
     });
 
-    document.addEventListener('statsUpdate', () => {
-        updateStats();
-    });
+        document.addEventListener('statsUpdate', () => {
+            updateStats();
+        });
+    }
 
     // Top buttons already hidden in HTML
 
