@@ -37,32 +37,50 @@ export class FloorPlanRenderer {
         this.perspectiveCamera.position.set(0, -200, 150);
         this.perspectiveCamera.lookAt(0, 0, 0);
 
-        // Try WebGL with error handling
+        // Check WebGL support first
+        const canvas = document.createElement('canvas');
+        let gl = null;
+        try {
+            gl = canvas.getContext('webgl2') || canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
+        } catch (e) {
+            console.warn('WebGL context check failed:', e);
+        }
+        
+        if (!gl) {
+            throw new Error('WebGL is not supported in this browser. Please enable hardware acceleration or use a modern browser.');
+        }
+        
+        // Create WebGL renderer with error handling
         try {
             this.renderer = new THREE.WebGLRenderer({
                 antialias: true,
                 preserveDrawingBuffer: true,
                 alpha: false,
-                powerPreference: 'high-performance'
+                powerPreference: 'high-performance',
+                failIfMajorPerformanceCaveat: false // Allow software rendering if needed
             });
-            this.rendererType = 'webgl';
-        } catch (webglError) {
-            console.warn('WebGL renderer failed, trying software fallback:', webglError);
-            // Try with forceSoftwareRenderer option
-            try {
-                this.renderer = new THREE.WebGLRenderer({
-                    antialias: false,
-                    preserveDrawingBuffer: true,
-                    alpha: false,
-                    powerPreference: 'default',
-                    failIfMajorPerformanceCaveat: false
-                });
-                this.rendererType = 'webgl-software';
-                console.log('Using WebGL with software fallback');
-            } catch (fallbackError) {
-                console.error('WebGL initialization completely failed:', fallbackError);
-                throw new Error('WebGL is not available. Please enable hardware acceleration in your browser settings or update your graphics drivers.');
+            
+            // Check if renderer actually has a valid context
+            if (!this.renderer.getContext()) {
+                throw new Error('WebGL context creation failed');
             }
+            
+            this.rendererType = 'webgl';
+            
+            // Listen for context loss events
+            this.renderer.domElement.addEventListener('webglcontextlost', (event) => {
+                console.warn('WebGL context lost');
+                event.preventDefault();
+            });
+            
+            this.renderer.domElement.addEventListener('webglcontextrestored', () => {
+                console.log('WebGL context restored');
+                this.render();
+            });
+            
+        } catch (webglError) {
+            console.error('WebGL renderer creation failed:', webglError);
+            throw new Error('Failed to create WebGL renderer. Please check your browser settings and graphics drivers.');
         }
         
         this.renderer.setSize(container.clientWidth, container.clientHeight);
