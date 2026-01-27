@@ -2141,7 +2141,11 @@ app.get('*', (req, res, next) => {
 const BIND_ADDRESS = process.env.BIND_ADDRESS || '0.0.0.0';
 
 async function startServer() {
-    await ProductionInitializer.initialize();
+    try {
+        await ProductionInitializer.initialize();
+    } catch (error) {
+        console.error('[Startup] Production initializer failed, continuing in fallback mode:', error.message || error);
+    }
     return new Promise((resolve, reject) => {
         const server = app.listen(PORT, BIND_ADDRESS, () => {
             console.log(`FloorPlan Pro Clean with Three.js running on http://${BIND_ADDRESS}:${PORT}`);

@@ -37,6 +37,9 @@ export class FloorPlanRenderer {
         this.perspectiveCamera.position.set(0, -200, 150);
         this.perspectiveCamera.lookAt(0, 0, 0);
 
+        this.rendererType = 'webgl';
+        this.webglAvailable = true;
+
         // Check WebGL support first
         const canvas = document.createElement('canvas');
         let gl = null;
@@ -45,50 +48,63 @@ export class FloorPlanRenderer {
         } catch (e) {
             console.warn('WebGL context check failed:', e);
         }
-        
+
         if (!gl) {
-            throw new Error('WebGL is not supported in this browser. Please enable hardware acceleration or use a modern browser.');
+            this.webglAvailable = false;
         }
-        
-        // Create WebGL renderer with error handling
-        try {
-            this.renderer = new THREE.WebGLRenderer({
-                antialias: true,
-                preserveDrawingBuffer: true,
-                alpha: false,
-                powerPreference: 'high-performance',
-                failIfMajorPerformanceCaveat: false // Allow software rendering if needed
-            });
-            
-            // Check if renderer actually has a valid context
-            if (!this.renderer.getContext()) {
-                throw new Error('WebGL context creation failed');
+
+        if (this.webglAvailable) {
+            // Create WebGL renderer with error handling
+            try {
+                this.renderer = new THREE.WebGLRenderer({
+                    antialias: true,
+                    preserveDrawingBuffer: true,
+                    alpha: false,
+                    powerPreference: 'high-performance',
+                    failIfMajorPerformanceCaveat: false // Allow software rendering if needed
+                });
+
+                // Check if renderer actually has a valid context
+                if (!this.renderer.getContext()) {
+                    throw new Error('WebGL context creation failed');
+                }
+
+                this.rendererType = 'webgl';
+
+                // Listen for context loss events
+                this.renderer.domElement.addEventListener('webglcontextlost', (event) => {
+                    console.warn('WebGL context lost');
+                    event.preventDefault();
+                });
+
+                this.renderer.domElement.addEventListener('webglcontextrestored', () => {
+                    console.log('WebGL context restored');
+                    this.render();
+                });
+            } catch (webglError) {
+                console.error('WebGL renderer creation failed:', webglError);
+                this.webglAvailable = false;
             }
-            
-            this.rendererType = 'webgl';
-            
-            // Listen for context loss events
-            this.renderer.domElement.addEventListener('webglcontextlost', (event) => {
-                console.warn('WebGL context lost');
-                event.preventDefault();
-            });
-            
-            this.renderer.domElement.addEventListener('webglcontextrestored', () => {
-                console.log('WebGL context restored');
-                this.render();
-            });
-            
-        } catch (webglError) {
-            console.error('WebGL renderer creation failed:', webglError);
-            throw new Error('Failed to create WebGL renderer. Please check your browser settings and graphics drivers.');
         }
-        
+
+        if (!this.webglAvailable) {
+            console.warn('WebGL unavailable. Falling back to SVG renderer (2D only).');
+            this.renderer = new SVGRenderer();
+            this.rendererType = 'svg';
+        }
+
         this.renderer.setSize(container.clientWidth, container.clientHeight);
-        this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2)); // Limit for performance
-        this.renderer.shadowMap.enabled = true;
-        this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-        this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-        this.renderer.toneMappingExposure = 1.2;
+        if (this.renderer.setPixelRatio) {
+            this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2)); // Limit for performance
+        }
+        if (this.renderer.shadowMap) {
+            this.renderer.shadowMap.enabled = true;
+            this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        }
+        if (this.renderer.toneMapping !== undefined) {
+            this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+            this.renderer.toneMappingExposure = 1.2;
+        }
         container.appendChild(this.renderer.domElement);
 
         this.controls = new OrbitControls(this.camera, this.renderer.domElement);
@@ -100,26 +116,40 @@ export class FloorPlanRenderer {
         this.perspectiveControls.enableDamping = false;
         this.perspectiveControls.addEventListener('change', () => this.render());
 
-        this.composer = new EffectComposer(this.renderer);
-        this.renderPass = new RenderPass(this.scene, this.camera);
-        this.composer.addPass(this.renderPass);
+        if (this.rendererType === 'webgl') {
+            this.composer = new EffectComposer(this.renderer);
+            this.renderPass = new RenderPass(this.scene, this.camera);
+            this.composer.addPass(this.renderPass);
 
-        this.outlinePass = new OutlinePass(new THREE.Vector2(container.clientWidth, container.clientHeight), this.scene, this.camera);
-        this.outlinePass.edgeStrength = 3;
-        this.outlinePass.edgeGlow = 0.5;
-        this.outlinePass.edgeThickness = 2;
-        this.outlinePass.visibleEdgeColor.set('#00ff00');
-        this.composer.addPass(this.outlinePass);
+            this.outlinePass = new OutlinePass(new THREE.Vector2(container.clientWidth, container.clientHeight), this.scene, this.camera);
+            this.outlinePass.edgeStrength = 3;
+            this.outlinePass.edgeGlow = 0.5;
+            this.outlinePass.edgeThickness = 2;
+            this.outlinePass.visibleEdgeColor.set('#00ff00');
+            this.composer.addPass(this.outlinePass);
 
-        // Bloom pass for glow effects (disabled by default)
-        this.bloomPass = new UnrealBloomPass(
-            new THREE.Vector2(container.clientWidth, container.clientHeight),
-            0.5,  // strength
-            0.4,  // radius
-            0.85  // threshold
-        );
-        this.bloomPass.enabled = false;
-        this.composer.addPass(this.bloomPass);
+            // Bloom pass for glow effects (disabled by default)
+            this.bloomPass = new UnrealBloomPass(
+                new THREE.Vector2(container.clientWidth, container.clientHeight),
+                0.5,  // strength
+                0.4,  // radius
+                0.85  // threshold
+            );
+            this.bloomPass.enabled = false;
+            this.composer.addPass(this.bloomPass);
+        } else {
+            this.renderPass = { camera: this.camera };
+            this.outlinePass = {
+                selectedObjects: [],
+                renderCamera: this.camera,
+                visibleEdgeColor: { set: () => {} }
+            };
+            this.bloomPass = null;
+            this.composer = {
+                render: () => this.renderer.render(this.scene, this.camera),
+                setSize: () => {}
+            };
+        }
 
         // Shadow settings
         this.shadowsEnabled = true;
@@ -721,6 +751,11 @@ export class FloorPlanRenderer {
     }
 
     render() {
+        if (!this.renderer) return;
+        if (this.rendererType !== 'webgl') {
+            this.renderer.render(this.scene, this.camera);
+            return;
+        }
         if (this.is3DMode) {
             this.renderer.render(this.scene, this.perspectiveCamera);
         } else {
@@ -777,6 +812,10 @@ export class FloorPlanRenderer {
     }
 
     toggle3DMode() {
+        if (this.rendererType !== 'webgl') {
+            this.is3DMode = false;
+            return false;
+        }
         this.is3DMode = !this.is3DMode;
 
         if (this.is3DMode) {

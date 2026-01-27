@@ -62,11 +62,17 @@ document.addEventListener('DOMContentLoaded', function () {
             setTimeout(() => {
                 renderer = new FloorPlanRenderer(container);
                 initializeModules();
+                if (renderer && renderer.rendererType === 'svg') {
+                    showNotification('WebGL disabled. Running in 2D fallback mode.', 'warning');
+                }
             }, 100);
         } else {
             try {
                 renderer = new FloorPlanRenderer(container);
                 initializeModules();
+                if (renderer && renderer.rendererType === 'svg') {
+                    showNotification('WebGL disabled. Running in 2D fallback mode.', 'warning');
+                }
             } catch (error) {
                 console.error('Failed to initialize renderer:', error);
                 // Show user-friendly error message
