@@ -1943,20 +1943,54 @@ async function generateIlots() {
 
 
 function parseDistribution() {
+    // First check active preset
     if (activePresetConfig?.normalizedDistribution) {
         return activePresetConfig.normalizedDistribution;
     }
+    
+    // Check distribution editor
     const txt = document.getElementById('distributionEditor')?.value;
-    if (!txt) {
-        throw new Error('Distribution not configured');
+    if (txt && txt.trim() !== '') {
+        try {
+            const obj = JSON.parse(txt);
+            return normalizePresetDistribution(obj);
+        } catch (e) {
+            console.warn('Distribution JSON is invalid, using default:', e);
+        }
     }
-    let obj;
-    try {
-        obj = JSON.parse(txt);
-    } catch (e) {
-        throw new Error('Distribution JSON is invalid');
+    
+    // Check distribution inputs in UI
+    const distributionInputs = document.querySelectorAll('.distribution-input');
+    if (distributionInputs.length > 0) {
+        const distribution = {};
+        const ranges = ['0-1', '1-3', '3-5', '5-10'];
+        let hasValues = false;
+        
+        distributionInputs.forEach((input, index) => {
+            const value = parseFloat(input.value) || 0;
+            if (value > 0) hasValues = true;
+            distribution[ranges[index]] = value;
+        });
+        
+        if (hasValues) {
+            try {
+                return normalizePresetDistribution(distribution);
+            } catch (e) {
+                console.warn('Distribution inputs invalid, using default:', e);
+            }
+        }
     }
-    return normalizePresetDistribution(obj);
+    
+    // Use default distribution if nothing is configured
+    const defaultDistribution = {
+        '0-2': 25,
+        '2-5': 35,
+        '5-10': 30,
+        '10-20': 10
+    };
+    
+    console.log('Using default distribution:', defaultDistribution);
+    return normalizePresetDistribution(defaultDistribution);
 }
 
 async function generateCorridors() {
