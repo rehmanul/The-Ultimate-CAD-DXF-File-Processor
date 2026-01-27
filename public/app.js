@@ -716,7 +716,7 @@ DRAG - Move selected ilot
             if (!generatedIlots.length || !currentFloorPlan) { showNotification('Generate îlots first', 'warning'); return; }
             showNotification('Applying layout optimization...', 'info');
             try {
-                const API = (window.__API_BASE__) ? window.__API_BASE__ : 'http://localhost:3001';
+                const API = window.__API_BASE__ || window.location.origin;
                 const resp = await fetch(`${API}/api/optimize/layout`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ floorPlan: currentFloorPlan, ilots: generatedIlots }) });
                 const j = await resp.json();
                 if (j && Array.isArray(j.ilots)) {
@@ -739,7 +739,7 @@ DRAG - Move selected ilot
             if (!generatedIlots.length || !currentFloorPlan) { showNotification('Generate îlots first', 'warning'); return; }
             showNotification('Optimizing corridors...', 'info');
             try {
-                const API = (window.__API_BASE__) ? window.__API_BASE__ : 'http://localhost:3001';
+                const API = window.__API_BASE__ || window.location.origin;
                 const resp = await fetch(`${API}/api/optimize/paths`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ floorPlan: currentFloorPlan, ilots: generatedIlots }) });
                 const j = await resp.json();
                 if (j && Array.isArray(j.corridors)) {
@@ -1149,7 +1149,7 @@ async function computeMultiFloorStack() {
 
     try {
         showLoader('Aligning stacked floors...', 25);
-        const API = (window.__API_BASE__) ? window.__API_BASE__ : 'http://localhost:3001';
+        const API = window.__API_BASE__ || window.location.origin;
 
         const payload = {
             floors: multiFloorStack.map(entry => ({
@@ -1622,7 +1622,7 @@ async function fetchCrossFloorCorridors() {
         return;
     }
 
-    const API = (window.__API_BASE__) ? window.__API_BASE__ : 'http://localhost:3001';
+    const API = window.__API_BASE__ || window.location.origin;
     const payload = {
         floors: multiFloorResult.floors,
         connectors: multiFloorResult.connectors,
@@ -1659,7 +1659,7 @@ async function profileMultiFloorStack() {
 
     try {
         showLoader('Profiling multi-floor stack...', 35);
-        const API = (window.__API_BASE__) ? window.__API_BASE__ : 'http://localhost:3001';
+        const API = window.__API_BASE__ || window.location.origin;
         const payload = {
             floors: multiFloorResult.floors,
             options: {
@@ -1705,7 +1705,7 @@ async function generateMultiFloorReport() {
 
     try {
         showLoader('Generating multi-floor report...', 40);
-        const API = (window.__API_BASE__) ? window.__API_BASE__ : 'http://localhost:3001';
+        const API = window.__API_BASE__ || window.location.origin;
         const payload = {
             floors: multiFloorResult.floors,
             options: {
@@ -1866,7 +1866,7 @@ async function generateIlots() {
 
         console.log(`Generating ${targetIlots} ilots for ${floorArea.toFixed(2)} m² floor area`);
 
-        const API = (window.__API_BASE__) ? window.__API_BASE__ : 'http://localhost:3001';
+        const API = window.__API_BASE__ || window.location.origin;
         const unitMixPayload = activeUnitMix && Array.isArray(activeUnitMix.typologies)
             ? activeUnitMix.typologies.map(typo => ({
                 type: typo.name,
@@ -1972,7 +1972,7 @@ async function generateCorridors() {
     try {
         showLoader('Generating corridors...', 20);
 
-        const API = (window.__API_BASE__) ? window.__API_BASE__ : 'http://localhost:3001';
+        const API = window.__API_BASE__ || window.location.origin;
         const corridorWidth = getActiveCorridorWidth();
         const generateArrows = document.getElementById('generate-arrows') ? document.getElementById('generate-arrows').checked : true;
 
@@ -2033,7 +2033,7 @@ async function exportToPDF() {
     }
     showNotification('Generating PDF...', 'info');
     try {
-        const API = (window.__API_BASE__) ? window.__API_BASE__ : 'http://localhost:3001';
+        const API = window.__API_BASE__ || window.location.origin;
         const response = await fetch(`${API}/api/export/pdf`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -2044,7 +2044,7 @@ async function exportToPDF() {
         if (result && result.filepath) {
             showNotification('PDF exported: ' + result.filename, 'success');
             // Trigger download
-            const API = (window.__API_BASE__) ? window.__API_BASE__ : 'http://localhost:3001';
+            const API = window.__API_BASE__ || window.location.origin;
             window.open(`${API}/exports/${result.filename}`, '_blank');
         } else {
             showNotification('PDF export failed', 'error');
@@ -2061,7 +2061,7 @@ async function exportToImage() {
     }
     showNotification('Generating Image...', 'info');
     try {
-        const API = (window.__API_BASE__) ? window.__API_BASE__ : 'http://localhost:3001';
+        const API = window.__API_BASE__ || window.location.origin;
         const response = await fetch(`${API}/api/export/image`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -2071,7 +2071,7 @@ async function exportToImage() {
         const result = await response.json();
         if (result && result.filepath) {
             showNotification('Image exported: ' + result.filename, 'success');
-            const API = (window.__API_BASE__) ? window.__API_BASE__ : 'http://localhost:3001';
+            const API = window.__API_BASE__ || window.location.origin;
             window.open(`${API}/exports/${result.filename}`, '_blank');
         } else {
             showNotification('Image export failed', 'error');
@@ -2869,7 +2869,7 @@ function initializeUnitMixImport() {
 }
 
 async function parseUnitMixFile(file) {
-    const API = (window.__API_BASE__) ? window.__API_BASE__ : 'http://localhost:3001';
+    const API = window.__API_BASE__ || window.location.origin;
     const formData = new FormData();
     formData.append('file', file);
 
