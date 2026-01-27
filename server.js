@@ -27,6 +27,7 @@ const UnitMixReport = require('./lib/unitMixReport');
 const ComplianceReport = require('./lib/complianceReport');
 const RuleManager = require('./lib/ruleManager');
 const { sanitizeIlot, sanitizeCorridor, sanitizeArrow } = require('./lib/sanitizers');
+const { extractGridCells } = require('./lib/gridCellExtractor');
 const CostoAPI = require('./lib/costoAPI');
 const CostoLayerStandard = require('./lib/costoLayerStandard');
 const CostoBoxCatalog = require('./lib/costoBoxCatalog');
@@ -1096,6 +1097,35 @@ app.post('/api/ilots', async (req, res) => {
         if (Number.isFinite(generatorOptions.totalIlots)) {
             if (ilots.length > generatorOptions.totalIlots) {
                 ilots = ilots.slice(0, generatorOptions.totalIlots);
+            }
+        }
+
+        // If placement is extremely sparse, switch to grid-cell extraction (fills coverage like COSTO reference)
+        const minExpected = Math.max(20, Math.floor(generatorOptions.totalIlots * 0.35));
+        if (ilots.length < minExpected) {
+            try {
+                const gridCells = extractGridCells(
+                    normalizedFloorPlan,
+                    distribution,
+                    unitMix,
+                    {
+                        snapTolerance: 0.05,
+                        minCellSize: 0.6,
+                        minCellArea: 0.5,
+                        maxCellArea: 40
+                    }
+                ).map(sanitizeIlot).filter(Boolean);
+
+                if (gridCells.length > ilots.length) {
+                    console.warn(`[Ilots] Sparse placement (${ilots.length}); using grid extraction (${gridCells.length}) for full coverage.`);
+                    ilots = gridCells;
+                    placementSummary = Object.assign({}, placementSummary || {}, {
+                        mode: 'grid-extraction',
+                        placedCount: ilots.length
+                    });
+                }
+            } catch (gridErr) {
+                console.warn('[Ilots] Grid extraction failed, keeping sparse placement:', gridErr.message || gridErr);
             }
         }
 
