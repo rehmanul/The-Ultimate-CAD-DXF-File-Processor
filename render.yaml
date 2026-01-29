@@ -1,8 +1,10 @@
+# Free tier: plan: free (no payment required). Service spins down after 15min inactivity.
+# See https://docs.render.com/free
 services:
   - type: web
     name: floorplan-pro
-    env: docker
-    plan: starter
+    runtime: docker
+    plan: free
     region: oregon
     autoDeploy: true
     healthCheckPath: /health
