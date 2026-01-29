@@ -48,21 +48,106 @@ const deepClone = (data) => {
 
 document.addEventListener('DOMContentLoaded', function () {
     console.log('✨ FloorPlan Pro - Production System Initialized');
+    if (typeof showNotification === 'function') {
+        showNotification('FloorPlan Pro loading...', 'info', { duration: 2000 });
+    }
 
     const container = document.getElementById('threeContainer');
+    
+    // Initialize upload and file input immediately (before renderer) so upload works even if init is delayed
+    const uploadBtn = document.getElementById('uploadBtn');
+    const fileInput = document.getElementById('fileInput');
+    if (uploadBtn && fileInput) {
+        uploadBtn.type = 'button';
+        const triggerUpload = (event) => {
+            if (event) {
+                event.preventDefault();
+                event.stopPropagation();
+            }
+            const input = document.getElementById('fileInput');
+            if (!input) return;
+            try {
+                input.value = '';
+                input.click();
+            } catch (err) {
+                console.error('Upload trigger failed:', err);
+                if (typeof showNotification === 'function') showNotification('Could not open file dialog: ' + (err.message || 'unknown error'), 'error');
+            }
+        };
+        uploadBtn._triggerUpload = triggerUpload;
+        uploadBtn.addEventListener('click', triggerUpload);
+        // Attach file input change listener early so file selection works even before renderer init
+        fileInput.removeEventListener('change', handleFileUpload);
+        fileInput.addEventListener('change', handleFileUpload);
+        // Fallback: delegated click on nav-actions so upload works even if button listeners are overwritten
+        const navActions = document.querySelector('.nav-actions');
+        if (navActions && !navActions._uploadDelegated) {
+            navActions._uploadDelegated = true;
+            navActions.addEventListener('click', function (e) {
+                const btn = e.target && (e.target.id === 'uploadBtn' || e.target.closest('#uploadBtn'));
+                if (!btn) return;
+                const inp = document.getElementById('fileInput');
+                if (inp) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    inp.value = '';
+                    inp.click();
+                }
+            }, true);
+        }
+        console.log('Upload button and file input initialized early');
+    } else {
+        console.warn('Upload button or file input not found during DOMContentLoaded');
+    }
 
     // Initialize UI enhancements
     initializeAutoHide();
     initializeCollapsible();
 
     // Initialize renderer
-    setTimeout(() => {
-        const initRenderer = () => {
+    const initRenderer = () => {
+        if (!container) {
+            console.error('Container element not found');
+            showNotification('Canvas container not found. Please refresh the page.', 'error');
+            return;
+        }
+
+        // Wait for container to have size (with timeout so app always finishes init)
+        const initStartedAt = Date.now();
+        const INIT_SIZE_WAIT_MS = 5000;
+        const checkSize = () => {
+            const hasSize = container.clientWidth > 0 && container.clientHeight > 0;
+            const waitedLongEnough = (Date.now() - initStartedAt) >= INIT_SIZE_WAIT_MS;
+            if (!hasSize && !waitedLongEnough) {
+                console.warn('Container has zero size, waiting...', {
+                    width: container.clientWidth,
+                    height: container.clientHeight
+                });
+                setTimeout(checkSize, 100);
+                return;
+            }
+            if (!hasSize) {
+                console.warn('Container still zero size after ' + INIT_SIZE_WAIT_MS + 'ms; initializing anyway.');
+            }
+
             try {
-                renderer = new FloorPlanRenderer(container);
+                if (hasSize) {
+                    console.log('Initializing renderer with container size:', {
+                        width: container.clientWidth,
+                        height: container.clientHeight
+                    });
+                    renderer = new FloorPlanRenderer(container);
+                    if (renderer) {
+                        renderer.render();
+                        console.log('Renderer initialized and rendered');
+                    }
+                } else {
+                    renderer = null;
+                }
             } catch (error) {
                 console.error('Failed to initialize renderer:', error);
                 renderer = null;
+                showNotification('Failed to initialize graphics renderer: ' + error.message, 'error');
             }
 
             initializeModules();
@@ -76,13 +161,16 @@ document.addEventListener('DOMContentLoaded', function () {
             }
         };
 
-        if (container.clientWidth === 0 || container.clientHeight === 0) {
-            console.warn('Container has zero size, waiting...');
-            setTimeout(initRenderer, 100);
-        } else {
-            initRenderer();
-        }
-    }, 0);
+        // Start checking after a short delay to ensure DOM is ready
+        setTimeout(checkSize, 50);
+    };
+
+    // Wait for DOM to be fully ready
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initRenderer);
+    } else {
+        initRenderer();
+    }
 });
 
 function initializeModules() {
@@ -150,6 +238,7 @@ function initializeModules() {
                 ilot.width = changeData.oldSize.width;
                 ilot.height = changeData.oldSize.height;
                 renderer.renderIlots(generatedIlots);
+        updateLegendTable(); // Update legend when ilots are rendered
                 if (textLabels) {
                     textLabels.clear();
                     generatedIlots.forEach((il, i) => textLabels.addIlotLabel(il, i));
@@ -167,6 +256,7 @@ function initializeModules() {
                 { ...changeData.newPosition, ...changeData.newSize },
                 () => {
                     renderer.renderIlots(generatedIlots);
+        updateLegendTable(); // Update legend when ilots are rendered
                     if (textLabels) {
                         textLabels.clear();
                         generatedIlots.forEach((il, i) => textLabels.addIlotLabel(il, i));
@@ -182,6 +272,7 @@ function initializeModules() {
                 changeData.newPosition,
                 () => {
                     renderer.renderIlots(generatedIlots);
+        updateLegendTable(); // Update legend when ilots are rendered
                     if (textLabels) {
                         textLabels.clear();
                         generatedIlots.forEach((il, i) => textLabels.addIlotLabel(il, i));
@@ -197,6 +288,7 @@ function initializeModules() {
                 changeData.newSize,
                 () => {
                     renderer.renderIlots(generatedIlots);
+        updateLegendTable(); // Update legend when ilots are rendered
                     if (textLabels) {
                         textLabels.clear();
                         generatedIlots.forEach((il, i) => textLabels.addIlotLabel(il, i));
@@ -211,6 +303,7 @@ function initializeModules() {
 
         // Re-render to show changes
         renderer.renderIlots(generatedIlots);
+        updateLegendTable(); // Update legend when ilots are rendered
         if (textLabels) {
             textLabels.clear();
             generatedIlots.forEach((il, i) => textLabels.addIlotLabel(il, i));
@@ -234,6 +327,7 @@ function initializeModules() {
         const index = mesh.userData.index;
         const command = new DeleteIlotCommand(generatedIlots, index, () => {
             renderer.renderIlots(generatedIlots);
+        updateLegendTable(); // Update legend when ilots are rendered
             if (textLabels) {
                 textLabels.clear();
                 generatedIlots.forEach((il, i) => textLabels.addIlotLabel(il, i));
@@ -252,6 +346,7 @@ function initializeModules() {
         const newIlot = e.detail.ilot;
         const command = new AddIlotCommand(generatedIlots, newIlot, () => {
             renderer.renderIlots(generatedIlots);
+        updateLegendTable(); // Update legend when ilots are rendered
             if (textLabels) {
                 textLabels.clear();
                 generatedIlots.forEach((il, i) => textLabels.addIlotLabel(il, i));
@@ -275,7 +370,16 @@ function initializeModules() {
 
     // Attach event listeners to UI elements
     const fileInput = document.getElementById('fileInput');
-    if (fileInput) fileInput.onchange = handleFileUpload;
+    if (fileInput) {
+        // Remove any existing listeners to prevent duplicates
+        fileInput.onchange = null;
+        fileInput.removeEventListener('change', handleFileUpload);
+        // Add fresh event listener
+        fileInput.addEventListener('change', handleFileUpload);
+        console.log('File input event listener attached');
+    } else {
+        console.warn('File input element not found');
+    }
 
     const generateIlotsBtn = document.getElementById('generateIlotsBtn');
     if (generateIlotsBtn) generateIlotsBtn.onclick = generateIlots;
@@ -510,6 +614,125 @@ function initializeModules() {
         });
     }
 
+    // Door placement functionality
+    let doorPlacementMode = null; // '0.75' or '1.0' or null
+    let doorPlacementStart = null;
+
+    const door075Btn = document.getElementById('door075Btn');
+    const door1mBtn = document.getElementById('door1mBtn');
+    const cancelDoorBtn = document.getElementById('cancelDoorBtn');
+
+    function activateDoorMode(width) {
+        doorPlacementMode = width;
+        doorPlacementStart = null;
+        if (door075Btn) door075Btn.classList.toggle('active', width === '0.75');
+        if (door1mBtn) door1mBtn.classList.toggle('active', width === '1.0');
+        showNotification(`Door placement mode: ${width}m - Click on a wall to place door`, 'info');
+    }
+
+    function cancelDoorMode() {
+        doorPlacementMode = null;
+        doorPlacementStart = null;
+        if (door075Btn) door075Btn.classList.remove('active');
+        if (door1mBtn) door1mBtn.classList.remove('active');
+        showNotification('Door placement cancelled', 'info');
+    }
+
+    if (door075Btn) {
+        door075Btn.addEventListener('click', () => {
+            if (doorPlacementMode === '0.75') {
+                cancelDoorMode();
+            } else {
+                activateDoorMode('0.75');
+            }
+        });
+    }
+
+    if (door1mBtn) {
+        door1mBtn.addEventListener('click', () => {
+            if (doorPlacementMode === '1.0') {
+                cancelDoorMode();
+            } else {
+                activateDoorMode('1.0');
+            }
+        });
+    }
+
+    if (cancelDoorBtn) {
+        cancelDoorBtn.addEventListener('click', cancelDoorMode);
+    }
+
+    // Handle door placement on canvas click
+    if (renderer && container) {
+        container.addEventListener('click', (e) => {
+            if (!doorPlacementMode || !currentFloorPlan) return;
+
+            // Get mouse position in world coordinates
+            const rect = container.getBoundingClientRect();
+            const mouse = new THREE.Vector2();
+            mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+            mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+
+            const raycaster = new THREE.Raycaster();
+            raycaster.setFromCamera(mouse, renderer.camera);
+
+            // Find nearest wall
+            const walls = currentFloorPlan.walls || [];
+            let nearestWall = null;
+            let nearestDistance = Infinity;
+            let nearestPoint = null;
+
+            walls.forEach(wall => {
+                if (wall.start && wall.end) {
+                    const wallStart = new THREE.Vector3(wall.start.x, wall.start.y, 0);
+                    const wallEnd = new THREE.Vector3(wall.end.x, wall.end.y, 0);
+                    const wallDir = new THREE.Vector3().subVectors(wallEnd, wallStart);
+                    const wallLength = wallDir.length();
+                    wallDir.normalize();
+
+                    // Project mouse point onto wall line
+                    const mousePoint = raycaster.ray.origin;
+                    const toMouse = new THREE.Vector3().subVectors(mousePoint, wallStart);
+                    const projection = toMouse.dot(wallDir);
+                    const clampedProjection = Math.max(0, Math.min(projection, wallLength));
+                    const closestPoint = new THREE.Vector3().addVectors(wallStart, wallDir.multiplyScalar(clampedProjection));
+
+                    const distance = mousePoint.distanceTo(closestPoint);
+                    if (distance < nearestDistance && distance < 2.0) { // Within 2m of wall
+                        nearestDistance = distance;
+                        nearestWall = wall;
+                        nearestPoint = { x: closestPoint.x, y: closestPoint.y };
+                    }
+                }
+            });
+
+            if (nearestWall && nearestPoint) {
+                const doorWidth = parseFloat(doorPlacementMode);
+                const door = {
+                    id: `door_${Date.now()}`,
+                    position: nearestPoint,
+                    width: doorWidth,
+                    wall: nearestWall,
+                    type: 'door'
+                };
+
+                // Add door to floor plan
+                if (!currentFloorPlan.doors) currentFloorPlan.doors = [];
+                currentFloorPlan.doors.push(door);
+
+                // Render door
+                if (renderer.addDoor) {
+                    renderer.addDoor(door);
+                }
+
+                showNotification(`Door (${doorWidth}m) placed successfully`, 'success');
+                cancelDoorMode();
+            } else {
+                showNotification('Click near a wall to place door', 'warning');
+            }
+        });
+    }
+
     // Wire up export buttons
     const exportGltfBtn = document.getElementById('exportGltfBtn');
     if (exportGltfBtn) {
@@ -548,6 +771,135 @@ function initializeModules() {
             showNotification('Exporting 4K image...', 'info');
             professionalExport.downloadHighResPNG(4096, 4096, `floorplan_4k_${Date.now()}.png`);
             setTimeout(() => showNotification('4K image exported', 'success'), 500);
+        });
+    }
+
+    const exportReferencePdfBtn = document.getElementById('exportReferencePdfBtn');
+    if (exportReferencePdfBtn) {
+        exportReferencePdfBtn.addEventListener('click', async () => {
+            if (!currentFloorPlan) {
+                showNotification('No floor plan loaded', 'warning');
+                return;
+            }
+            if (!generatedIlots || generatedIlots.length === 0) {
+                showNotification('Generate ilots first', 'warning');
+                return;
+            }
+            
+            try {
+                showNotification('Exporting reference-style PDF...', 'info');
+                const API = window.__API_BASE__ || window.location.origin;
+                
+                // Convert ilots to boxes format - ensure all data is included
+                const boxes = generatedIlots.map(ilot => {
+                    const area = ilot.area || (ilot.width * ilot.height) || 0;
+                    // Use pre-calculated unitSize from renderer if available
+                    const unitSize = ilot.unitSize || (() => {
+                        const standardSizes = [0.5, 1, 1.5, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 20, 25];
+                        let closest = standardSizes[0];
+                        let minDiff = Math.abs(area - closest);
+                        for (const size of standardSizes) {
+                            const diff = Math.abs(area - size);
+                            if (diff < minDiff) {
+                                minDiff = diff;
+                                closest = size;
+                            }
+                        }
+                        if (area > 25) {
+                            closest = Math.round(area * 2) / 2;
+                        }
+                        return closest;
+                    })();
+                    
+                    return {
+                        id: ilot.id || `BOX_${generatedIlots.indexOf(ilot) + 1}`,
+                        x: ilot.x || 0,
+                        y: ilot.y || 0,
+                        width: ilot.width || 0,
+                        height: ilot.height || 0,
+                        area: area,
+                        unitSize: unitSize, // Pre-calculated unit size for export consistency
+                        type: ilot.type || ilot.sizeCategory || 'M',
+                        zone: ilot.zone || '',
+                        row: ilot.row || 0
+                    };
+                });
+                
+                // Convert corridors
+                const corridors = corridorNetwork.map(corridor => ({
+                    corners: corridor.polygon || (corridor.corners || []),
+                    width: corridor.width || 1.2
+                }));
+                
+                const solution = {
+                    boxes: boxes,
+                    corridors: corridors
+                };
+                
+                // Ensure floorPlan includes all necessary data
+                const exportFloorPlan = {
+                    ...currentFloorPlan,
+                    doors: currentFloorPlan.doors || [], // Include doors
+                    dimensions: currentFloorPlan.dimensions || [], // Include dimensions
+                    rooms: currentFloorPlan.rooms || [], // Include rooms with numbers
+                    envelope: currentFloorPlan.envelope || [], // Include envelope
+                    annotations: currentFloorPlan.annotations || [], // Include annotations
+                    functionalAreas: currentFloorPlan.functionalAreas || [], // Include functional areas
+                    specialRooms: currentFloorPlan.specialRooms || [], // Include RM-xxx rooms
+                    greenZones: currentFloorPlan.greenZones || [] // Include green zones
+                };
+                
+                const response = await fetch(`${API}/api/costo/export/reference-pdf`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        solution: solution,
+                        floorPlan: exportFloorPlan,
+                        metrics: {
+                            totalArea: currentFloorPlan.totalArea || 0,
+                            yieldRatio: 0.85,
+                            unitMixCompliance: 0.95,
+                            totalBoxes: boxes.length
+                        },
+                        options: {
+                            pageSize: 'A1',
+                            title: 'COSTO V1 - Storage Layout',
+                            showLegend: true,
+                            showTitleBlock: true,
+                            scale: '1:100',
+                            drawingNumber: '[01]',
+                            showDimensions: true,
+                            showUnitLabels: true,
+                            showAreas: true, // Ensure areas are shown
+                            showDoors: true // Ensure doors are shown
+                        }
+                    })
+                });
+                
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.error || 'Export failed');
+                }
+                
+                const result = await response.json();
+                
+                // Download the file
+                const downloadResponse = await fetch(`${API}/exports/${result.filename}`);
+                const blob = await downloadResponse.blob();
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = result.filename;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                window.URL.revokeObjectURL(url);
+                
+                showNotification('Reference PDF exported successfully!', 'success');
+            } catch (error) {
+                console.error('Reference PDF export error:', error);
+                showNotification('Export failed: ' + error.message, 'error');
+            }
         });
     }
 
@@ -766,9 +1118,23 @@ DRAG - Move selected ilot
 }
 
 async function handleFileUpload(e) {
-    if (!e.target.files[0]) return;
+    console.log('handleFileUpload called', e);
+    
+    // Handle both direct file input events and programmatic calls
+    const target = e?.target || e?.currentTarget || document.getElementById('fileInput');
+    if (!target) {
+        console.error('No file input target found');
+        showNotification('File input not found. Please refresh the page.', 'error');
+        return;
+    }
+    
+    if (!target.files || !target.files[0]) {
+        console.warn('No file selected');
+        return;
+    }
 
-    const file = e.target.files[0];
+    const file = target.files[0];
+    console.log('Processing file:', file.name, file.type, file.size);
     try {
         showLoader('Uploading file...');
         const formData = new FormData();
@@ -850,18 +1216,34 @@ async function handleFileUpload(e) {
 
         // Load floor plan into Three.js renderer with color coding
         if (renderer) {
-            renderer.loadFloorPlan(currentFloorPlan);
-            // Fit to bounds and center - wait for render to complete
-            setTimeout(() => {
-                if (currentFloorPlan.bounds) {
-                    renderer.fitToBounds(currentFloorPlan.bounds);
+            try {
+                renderer.loadFloorPlan(currentFloorPlan);
+                // Force render immediately
+                renderer.render();
+                // Fit to bounds and center - wait for render to complete
+                setTimeout(() => {
+                    try {
+                        if (currentFloorPlan.bounds) {
+                            renderer.fitToBounds(currentFloorPlan.bounds);
+                        }
+                        // Render again after fitting
+                        renderer.render();
+                    } catch (error) {
+                        console.error('Error fitting to bounds:', error);
+                    }
+                }, 100);
+                if (typeof window !== 'undefined' && typeof window.scrollTo === 'function') {
+                    window.requestAnimationFrame(() => {
+                        window.scrollTo({ top: 0, behavior: 'smooth' });
+                    });
                 }
-            }, 100);
-            if (typeof window !== 'undefined' && typeof window.scrollTo === 'function') {
-                window.requestAnimationFrame(() => {
-                    window.scrollTo({ top: 0, behavior: 'smooth' });
-                });
+            } catch (error) {
+                console.error('Error loading floor plan into renderer:', error);
+                showNotification('Error rendering floor plan: ' + error.message, 'error');
             }
+        } else {
+            console.warn('Renderer not available when trying to load floor plan');
+            showNotification('Renderer not initialized. Please refresh the page.', 'warning');
         }
 
         // Room labels are off by default for clean plan output
@@ -929,9 +1311,24 @@ function updateStats() {
 }
 
 function renderCurrentState() {
-    console.log('renderCurrentState called:', generatedIlots.length, 'ilots,', corridorNetwork.length, 'corridors');
-    if (renderer) {
-        renderer.renderIlots(generatedIlots);
+    if (!renderer) {
+        console.warn('Renderer not available for renderCurrentState');
+        return;
+    }
+    
+    try {
+        console.log('renderCurrentState called:', generatedIlots.length, 'ilots,', corridorNetwork.length, 'corridors');
+        
+        // Ensure floor plan is loaded
+        if (currentFloorPlan) {
+            renderer.loadFloorPlan(currentFloorPlan);
+        }
+        
+        // Render ilots
+        if (generatedIlots.length > 0) {
+            renderer.renderIlots(generatedIlots);
+            updateLegendTable(); // Update legend when ilots are rendered
+        }
 
         // Only render arrows (circulation indicators), not solid corridor rectangles
         if (renderer.renderCorridorArrows && corridorArrows.length > 0) {
@@ -947,6 +1344,11 @@ function renderCurrentState() {
         if (!stackVisualizationEnabled && renderer.clearCrossFloorRoutes) {
             renderer.clearCrossFloorRoutes();
         }
+        
+        // Ensure final render
+        renderer.render();
+    } catch (e) {
+        console.error('renderCurrentState error:', e);
     }
     updateConnectorVisualization();
 
@@ -1252,12 +1654,19 @@ function selectStackFloor(floorId) {
     if (editor) editor.collisionDetector = collisionDetector;
 
     if (renderer) {
-        renderer.loadFloorPlan(currentFloorPlan);
-        renderer.renderIlots(generatedIlots);
-        renderer.renderCorridors(getFilteredCorridors());
-        if (renderer.renderCorridorArrows) {
-            renderer.renderCorridorArrows(corridorArrows);
-            renderer.setCorridorArrowsVisible(corridorArrowsVisible);
+        try {
+            renderer.loadFloorPlan(currentFloorPlan);
+            renderer.renderIlots(generatedIlots);
+            updateLegendTable(); // Update legend when ilots are rendered
+            renderer.renderCorridors(getFilteredCorridors());
+            if (renderer.renderCorridorArrows) {
+                renderer.renderCorridorArrows(corridorArrows);
+                renderer.setCorridorArrowsVisible(corridorArrowsVisible);
+            }
+            renderer.render(); // Ensure final render
+        } catch (error) {
+            console.error('Error rendering stack floor:', error);
+            showNotification('Error rendering floor: ' + error.message, 'error');
         }
     }
 
@@ -1628,32 +2037,37 @@ async function fetchCrossFloorCorridors() {
         return;
     }
 
-    const API = window.__API_BASE__ || window.location.origin;
-    const payload = {
-        floors: multiFloorResult.floors,
-        connectors: multiFloorResult.connectors,
-        edges: multiFloorResult.edges || [],
-        options: getMultiFloorOptions()
-    };
+    try {
+        const API = window.__API_BASE__ || window.location.origin;
+        const payload = {
+            floors: multiFloorResult.floors,
+            connectors: multiFloorResult.connectors,
+            edges: multiFloorResult.edges || [],
+            options: getMultiFloorOptions()
+        };
 
-    const response = await fetch(`${API}/api/multi-floor/corridors`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-    });
+        const response = await fetch(`${API}/api/multi-floor/corridors`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
 
-    const data = await response.json().catch(() => null);
-    if (response.ok && data && data.success) {
-        if (multiFloorResult) {
-            multiFloorResult.crossFloorCorridors = data.routes || null;
-            multiFloorResult.crossFloorCorridorMetrics = data.metrics || null;
+        const data = await response.json().catch(() => null);
+        if (response.ok && data && data.success) {
+            if (multiFloorResult) {
+                multiFloorResult.crossFloorCorridors = data.routes || null;
+                multiFloorResult.crossFloorCorridorMetrics = data.metrics || null;
+            }
+        } else {
+            console.warn('Cross-floor corridors unavailable', data?.error);
+            if (multiFloorResult) {
+                multiFloorResult.crossFloorCorridors = null;
+                multiFloorResult.crossFloorCorridorMetrics = null;
+            }
         }
-    } else {
-        console.warn('Cross-floor corridors unavailable', data?.error);
-        if (multiFloorResult) {
-            multiFloorResult.crossFloorCorridors = null;
-            multiFloorResult.crossFloorCorridorMetrics = null;
-        }
+    } catch (error) {
+        console.error('Error in fetchCrossFloorCorridors:', error);
+        showNotification('Error fetching cross-floor corridors: ' + error.message, 'error');
     }
 }
 
@@ -1936,6 +2350,7 @@ async function generateIlots() {
         // Wait for viewer to be ready before rendering
         setTimeout(() => {
             renderCurrentState();
+            updateLegendTable(); // Update legend with unit statistics
         }, 500);
 
         showNotification(`Generated ${generatedIlots.length} îlots (${data.totalArea?.toFixed(2)} m²)`, 'success');
@@ -2347,29 +2762,76 @@ function initializeLayoutChrome() {
 function initializeHeaderActions() {
     const uploadBtn = document.getElementById('uploadBtn');
     const fileInput = document.getElementById('fileInput');
-    if (uploadBtn && fileInput) {
-        if (!uploadBtn.type) {
-            uploadBtn.type = 'button';
+    
+    if (!uploadBtn) {
+        console.warn('Upload button not found');
+        return;
+    }
+    
+    if (!fileInput) {
+        console.warn('File input not found');
+        return;
+    }
+    
+    // Ensure button type is set correctly
+    uploadBtn.type = 'button';
+    
+    // Remove any existing listeners to prevent duplicates
+    const oldTrigger = uploadBtn._triggerUpload;
+    if (oldTrigger) {
+        uploadBtn.removeEventListener('click', oldTrigger);
+        uploadBtn.removeEventListener('pointerdown', oldTrigger);
+        uploadBtn.removeEventListener('touchstart', oldTrigger);
+    }
+    
+    // Create new trigger function
+    const triggerUpload = (event) => {
+        if (event) {
+            event.preventDefault();
+            event.stopPropagation();
         }
-        const triggerUpload = (event) => {
-            event?.preventDefault?.();
-            event?.stopPropagation?.();
+        
+        console.log('Upload button clicked, triggering file input');
+        
+        // Ensure file input is accessible
+        if (!fileInput) {
+            console.error('File input not available');
+            showNotification('File input not available. Please refresh the page.', 'error');
+            return;
+        }
+        
+        // Reset and trigger file input
+        try {
             fileInput.value = '';
             fileInput.click();
-        };
-        uploadBtn.addEventListener('click', triggerUpload);
-        uploadBtn.addEventListener('pointerdown', triggerUpload);
-        uploadBtn.addEventListener('touchstart', triggerUpload, { passive: false });
-        uploadBtn.addEventListener('keydown', (event) => {
-            if (event.key === 'Enter' || event.key === ' ') {
-                triggerUpload(event);
-            }
-        });
-    }
+            console.log('File input click triggered');
+        } catch (error) {
+            console.error('Error triggering file input:', error);
+            showNotification('Error opening file dialog: ' + error.message, 'error');
+        }
+    };
+    
+    // Store reference for cleanup
+    uploadBtn._triggerUpload = triggerUpload;
+    
+    // Add event listeners
+    uploadBtn.addEventListener('click', triggerUpload, { passive: false });
+    uploadBtn.addEventListener('pointerdown', triggerUpload, { passive: false });
+    uploadBtn.addEventListener('touchstart', triggerUpload, { passive: false });
+    uploadBtn.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault();
+            triggerUpload(event);
+        }
+    });
+    
+    console.log('Upload button initialized successfully');
+    
+    // Also handle data-trigger="upload" elements
     const uploadTriggers = document.querySelectorAll('[data-trigger="upload"]');
     uploadTriggers.forEach(trigger => {
         trigger.addEventListener('click', (event) => {
-            event?.preventDefault?.();
+            event?.preventDefault();
             if (fileInput) {
                 fileInput.value = '';
                 fileInput.click();
@@ -2506,6 +2968,23 @@ function showNotification(message, type = 'info', options = {}) {
         options = type;
         type = options.type || 'info';
     }
+    
+    // Handle duration parameter (can be passed as third arg or in options)
+    if (typeof options === 'number') {
+        options = { duration: options };
+    } else if (typeof options === 'string') {
+        // Legacy: third param was type, options was fourth
+        options = {};
+    }
+
+    // Remove duplicate notifications with same message
+    const existingNotifications = document.querySelectorAll('.notification');
+    existingNotifications.forEach(n => {
+        const content = n.querySelector('.notification-content')?.textContent || '';
+        if (content.includes(message.substring(0, 30))) { // Match first 30 chars
+            n.remove();
+        }
+    });
 
     const host = document.getElementById('notifications') || document.body;
     const notification = document.createElement('div');
@@ -2787,7 +3266,91 @@ function showLegend() {
     const legend = document.getElementById('floorLegend');
     if (legend) {
         legend.style.display = 'block';
+        updateLegendTable();
     }
+}
+
+// Update legend table with unit size statistics (matching reference format)
+function updateLegendTable() {
+    const tableBody = document.getElementById('legendTableBody');
+    const unitTable = document.getElementById('legendUnitTable');
+    
+    if (!tableBody || !unitTable || !generatedIlots || generatedIlots.length === 0) {
+        if (unitTable) unitTable.style.display = 'none';
+        return;
+    }
+    
+    // Calculate unit size statistics (using consistent calculation)
+    const unitSizeMap = {};
+    generatedIlots.forEach(ilot => {
+        const area = ilot.area || (ilot.width * ilot.height);
+        // Calculate unit size label (consistent with backend)
+        const standardSizes = [0.5, 1, 1.5, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 20, 25];
+        let closest = standardSizes[0];
+        let minDiff = Math.abs(area - closest);
+        for (const size of standardSizes) {
+            const diff = Math.abs(area - size);
+            if (diff < minDiff) {
+                minDiff = diff;
+                closest = size;
+            }
+        }
+        if (area > 25) {
+            closest = Math.round(area * 2) / 2;
+        }
+        
+        // Get group (consistent with backend)
+        const size = closest;
+        let group = 'A';
+        if (size <= 1) group = 'A';
+        else if (size <= 2) group = 'B';
+        else if (size <= 5) group = 'C';
+        else if (size <= 10) group = 'D';
+        else if (size <= 15) group = 'E';
+        else group = 'F';
+        
+        if (!unitSizeMap[closest]) {
+            unitSizeMap[closest] = {
+                size: closest,
+                group: group,
+                count: 0,
+                totalArea: 0
+            };
+        }
+        unitSizeMap[closest].count++;
+        unitSizeMap[closest].totalArea += area;
+    });
+    
+    // Sort by size
+    const unitSizes = Object.values(unitSizeMap).sort((a, b) => a.size - b.size);
+    
+    // Clear and populate table - Match reference: RM No., DESCRIPTION, AREA (SQ.FT.)
+    tableBody.innerHTML = '';
+    
+    // Use actual rooms if available, otherwise use unit sizes
+    const rooms = currentFloorPlan?.rooms || [];
+    const roomRows = rooms.length > 0 ? rooms.slice(0, 26).map((room, idx) => ({
+        rmNo: String(room.number || (idx + 1)).padStart(2, '0'),
+        description: room.type || room.description || 'Office',
+        area: ((room.area || 0) * 10.764).toFixed(1) // Convert m² to sq.ft.
+    })) : unitSizes.slice(0, 26).map(unit => ({
+        rmNo: String(Math.floor(unit.size)).padStart(2, '0'),
+        description: 'Unit',
+        area: ((unit.size * unit.count) * 10.764).toFixed(1)
+    }));
+    
+    roomRows.slice(0, 26).forEach(row => {
+        const rowEl = document.createElement('div');
+        rowEl.className = 'legend-table-row';
+        rowEl.innerHTML = `
+            <div class="legend-table-cell">${row.rmNo}</div>
+            <div class="legend-table-cell">${row.description}</div>
+            <div class="legend-table-cell">${row.area}</div>
+        `;
+        tableBody.appendChild(rowEl);
+    });
+    
+    unitTable.style.display = 'block';
 }
 
 // Hide legend
@@ -2862,6 +3425,7 @@ function initializeEditTools() {
 
                     // Re-render
                     renderer.renderIlots(generatedIlots);
+        updateLegendTable(); // Update legend when ilots are rendered
                     updateStats();
 
                     showNotification('Ilot deleted', 'success');
@@ -3296,8 +3860,8 @@ if (heatMapBtn) {
                 if (heatMapEnabled) {
                     // Color by density (size-based heat map)
                     const ilot = mesh.userData.ilot;
-                    const area = ilot.width * ilot.height;
-                    const maxArea = 15; // Max expected area
+                    const area = ilot.area || (ilot.width * ilot.height);
+                    const maxArea = 25; // Max expected area
                     const ratio = Math.min(area / maxArea, 1);
 
                     // Gradient from green (small) to yellow to red (large)
@@ -3305,18 +3869,20 @@ if (heatMapBtn) {
                     const g = ratio < 0.5 ? 1 : 1 - (ratio - 0.5) * 2;
                     const b = 0.2;
 
+                    // Apply heat map color to fill (keep blue outline)
                     mesh.material.color.setRGB(r, g, b);
-                    mesh.material.opacity = 0.85;
+                    mesh.material.opacity = 0.6; // More visible heat map
                 } else {
-                    // Reset to default color
-                    mesh.material.color.setHex(0x22c55e);
-                    mesh.material.opacity = 0.75;
+                    // Reset to transparent white fill (blue outline remains)
+                    mesh.material.color.setHex(0xffffff);
+                    mesh.material.opacity = 0.1; // Very transparent - outline is main feature
                 }
             });
             renderer.render();
         }
 
-        showNotification(heatMapEnabled ? 'Heat Map: Showing density by size' : 'Heat Map disabled', 'info');
+        // Show single notification (duplicate removal handled in showNotification)
+        showNotification(heatMapEnabled ? 'Heat Map: Showing density by size' : 'Heat Map disabled', 'info', { duration: 3000 });
     });
 }
 

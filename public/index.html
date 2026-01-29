@@ -86,6 +86,20 @@
                 </button>
             </div>
 
+            <!-- Door Placement Tools -->
+            <div class="nav-control-group">
+                <span class="group-label">Doors:</span>
+                <button class="nav-icon-btn" id="door075Btn" title="Add 0.75m Door">
+                    <i class="fas fa-door-open"></i>
+                </button>
+                <button class="nav-icon-btn" id="door1mBtn" title="Add 1m Door">
+                    <i class="fas fa-door-open"></i>
+                </button>
+                <button class="nav-icon-btn" id="cancelDoorBtn" title="Cancel Door Placement">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+
             <!-- Heat Map & Advanced -->
             <div class="nav-control-group">
                 <span class="group-label">Analysis:</span>
@@ -110,7 +124,7 @@
             <button class="nav-pin-btn active" id="navPinBtn" title="Pin/Unpin Navigation">
                 <i class="fas fa-thumbtack"></i>
             </button>
-            <input type="file" id="fileInput" accept=".dxf,.dwg" style="display: none;">
+            <input type="file" id="fileInput" accept=".dxf,.dwg" style="display: none;" aria-label="Select CAD file">
             <button class="btn btn-primary" id="uploadBtn" type="button" title="Upload CAD File">
                 <i class="fas fa-upload"></i> Upload CAD File
             </button>
@@ -350,6 +364,9 @@
                         <button class="btn btn-sm" id="exportGltfBtn" title="Export 3D Model">
                             <i class="fas fa-cube"></i>
                         </button>
+                        <button class="btn btn-sm btn-success" id="exportReferencePdfBtn" title="Export Reference PDF (Architectural Style)">
+                            <i class="fas fa-file-pdf"></i> Reference
+                        </button>
                     </div>
                 </div>
             </div>
@@ -361,26 +378,58 @@
 
             <!-- Floor Plan Legends -->
             <div class="floor-legend" id="floorLegend" style="display: none;">
-                <div class="legend-title">Legend</div>
-                <div class="legend-item">
-                    <div class="legend-color" style="background-color: #4b5563;"></div>
-                    <span>Walls</span>
+                <div class="legend-title">LÉGENDE</div>
+                
+                <!-- RM No./DESCRIPTION/AREA Table (matching reference exactly) -->
+                <div class="legend-table" id="legendUnitTable" style="display: none;">
+                    <div class="legend-table-header">
+                        <div class="legend-table-cell">RM No.</div>
+                        <div class="legend-table-cell">DESCRIPTION</div>
+                        <div class="legend-table-cell">AREA (SQ.FT.)</div>
+                    </div>
+                    <div class="legend-table-body" id="legendTableBody">
+                        <!-- Dynamically populated -->
+                    </div>
                 </div>
-                <div class="legend-item">
-                    <div class="legend-color" style="background-color: #ef4444;"></div>
-                    <span>Entrances</span>
+                
+                <!-- Line Style Legend -->
+                <div class="legend-section">
+                    <div class="legend-item">
+                        <div class="legend-line" style="background-color: #000000; height: 1px;"></div>
+                        <span>Tôle Blanche</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-line" style="background-color: #0000ff; height: 2px;"></div>
+                        <span>Tôle Grise</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-line legend-dashed" style="border-top: 2px dashed #ff0000;"></div>
+                        <span>Ligne circulation</span>
+                    </div>
                 </div>
-                <div class="legend-item">
-                    <div class="legend-color" style="background-color: #3b82f6;"></div>
-                    <span>Forbidden Zones</span>
-                </div>
-                <div class="legend-item">
-                    <div class="legend-color" style="background-color: #f8fafc;"></div>
-                    <span>Workstations</span>
-                </div>
-                <div class="legend-item">
-                    <div class="legend-color" style="background-color: #2563eb;"></div>
-                    <span>Corridors</span>
+                
+                <!-- Color Legend -->
+                <div class="legend-section">
+                    <div class="legend-item">
+                        <div class="legend-color" style="background-color: #000000;"></div>
+                        <span>Walls</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-color" style="background-color: #ff0000;"></div>
+                        <span>Entrances</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-color" style="background-color: #0000ff;"></div>
+                        <span>Forbidden Zones</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-color" style="background-color: #0000ff; border: 2px solid #0000ff; background: transparent;"></div>
+                        <span>Boxes (Ilots)</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-line legend-dashed" style="border-top: 2px dashed #ff0000;"></div>
+                        <span>Corridors</span>
+                    </div>
                 </div>
             </div>
         </main>

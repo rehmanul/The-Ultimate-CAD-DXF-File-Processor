@@ -91,6 +91,7 @@ body {
     z-index: 1000;
     transform: translateY(0);
     transition: transform 0.3s ease;
+    pointer-events: auto;
 }
 
 .top-nav.auto-hidden {
@@ -157,6 +158,34 @@ body {
     flex: 1;
     justify-content: center;
     overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255, 255, 255, 0.3) transparent;
+    min-width: 0; /* Prevent flex item overflow */
+}
+
+.nav-center::-webkit-scrollbar {
+    height: 4px;
+}
+
+.nav-center::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.nav-center::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.3);
+    border-radius: 2px;
+}
+
+/* Prevent text overflow in nav buttons */
+.nav-control-group {
+    flex-shrink: 0;
+    min-width: 0;
+}
+
+.nav-control-group .nav-icon-btn {
+    flex-shrink: 0;
 }
 
 .nav-control-group {
@@ -192,6 +221,19 @@ body {
     justify-content: center;
     transition: all 0.2s ease;
     font-size: 12px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.nav-icon-btn i {
+    font-size: 12px;
+    line-height: 1;
+}
+
+.nav-icon-btn:not(:has(i)) {
+    font-size: 10px;
+    padding: 0 4px;
 }
 
 .nav-icon-btn:hover {
@@ -207,6 +249,14 @@ body {
 .nav-actions {
     display: flex;
     gap: var(--space-md);
+    align-items: center;
+    flex-shrink: 0;
+}
+
+.nav-actions .btn {
+    pointer-events: auto !important;
+    z-index: 10;
+    position: relative;
 }
 
 /* ===== APP CONTAINER ===== */
@@ -214,6 +264,9 @@ body {
     display: flex;
     height: 100vh;
     padding-top: var(--nav-height);
+    width: 100%;
+    overflow: hidden;
+    position: relative;
 }
 
 /* ===== SIDEBARS ===== */
@@ -233,6 +286,9 @@ body {
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     flex-shrink: 0;
     flex-grow: 0;
+    word-wrap: break-word;
+    word-break: break-word;
+    hyphens: auto;
 }
 
 .sidebar-left {
@@ -401,8 +457,19 @@ body {
 .canvas-container {
     width: 100%;
     height: 100%;
+    min-width: 100%;
+    min-height: 100%;
     background: #fafbfc;
     position: relative;
+    display: block;
+}
+
+#threeContainer {
+    width: 100% !important;
+    height: 100% !important;
+    min-width: 100% !important;
+    min-height: 100% !important;
+    display: block;
 }
 
 /* ===== BUTTONS ===== */
@@ -421,6 +488,9 @@ body {
     outline: none;
     text-decoration: none;
     white-space: nowrap;
+    pointer-events: auto;
+    position: relative;
+    z-index: 1;
 }
 
 .btn:active {
@@ -718,6 +788,11 @@ body {
     padding: var(--space-sm);
     z-index: 100;
     min-width: 140px;
+    max-width: 300px;
+    max-height: calc(100vh - var(--nav-height) - var(--space-md) * 2);
+    overflow-y: auto;
+    overflow-x: hidden;
+    word-wrap: break-word;
 }
 
 .legend-title {
@@ -740,6 +815,71 @@ body {
 .legend-color {
     width: 16px;
     height: 12px;
+    border-radius: 2px;
+    flex-shrink: 0;
+}
+
+.legend-line {
+    width: 30px;
+    height: 2px;
+    flex-shrink: 0;
+}
+
+.legend-dashed {
+    border: none;
+    border-top: 2px dashed;
+    background: none !important;
+}
+
+.legend-section {
+    margin-top: var(--space-sm);
+    padding-top: var(--space-sm);
+    border-top: 1px solid var(--gray-200);
+}
+
+.legend-table {
+    margin-top: var(--space-sm);
+    border: 1px solid var(--gray-200);
+    border-radius: var(--radius-sm);
+    overflow: hidden;
+}
+
+.legend-table-header {
+    display: grid;
+    grid-template-columns: 0.8fr 1.5fr 1fr;
+    background: var(--gray-100);
+    font-weight: 700;
+    font-size: 9px;
+    padding: 6px 8px;
+    border-bottom: 1px solid var(--gray-200);
+}
+
+.legend-table-body {
+    max-height: 200px;
+    overflow-y: auto;
+}
+
+.legend-table-row {
+    display: grid;
+    grid-template-columns: 0.8fr 1.5fr 1fr;
+    padding: 4px 8px;
+    font-size: 9px;
+    border-bottom: 1px solid var(--gray-100);
+}
+
+.legend-table-row:nth-child(even) {
+    background: var(--gray-50);
+}
+
+.legend-table-cell {
+    padding: 2px 4px;
+    text-align: left;
+    color: var(--gray-700);
+}
+
+.legend-table-cell:first-child {
+    font-weight: 600;
+}
     border-radius: 3px;
     border: 1px solid rgba(0, 0, 0, 0.1);
 }
@@ -1111,17 +1251,38 @@ body {
 }
 
 /* ===== RESPONSIVE DESIGN ===== */
+@media (max-width: 1600px) {
+    .nav-center {
+        gap: var(--space-xs);
+    }
+    
+    .nav-control-group {
+        padding: var(--space-xs) var(--space-sm);
+    }
+    
+    .group-label {
+        font-size: 8px;
+    }
+}
+
 @media (max-width: 1400px) {
     :root {
         --sidebar-width: 240px;
     }
 
     .nav-center {
-        gap: var(--space-sm);
+        gap: var(--space-xs);
+        flex-wrap: wrap;
     }
 
     .group-label {
         display: none;
+    }
+    
+    .nav-icon-btn {
+        width: 26px;
+        height: 26px;
+        font-size: 11px;
     }
 }
 
@@ -1135,9 +1296,18 @@ body {
     }
 
     .nav-icon-btn {
-        width: 26px;
-        height: 26px;
-        font-size: 11px;
+        width: 24px;
+        height: 24px;
+        font-size: 10px;
+    }
+    
+    .nav-control-group {
+        padding: var(--space-xs);
+    }
+    
+    .main-content {
+        min-width: 0;
+        overflow-x: auto;
     }
 }
 
@@ -1150,6 +1320,13 @@ body {
     .nav-center {
         flex-wrap: wrap;
         gap: var(--space-xs);
+        max-width: 100%;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+    }
+    
+    .nav-control-group {
+        flex-shrink: 0;
     }
 
     .sidebar {
@@ -1160,17 +1337,30 @@ body {
     .btn {
         font-size: 10px;
         padding: 0.4rem 0.8rem;
+        white-space: nowrap;
+    }
+    
+    .section-title {
+        font-size: 13px;
+    }
+    
+    .main-content {
+        min-width: 0;
     }
 }
 
 @media (max-width: 768px) {
     :root {
         --nav-height: 48px;
-        --sidebar-width: 180px;
+        --sidebar-width: 280px;
     }
 
     .nav-center {
         display: none;
+    }
+    
+    .nav-actions {
+        gap: var(--space-xs);
     }
 
     .sidebar {
@@ -1179,8 +1369,9 @@ body {
         height: calc(100vh - var(--nav-height));
         z-index: 900;
         box-shadow: var(--shadow-xl);
-        /* On mobile, sidebars are overlays, so use transform */
         transition: transform 0.3s ease;
+        overflow-y: auto;
+        overflow-x: hidden;
     }
 
     .sidebar-left {
@@ -1189,7 +1380,6 @@ body {
 
     .sidebar-left.auto-hidden {
         transform: translateX(-100%);
-        /* Keep width on mobile since it's an overlay */
         width: var(--sidebar-width);
         min-width: var(--sidebar-width);
         max-width: var(--sidebar-width);
@@ -1201,14 +1391,27 @@ body {
 
     .sidebar-right.auto-hidden {
         transform: translateX(100%);
-        /* Keep width on mobile since it's an overlay */
         width: var(--sidebar-width);
         min-width: var(--sidebar-width);
         max-width: var(--sidebar-width);
     }
 
+    .main-content {
+        width: 100%;
+        margin: 0;
+        padding: 0;
+    }
+    
+    .three-container {
+        width: 100% !important;
+        height: 100% !important;
+        min-width: 0 !important;
+        min-height: 0 !important;
+    }
+
     .stats-grid {
         grid-template-columns: repeat(2, 1fr);
+        gap: var(--space-sm);
     }
 
     .stat-value {
@@ -1216,7 +1419,7 @@ body {
     }
 
     .stat-label {
-        font-size: 6px;
+        font-size: 8px;
     }
 
     .floor-legend {
@@ -1224,6 +1427,7 @@ body {
         right: var(--space-sm);
         padding: var(--space-xs);
         min-width: 120px;
+        max-width: calc(100vw - var(--space-md) * 2);
     }
 
     .legend-title {
@@ -1237,6 +1441,15 @@ body {
     .legend-color {
         width: 14px;
         height: 10px;
+    }
+    
+    .button-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+    
+    .section {
+        padding: var(--space-sm);
+        margin-bottom: var(--space-md);
     }
 }
 
@@ -1254,9 +1467,11 @@ body {
         font-size: 20px;
     }
 
-    .btn-primary {
+    .btn-primary,
+    .btn {
         font-size: 10px;
         padding: 0.4rem 0.6rem;
+        white-space: nowrap;
     }
 
     .sidebar {
@@ -1273,11 +1488,30 @@ body {
     }
 
     .stat-label {
-        font-size: 5px;
+        font-size: 7px;
     }
 
     .stat-card {
         padding: var(--space-md);
+    }
+    
+    .button-grid {
+        grid-template-columns: 1fr;
+    }
+    
+    .nav-icon-btn {
+        width: 22px;
+        height: 22px;
+        font-size: 9px;
+    }
+    
+    .floor-legend {
+        position: relative;
+        top: auto;
+        right: auto;
+        width: 100%;
+        max-width: 100%;
+        margin: var(--space-sm) 0;
     }
 }
 

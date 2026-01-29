@@ -166,6 +166,7 @@ export class FloorPlanRenderer {
         this.connectorHighlights = new THREE.Group();
         this.stackGroup = new THREE.Group();
         this.crossFloorPathsGroup = new THREE.Group();
+        this.doorsGroup = new THREE.Group();
         this.stackGroup.visible = false;
         this.currentConnectors = [];
         this.currentConnectorOptions = {};
@@ -199,7 +200,8 @@ export class FloorPlanRenderer {
             this.connectorsGroup,
             this.connectorHighlights,
             this.stackGroup,
-            this.crossFloorPathsGroup
+            this.crossFloorPathsGroup,
+            this.doorsGroup
         );
 
         // Advanced lighting setup
@@ -241,7 +243,13 @@ export class FloorPlanRenderer {
         this.renderer.domElement.addEventListener('mousemove', (e) => this.onMouseMove(e));
         window.addEventListener('resize', () => this.onResize());
 
+        // Ensure initial render
         this.render();
+        
+        // Also render after a short delay to ensure everything is set up
+        setTimeout(() => {
+            this.render();
+        }, 100);
     }
 
     createGroundPlane() {
@@ -260,6 +268,14 @@ export class FloorPlanRenderer {
         this.groundPlane.position.z = -0.2;
         this.groundPlane.visible = false; // Only show in 3D mode
         this.scene.add(this.groundPlane);
+        
+        // Add a default visible grid/background for 2D mode - but hide it initially
+        // It will be shown only when there's content or user explicitly enables grid
+        const defaultGrid = new THREE.GridHelper(100, 20, 0xe0e0e0, 0xf0f0f0);
+        defaultGrid.position.z = -0.05;
+        defaultGrid.visible = false; // Hidden by default - only show when needed
+        this.defaultGrid = defaultGrid;
+        this.scene.add(defaultGrid);
     }
 
     onResize() {
@@ -314,6 +330,7 @@ export class FloorPlanRenderer {
     }
 
     clear() {
+        // Clear all groups with proper memory management
         [
             this.wallsGroup,
             this.entrancesGroup,
@@ -324,8 +341,28 @@ export class FloorPlanRenderer {
             this.connectorsGroup,
             this.connectorHighlights,
             this.stackGroup,
-            this.crossFloorPathsGroup
-        ].forEach(g => g.clear());
+            this.crossFloorPathsGroup,
+            this.doorsGroup
+        ].forEach(g => {
+            if (g) {
+                while (g.children.length > 0) {
+                    const child = g.children[0];
+                    g.remove(child);
+                    // Dispose geometry and materials to prevent memory leaks
+                    if (child.geometry) child.geometry.dispose();
+                    if (child.material) {
+                        if (Array.isArray(child.material)) {
+                            child.material.forEach(m => m.dispose());
+                        } else {
+                            child.material.dispose();
+                        }
+                    }
+                }
+            }
+        });
+        
+        this.ilotMeshes = [];
+        this.selectedIlots = [];
         this.stackGroup.visible = false;
         this.currentConnectors = [];
         this.currentConnectorOptions = {};
@@ -335,6 +372,12 @@ export class FloorPlanRenderer {
         this.crossFloorOptions = {};
         this.clearCorridorArrows();
         this.stopArrowAnimation();
+        
+        // Hide default grid when clearing
+        if (this.defaultGrid) {
+            this.defaultGrid.visible = false;
+        }
+        
         this.render();
     }
 
@@ -344,19 +387,261 @@ export class FloorPlanRenderer {
         console.log('Loading floor plan:', {
             walls: floorPlan.walls?.length || 0,
             entrances: floorPlan.entrances?.length || 0,
-            forbiddenZones: floorPlan.forbiddenZones?.length || 0
+            forbiddenZones: floorPlan.forbiddenZones?.length || 0,
+            envelope: floorPlan.envelope?.length || 0
         });
+        
+        // Hide default grid when floor plan is loaded (we have actual content)
+        if (this.defaultGrid) {
+            this.defaultGrid.visible = false;
+        }
 
-        // Draw all entities with original DXF colors
-        const drawEntity = (entity) => {
-            const color = entity.color || 0;
-            if (entity.polygon) this.drawPolygon(entity.polygon, color, this.wallsGroup, false);
-            else if (entity.start && entity.end) this.drawLine(entity.start, entity.end, color, this.wallsGroup);
+        // Draw external envelope FIRST in bright green (matching reference - thick line)
+        if (floorPlan.envelope && Array.isArray(floorPlan.envelope)) {
+            floorPlan.envelope.forEach(line => {
+                if (line.start && line.end) {
+                    const geometry = new THREE.BufferGeometry().setFromPoints([
+                        new THREE.Vector3(line.start.x, line.start.y, 0),
+                        new THREE.Vector3(line.end.x, line.end.y, 0)
+                    ]);
+                    const material = new THREE.LineBasicMaterial({ 
+                        color: 0x00ff00, // Bright green
+                        linewidth: 3 // Thick line like reference
+                    });
+                    this.wallsGroup.add(new THREE.Line(geometry, material));
+                }
+            });
+        } else if (floorPlan.bounds) {
+            // Generate envelope from bounds if not provided
+            const { minX, minY, maxX, maxY } = floorPlan.bounds;
+            if ([minX, minY, maxX, maxY].every(v => typeof v === 'number') && 
+                maxX > minX && maxY > minY) {
+                const envelopeLines = [
+                    { start: { x: minX, y: minY }, end: { x: maxX, y: minY } },
+                    { start: { x: maxX, y: minY }, end: { x: maxX, y: maxY } },
+                    { start: { x: maxX, y: maxY }, end: { x: minX, y: maxY } },
+                    { start: { x: minX, y: maxY }, end: { x: minX, y: minY } }
+                ];
+                const envelopeMaterial = new THREE.LineBasicMaterial({ 
+                    color: 0x00ff00, // Bright green
+                    linewidth: 3 // Thick line like reference
+                });
+                envelopeLines.forEach(line => {
+                    const geometry = new THREE.BufferGeometry().setFromPoints([
+                        new THREE.Vector3(line.start.x, line.start.y, 0),
+                        new THREE.Vector3(line.end.x, line.end.y, 0)
+                    ]);
+                    this.wallsGroup.add(new THREE.Line(geometry, envelopeMaterial));
+                });
+            }
+        }
+
+        // Draw all entities with proper colors matching reference
+        const drawEntity = (entity, group, defaultColor) => {
+            const color = entity.color || defaultColor || 0x000000;
+            if (entity.polygon) {
+                this.drawPolygon(entity.polygon, color, group, false);
+                // Add dimension labels for polygon edges
+                if (entity.polygon && entity.polygon.length >= 2) {
+                    for (let i = 0; i < entity.polygon.length; i++) {
+                        const pt1 = entity.polygon[i];
+                        const pt2 = entity.polygon[(i + 1) % entity.polygon.length];
+                        const x1 = Array.isArray(pt1) ? pt1[0] : pt1.x;
+                        const y1 = Array.isArray(pt1) ? pt1[1] : pt1.y;
+                        const x2 = Array.isArray(pt2) ? pt2[0] : pt2.x;
+                        const y2 = Array.isArray(pt2) ? pt2[1] : pt2.y;
+                        const length = Math.hypot(x2 - x1, y2 - y1);
+                        if (length > 0.5) { // Only show dimensions for lines > 0.5m
+                            const midX = (x1 + x2) / 2;
+                            const midY = (y1 + y2) / 2;
+                            const dimText = `${length.toFixed(2)}m`;
+                            const dimSprite = this.createTextSprite(dimText, {
+                                fontsize: 16,
+                                fillStyle: '#ff00ff', // Magenta like reference dimensions
+                                backgroundColor: 'rgba(255, 255, 255, 0.9)',
+                                fontWeight: 'normal'
+                            });
+                            dimSprite.position.set(midX, midY, 0.15);
+                            dimSprite.scale.set(0.8, 0.4, 1);
+                            this.wallsGroup.add(dimSprite);
+                        }
+                    }
+                }
+            } else if (entity.start && entity.end) {
+                this.drawLine(entity.start, entity.end, color, group);
+                // Add dimension label for line
+                const length = Math.hypot(
+                    entity.end.x - entity.start.x,
+                    entity.end.y - entity.start.y
+                );
+                if (length > 0.5) { // Only show dimensions for lines > 0.5m
+                    const midX = (entity.start.x + entity.end.x) / 2;
+                    const midY = (entity.start.y + entity.end.y) / 2;
+                    const dimText = `${length.toFixed(2)}m`;
+                    const dimSprite = this.createTextSprite(dimText, {
+                        fontsize: 16,
+                        fillStyle: '#ff00ff', // Magenta like reference dimensions
+                        backgroundColor: 'rgba(255, 255, 255, 0.9)',
+                        fontWeight: 'normal'
+                    });
+                    dimSprite.position.set(midX, midY, 0.15);
+                    dimSprite.scale.set(0.8, 0.4, 1);
+                    this.wallsGroup.add(dimSprite);
+                }
+            }
         };
 
-        if (floorPlan.walls) floorPlan.walls.forEach(drawEntity);
-        if (floorPlan.entrances) floorPlan.entrances.forEach(drawEntity);
-        if (floorPlan.forbiddenZones) floorPlan.forbiddenZones.forEach(drawEntity);
+        // Walls: black (Tôle Blanche)
+        if (floorPlan.walls) {
+            floorPlan.walls.forEach(entity => {
+                drawEntity(entity, this.wallsGroup, 0x000000);
+            });
+        }
+        
+        // Entrances: red
+        if (floorPlan.entrances) {
+            floorPlan.entrances.forEach(entity => {
+                drawEntity(entity, this.entrancesGroup, 0xff0000);
+            });
+        }
+        
+        // Forbidden zones: blue
+        if (floorPlan.forbiddenZones) {
+            floorPlan.forbiddenZones.forEach(entity => {
+                drawEntity(entity, this.forbiddenGroup, 0x0000ff);
+            });
+        }
+
+        // Draw room numbers (use actual extracted numbers from DXF, 1-26 like reference)
+        if (floorPlan.rooms && Array.isArray(floorPlan.rooms)) {
+            floorPlan.rooms.forEach((room) => {
+                // Use extracted room number if available, otherwise use index+1
+                const roomNumber = room.number || room.id?.replace('room_', '') || 
+                    (floorPlan.rooms.indexOf(room) + 1);
+                
+                if (roomNumber <= 26) { // Reference shows up to 26
+                    // Use labelPosition if available (from TEXT entity extraction), otherwise center
+                    const labelX = room.labelPosition?.x || room.center?.x || room.centroid?.x || 
+                        (room.bounds ? (room.bounds.minX + room.bounds.maxX) / 2 : 0);
+                    const labelY = room.labelPosition?.y || room.center?.y || room.centroid?.y || 
+                        (room.bounds ? (room.bounds.minY + room.bounds.maxY) / 2 : 0);
+                    
+                    if (labelX && labelY) {
+                        const labelSprite = this.createTextSprite(String(roomNumber), {
+                            fontsize: 24,
+                            fillStyle: '#000000', // Black text like reference
+                            backgroundColor: 'rgba(255, 255, 255, 0.9)',
+                            fontWeight: 'bold'
+                        });
+                        labelSprite.position.set(labelX, labelY, 0.1);
+                        labelSprite.scale.set(2, 2, 1);
+                        this.wallsGroup.add(labelSprite);
+                    }
+                }
+            });
+        }
+        
+        // Draw RM-xxx special rooms with red filled areas
+        if (floorPlan.specialRooms && Array.isArray(floorPlan.specialRooms)) {
+            floorPlan.specialRooms.forEach(room => {
+                if (room.label && room.label.match(/^RM-\d+$/) && room.polygon) {
+                    const shape = new THREE.Shape();
+                    room.polygon.forEach((pt, idx) => {
+                        const x = Array.isArray(pt) ? pt[0] : pt.x;
+                        const y = Array.isArray(pt) ? pt[1] : pt.y;
+                        if (idx === 0) {
+                            shape.moveTo(x, y);
+                        } else {
+                            shape.lineTo(x, y);
+                        }
+                    });
+                    shape.lineTo(room.polygon[0][0] || room.polygon[0].x, room.polygon[0][1] || room.polygon[0].y);
+                    
+                    const geometry = new THREE.ShapeGeometry(shape);
+                    const material = new THREE.MeshBasicMaterial({
+                        color: 0xff6666, // Light red/pink fill
+                        transparent: true,
+                        opacity: 0.4
+                    });
+                    const mesh = new THREE.Mesh(geometry, material);
+                    mesh.position.z = 0.01;
+                    this.wallsGroup.add(mesh);
+                    
+                    // Draw label
+                    if (room.position) {
+                        const labelSprite = this.createTextSprite(room.label, {
+                            fontsize: 20,
+                            fillStyle: '#ff0000',
+                            backgroundColor: 'rgba(255, 255, 255, 0.9)',
+                            fontWeight: 'bold'
+                        });
+                        labelSprite.position.set(room.position.x, room.position.y, 0.1);
+                        labelSprite.scale.set(1.5, 1.5, 1);
+                        this.wallsGroup.add(labelSprite);
+                    }
+                }
+            });
+        }
+        
+        // Draw green filled zones (Ex50, etc.)
+        if (floorPlan.greenZones && Array.isArray(floorPlan.greenZones)) {
+            floorPlan.greenZones.forEach(zone => {
+                if (zone.polygon) {
+                    const shape = new THREE.Shape();
+                    zone.polygon.forEach((pt, idx) => {
+                        const x = Array.isArray(pt) ? pt[0] : pt.x;
+                        const y = Array.isArray(pt) ? pt[1] : pt.y;
+                        if (idx === 0) {
+                            shape.moveTo(x, y);
+                        } else {
+                            shape.lineTo(x, y);
+                        }
+                    });
+                    shape.lineTo(zone.polygon[0][0] || zone.polygon[0].x, zone.polygon[0][1] || zone.polygon[0].y);
+                    
+                    const geometry = new THREE.ShapeGeometry(shape);
+                    const material = new THREE.MeshBasicMaterial({
+                        color: 0x00ff00, // Bright green fill
+                        transparent: true,
+                        opacity: 0.3
+                    });
+                    const mesh = new THREE.Mesh(geometry, material);
+                    mesh.position.z = 0.01;
+                    this.wallsGroup.add(mesh);
+                    
+                    // Draw label if available
+                    if (zone.label && zone.position) {
+                        const labelSprite = this.createTextSprite(zone.label, {
+                            fontsize: 20,
+                            fillStyle: '#000000',
+                            backgroundColor: 'rgba(255, 255, 255, 0.9)',
+                            fontWeight: 'bold'
+                        });
+                        labelSprite.position.set(zone.position.x, zone.position.y, 0.1);
+                        labelSprite.scale.set(1.5, 1.5, 1);
+                        this.wallsGroup.add(labelSprite);
+                    }
+                }
+            });
+        }
+        
+        // Draw yellow annotation boxes
+        if (floorPlan.annotations && Array.isArray(floorPlan.annotations)) {
+            floorPlan.annotations.forEach(annotation => {
+                if (annotation.type === 'yellow-box' && annotation.text && annotation.position) {
+                    const labelSprite = this.createTextSprite(annotation.text, {
+                        fontsize: 18,
+                        fillStyle: '#000000',
+                        backgroundColor: 'rgba(255, 255, 0, 0.8)', // Yellow background
+                        fontWeight: 'bold',
+                        padding: 5
+                    });
+                    labelSprite.position.set(annotation.position.x, annotation.position.y, 0.1);
+                    labelSprite.scale.set(1.2, 1.2, 1);
+                    this.wallsGroup.add(labelSprite);
+                }
+            });
+        }
 
         if (floorPlan.bounds) this.fitToBounds(floorPlan.bounds);
         this.render();
@@ -418,10 +703,20 @@ export class FloorPlanRenderer {
         this.ilotMeshes = [];
         this.selectedIlots = [];
 
-        // Render storage units in clean plan style (white fill with dark outline)
-        const colorMap = { single: 0xf8fafc, double: 0xf8fafc, team: 0xf8fafc, meeting: 0xf8fafc };
-        const outlineColor = 0x111827;
-        const showLabels = ilots.length <= 200;
+        // Render storage units in architectural reference style (blue outlines, no fill)
+        // Match reference: blue thick outlines, unit size labels
+        const colorMap = { 
+            single: 0xffffff,  // White/transparent fill
+            double: 0xffffff, 
+            team: 0xffffff, 
+            meeting: 0xffffff,
+            S: 0xffffff,
+            M: 0xffffff,
+            L: 0xffffff,
+            XL: 0xffffff
+        };
+        const outlineColor = 0x0000ff; // Blue outlines like reference "Tôle Grise"
+        const showLabels = ilots.length <= 500; // Show labels for more ilots
 
         if (!ilots || ilots.length === 0) {
             this.render();
@@ -457,10 +752,11 @@ export class FloorPlanRenderer {
                 });
             } else {
                 geometry = new THREE.ShapeGeometry(shape);
+                // Architectural style: transparent/white fill with blue outline
                 material = new THREE.MeshBasicMaterial({
-                    color: colorMap[ilot.type] || 0xf8fafc,
+                    color: colorMap[ilot.type] || 0xffffff,
                     transparent: true,
-                    opacity: 0.98,
+                    opacity: 0.1, // Very transparent fill - just outline visible
                     side: THREE.DoubleSide
                 });
             }
@@ -485,30 +781,86 @@ export class FloorPlanRenderer {
                 new THREE.Vector3(0, ilot.height, 0),
                 new THREE.Vector3(0, 0, 0)
             ];
+            // Draw blue outline (thicker like reference "Tôle Grise")
             const line = new THREE.Line(
                 new THREE.BufferGeometry().setFromPoints(linePoints),
-                new THREE.LineBasicMaterial({ color: outlineColor, linewidth: 1 })
+                new THREE.LineBasicMaterial({ 
+                    color: outlineColor, // Blue
+                    linewidth: 2, // Thicker lines
+                    transparent: false
+                })
             );
             line.position.set(ilot.x, ilot.y, 0);
             this.ilotsGroup.add(line);
+            
+            // Add additional outline for thickness effect (like reference)
+            const outlineLine = new THREE.Line(
+                new THREE.BufferGeometry().setFromPoints(linePoints),
+                new THREE.LineBasicMaterial({ 
+                    color: outlineColor,
+                    linewidth: 1.5,
+                    transparent: true,
+                    opacity: 0.8
+                })
+            );
+            outlineLine.position.set(ilot.x, ilot.y, 0.01);
+            this.ilotsGroup.add(outlineLine);
 
-            // Add area label in center of ilot
+            // Add unit size label and surface area in center of ilot (matching reference style)
             if (showLabels) {
-                const areaText = ilot.label || `${(ilot.area || ilot.width * ilot.height).toFixed(1)}m²`;
-                const labelSprite = this.createTextSprite(areaText, {
-                    fontsize: 24,
-                    fillStyle: '#1f2937',
-                    backgroundColor: 'rgba(255, 255, 255, 0.85)'
+                const area = ilot.area || (ilot.width * ilot.height);
+                
+                // Calculate unit size label (consistent with backend calculation)
+                const standardSizes = [0.5, 1, 1.5, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 20, 25];
+                let closest = standardSizes[0];
+                let minDiff = Math.abs(area - closest);
+                for (const size of standardSizes) {
+                    const diff = Math.abs(area - size);
+                    if (diff < minDiff) {
+                        minDiff = diff;
+                        closest = size;
+                    }
+                }
+                if (area > 25) {
+                    closest = Math.round(area * 2) / 2; // Round to nearest 0.5
+                }
+                
+                // Store calculated unit size for export consistency
+                ilot.unitSize = closest;
+                
+                // Display unit size label
+                const unitSizeText = String(closest);
+                const labelSprite = this.createTextSprite(unitSizeText, {
+                    fontsize: 28,
+                    fillStyle: '#000000', // Black text like reference
+                    backgroundColor: 'rgba(255, 255, 255, 0.9)', // White background
+                    fontWeight: 'bold'
                 });
                 labelSprite.position.set(
                     ilot.x + ilot.width / 2,
-                    ilot.y + ilot.height / 2,
+                    ilot.y + ilot.height / 2 + (ilot.height * 0.15), // Slightly above center
                     0.2
                 );
-                // Scale based on ilot size
-                const scale = Math.min(ilot.width, ilot.height) * 0.3;
-                labelSprite.scale.set(scale, scale * 0.5, 1);
+                const scale = Math.min(ilot.width, ilot.height) * 0.4;
+                labelSprite.scale.set(scale, scale * 0.6, 1);
                 this.ilotsGroup.add(labelSprite);
+                
+                // Display surface area in m² below unit size
+                const areaText = `${area.toFixed(2)} m²`;
+                const areaSprite = this.createTextSprite(areaText, {
+                    fontsize: 20,
+                    fillStyle: '#000000',
+                    backgroundColor: 'rgba(255, 255, 255, 0.9)',
+                    fontWeight: 'normal'
+                });
+                areaSprite.position.set(
+                    ilot.x + ilot.width / 2,
+                    ilot.y + ilot.height / 2 - (ilot.height * 0.15), // Slightly below center
+                    0.2
+                );
+                const areaScale = Math.min(ilot.width, ilot.height) * 0.25;
+                areaSprite.scale.set(areaScale, areaScale * 0.5, 1);
+                this.ilotsGroup.add(areaSprite);
             }
         });
 
@@ -535,11 +887,29 @@ export class FloorPlanRenderer {
     }
 
     renderCorridors(corridors) {
-        this.corridorsGroup.clear();
+        // Clear existing corridors with proper memory management
+        while (this.corridorsGroup.children.length > 0) {
+            const child = this.corridorsGroup.children[0];
+            this.corridorsGroup.remove(child);
+            if (child.geometry) child.geometry.dispose();
+            if (child.material) {
+                if (Array.isArray(child.material)) {
+                    child.material.forEach(m => m.dispose());
+                } else {
+                    child.material.dispose();
+                }
+            }
+        }
 
-        // Blue corridors to match reference plans
-        const corridorColor = 0x2563eb;
-        const lineMaterial = new THREE.LineBasicMaterial({ color: corridorColor, linewidth: 2 });
+        // Red dashed corridors to match reference "Ligne circulation" style
+        const corridorColor = 0xff0000; // Red like reference
+        const lineMaterial = new THREE.LineDashedMaterial({ 
+            color: corridorColor, 
+            linewidth: 2,
+            dashSize: 0.5,
+            gapSize: 0.3,
+            scale: 1
+        });
 
         corridors.forEach(corridor => {
             // Draw center-line through corridor (walking path style)
@@ -558,9 +928,47 @@ export class FloorPlanRenderer {
             }
 
             if (centerLine.length >= 2) {
+                // Add dimension label for corridor length
+                const start = centerLine[0];
+                const end = centerLine[centerLine.length - 1];
+                const length = Math.hypot(end.x - start.x, end.y - start.y);
+                if (length > 0.5) {
+                    const midX = (start.x + end.x) / 2;
+                    const midY = (start.y + end.y) / 2;
+                    const dimText = `${length.toFixed(2)}m`;
+                    const dimSprite = this.createTextSprite(dimText, {
+                        fontsize: 14,
+                        fillStyle: '#ff0000', // Red like corridors
+                        backgroundColor: 'rgba(255, 255, 255, 0.9)',
+                        fontWeight: 'normal'
+                    });
+                    dimSprite.position.set(midX, midY, 0.15);
+                    dimSprite.scale.set(0.7, 0.35, 1);
+                    this.corridorsGroup.add(dimSprite);
+                }
+            }
+            
+            if (centerLine.length >= 2) {
                 const geometry = new THREE.BufferGeometry().setFromPoints(centerLine);
+                // Compute line distance for dashed material
+                geometry.computeLineDistances();
                 const line = new THREE.Line(geometry, lineMaterial);
                 this.corridorsGroup.add(line);
+                
+                // Add corridor width annotation if available
+                if (corridor.width && centerLine.length >= 2) {
+                    const midX = (centerLine[0].x + centerLine[1].x) / 2;
+                    const midY = (centerLine[0].y + centerLine[1].y) / 2;
+                    const widthText = `${Math.round(corridor.width * 1000)}`;
+                    const labelSprite = this.createTextSprite(widthText, {
+                        fontsize: 16,
+                        fillStyle: '#ff0000',
+                        backgroundColor: 'rgba(255, 255, 255, 0.9)'
+                    });
+                    labelSprite.position.set(midX, midY, 0.15);
+                    labelSprite.scale.set(0.3, 0.3, 1);
+                    this.corridorsGroup.add(labelSprite);
+                }
             }
         });
 
@@ -751,15 +1159,45 @@ export class FloorPlanRenderer {
     }
 
     render() {
-        if (!this.renderer) return;
-        if (this.rendererType !== 'webgl') {
-            this.renderer.render(this.scene, this.camera);
+        if (!this.renderer) {
+            console.warn('Renderer not initialized, cannot render');
             return;
         }
-        if (this.is3DMode) {
-            this.renderer.render(this.scene, this.perspectiveCamera);
-        } else {
-            this.composer.render();
+        
+        if (!this.container || this.container.clientWidth === 0 || this.container.clientHeight === 0) {
+            // Don't warn on every render - only log once
+            if (!this._sizeWarningLogged) {
+                console.warn('Container has zero size, skipping render', {
+                    width: this.container?.clientWidth,
+                    height: this.container?.clientHeight
+                });
+                this._sizeWarningLogged = true;
+            }
+            return;
+        }
+        
+        this._sizeWarningLogged = false; // Reset warning flag when size is valid
+        
+        try {
+            if (this.rendererType !== 'webgl') {
+                this.renderer.render(this.scene, this.camera);
+                return;
+            }
+            if (this.is3DMode) {
+                this.renderer.render(this.scene, this.perspectiveCamera);
+            } else {
+                if (this.composer) {
+                    this.composer.render();
+                } else {
+                    this.renderer.render(this.scene, this.camera);
+                }
+            }
+        } catch (error) {
+            console.error('Render error:', error);
+            // Don't spam errors - log once per error type
+            if (!this._lastRenderError || this._lastRenderError !== error.message) {
+                this._lastRenderError = error.message;
+            }
         }
     }
 
@@ -815,6 +1253,17 @@ export class FloorPlanRenderer {
         if (this.rendererType !== 'webgl') {
             this.is3DMode = false;
             return false;
+        }
+        
+        // Toggle grid visibility based on mode
+        if (this.defaultGrid) {
+            this.defaultGrid.visible = !this.is3DMode;
+        }
+        if (this.gridHelper) {
+            this.gridHelper.visible = this.is3DMode;
+        }
+        if (this.groundPlane) {
+            this.groundPlane.visible = this.is3DMode;
         }
         this.is3DMode = !this.is3DMode;
 
@@ -1378,10 +1827,34 @@ export class FloorPlanRenderer {
     _drawStackFloor(group, floorPlan, options = {}) {
         if (!group || !floorPlan) return;
 
-        const wallColor = options.color || 0x9ca3af;
+        // Match reference style: black walls, red entrances, blue forbidden zones
+        const wallColor = options.color || 0x000000; // Black walls like reference "Tôle Blanche"
         const highlight = !!options.highlight;
-        const entranceColor = options.entranceColor || (highlight ? 0xef4444 : 0xf87171);
-        const forbiddenColor = options.forbiddenColor || (highlight ? 0x0ea5e9 : 0x38bdf8);
+        const entranceColor = options.entranceColor || 0xff0000; // Red entrances
+        const forbiddenColor = options.forbiddenColor || 0x0000ff; // Blue forbidden zones
+        
+        // Draw external envelope in bright green (matching reference)
+        if (floorPlan.envelope && Array.isArray(floorPlan.envelope)) {
+            floorPlan.envelope.forEach(line => {
+                if (line.start && line.end) {
+                    this.drawLine(line.start, line.end, 0x00ff00, group); // Bright green
+                }
+            });
+        } else if (floorPlan.bounds) {
+            // Generate envelope from bounds if not provided
+            const { minX, minY, maxX, maxY } = floorPlan.bounds;
+            if ([minX, minY, maxX, maxY].every(v => typeof v === 'number')) {
+                const envelopeLines = [
+                    { start: { x: minX, y: minY }, end: { x: maxX, y: minY } },
+                    { start: { x: maxX, y: minY }, end: { x: maxX, y: maxY } },
+                    { start: { x: maxX, y: maxY }, end: { x: minX, y: maxY } },
+                    { start: { x: minX, y: maxY }, end: { x: minX, y: minY } }
+                ];
+                envelopeLines.forEach(line => {
+                    this.drawLine(line.start, line.end, 0x00ff00, group); // Bright green
+                });
+            }
+        }
 
         const drawEntities = (entities, color, fill = false) => {
             if (!Array.isArray(entities)) return;
@@ -1433,12 +1906,25 @@ export class FloorPlanRenderer {
     }
 
     showGrid(cellSize = 10) {
+        // Show the default grid if no floor plan bounds
+        if (this.defaultGrid && !this.bounds) {
+            this.defaultGrid.visible = true;
+            this.render();
+            return;
+        }
+        
         if (this.gridHelper) this.scene.remove(this.gridHelper);
         const size = Math.max(this.bounds?.maxX || 100, this.bounds?.maxY || 100);
         const divisions = Math.floor(size / cellSize);
         this.gridHelper = new THREE.GridHelper(size, divisions, 0xcccccc, 0xeeeeee);
         this.gridHelper.rotation.x = Math.PI / 2;
         this.scene.add(this.gridHelper);
+        
+        // Hide default grid when custom grid is shown
+        if (this.defaultGrid) {
+            this.defaultGrid.visible = false;
+        }
+        
         this.render();
     }
 
@@ -1446,8 +1932,46 @@ export class FloorPlanRenderer {
         if (this.gridHelper) {
             this.scene.remove(this.gridHelper);
             this.gridHelper = null;
-            this.render();
         }
+        
+        // Also hide default grid
+        if (this.defaultGrid) {
+            this.defaultGrid.visible = false;
+        }
+        
+        this.render();
+    }
+
+    addDoor(door) {
+
+        // Create door as a rectangle with arc (swing)
+        const doorWidth = door.width || 0.9;
+        const doorHeight = 0.1; // Visual thickness
+        const doorGeometry = new THREE.PlaneGeometry(doorWidth, doorHeight);
+        const doorMaterial = new THREE.MeshBasicMaterial({
+            color: 0xffaa00, // Orange/yellow for doors
+            transparent: true,
+            opacity: 0.8
+        });
+        const doorMesh = new THREE.Mesh(doorGeometry, doorMaterial);
+        doorMesh.position.set(door.position.x, door.position.y, 0.05);
+        doorMesh.rotation.z = door.rotation || 0;
+        doorMesh.userData.door = door;
+        this.doorsGroup.add(doorMesh);
+
+        // Add door label
+        const labelText = `${doorWidth}m`;
+        const labelSprite = this.createTextSprite(labelText, {
+            fontsize: 16,
+            fillStyle: '#000000',
+            backgroundColor: 'rgba(255, 255, 255, 0.9)',
+            fontWeight: 'bold'
+        });
+        labelSprite.position.set(door.position.x, door.position.y, 0.1);
+        labelSprite.scale.set(0.5, 0.25, 1);
+        this.doorsGroup.add(labelSprite);
+
+        this.render();
     }
 
     createTextSprite(text, options = {}) {
@@ -1458,8 +1982,9 @@ export class FloorPlanRenderer {
         const canvas = document.createElement('canvas');
         const context = canvas.getContext('2d');
 
-        // Set font and measure text
-        context.font = `bold ${fontsize}px Arial`;
+        // Set font and measure text (handle fontWeight option)
+        const fontWeight = options.fontWeight || 'bold';
+        context.font = `${fontWeight} ${fontsize}px Arial`;
         const metrics = context.measureText(text);
         const textWidth = metrics.width;
 
@@ -1469,7 +1994,7 @@ export class FloorPlanRenderer {
         canvas.height = fontsize + padding * 2;
 
         // Re-set font after canvas resize
-        context.font = `bold ${fontsize}px Arial`;
+        context.font = `${fontWeight} ${fontsize}px Arial`;
 
         // Background
         context.fillStyle = backgroundColor;

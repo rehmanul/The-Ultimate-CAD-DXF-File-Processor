@@ -2432,6 +2432,38 @@ app.post('/api/costo/export/report', async (req, res) => {
     }
 });
 
+// COSTO: Export Reference-Style PDF (matches architectural floor plan reference)
+app.post('/api/costo/export/reference-pdf', async (req, res) => {
+    try {
+        const { solution, floorPlan, metrics, options = {} } = req.body;
+        if (!solution) {
+            return res.status(400).json({ error: 'Solution required' });
+        }
+        if (!floorPlan) {
+            return res.status(400).json({ error: 'Floor plan required' });
+        }
+
+        const pdfBytes = await CostoExports.exportToReferencePDF(solution, floorPlan, metrics, options);
+        const filename = `costo_reference_${Date.now()}.pdf`;
+        const filepath = path.join(__dirname, 'exports', filename);
+        
+        if (!fs.existsSync(path.dirname(filepath))) {
+            fs.mkdirSync(path.dirname(filepath), { recursive: true });
+        }
+        fs.writeFileSync(filepath, pdfBytes);
+
+        res.json({
+            success: true,
+            filename,
+            filepath,
+            message: 'Reference-style PDF exported successfully'
+        });
+    } catch (error) {
+        console.error('COSTO Reference PDF export error:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
 // COSTO: Apply numbering
 app.post('/api/costo/numbering', (req, res) => {
     try {
