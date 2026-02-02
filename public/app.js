@@ -218,6 +218,11 @@ function initializeModules() {
     document.querySelectorAll('.distribution-input').forEach(input => {
         input.addEventListener('input', () => {
             updateDistributionTotal();
+            // Clear active preset so next generation uses these inputs
+            activePresetConfig = null;
+            updateActivePresetSummary(null);
+            const editor = document.getElementById('distributionEditor');
+            if (editor) editor.value = '';
         });
     });
 
@@ -499,11 +504,14 @@ function initializeModules() {
     updateDistributionTotal();
 
     // Distribution editor (hidden, used internally)
-    const distributionEditor = document.createElement('textarea');
-    distributionEditor.id = 'distributionEditor';
-    distributionEditor.style.display = 'none';
+    let distributionEditor = document.getElementById('distributionEditor');
+    if (!distributionEditor) {
+        distributionEditor = document.createElement('textarea');
+        distributionEditor.id = 'distributionEditor';
+        distributionEditor.style.display = 'none';
+        document.body.appendChild(distributionEditor);
+    }
     distributionEditor.value = JSON.stringify({}, null, 2);
-    document.body.appendChild(distributionEditor);
 
     // Initialize total display
     updateDistributionTotal();
@@ -3603,6 +3611,10 @@ function updateDistributionFromUnitMix(unitMix) {
     if (distributionEditor) {
         distributionEditor.value = JSON.stringify(normalized, null, 2);
     }
+
+    // Clear any active preset to ensure the imported mix takes precedence
+    activePresetConfig = null;
+    updateActivePresetSummary(null);
 
     updateDistributionTotal();
     showNotification('Unit mix loaded and distribution updated.', 'success');
