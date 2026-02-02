@@ -2311,7 +2311,7 @@ async function generateIlots() {
                 floorPlan: floorPlan,
                 distribution: distribution,
                 unitMix: unitMixPayload,
-                options: buildIlotOptions(targetIlots)
+                options: buildIlotOptions(targetIlots, distribution)
             })
         });
 
@@ -2665,12 +2665,12 @@ function normalizePresetDistribution(distribution) {
     return normalized;
 }
 
-function buildIlotOptions(targetIlots) {
+function buildIlotOptions(targetIlots, distribution) {
     const corridorWidth = getActiveCorridorWidth();
     const presetOptions = activePresetConfig?.options || {};
     return {
         totalIlots: targetIlots,
-        seed: computeDeterministicSeed(currentFloorPlan, activePresetConfig),
+        seed: computeDeterministicSeed(currentFloorPlan, activePresetConfig, distribution),
         minEntranceDistance: 1.0,
         minIlotDistance: 0.5,
         maxAttemptsPerIlot: 800,
@@ -2680,15 +2680,23 @@ function buildIlotOptions(targetIlots) {
     };
 }
 
-function computeDeterministicSeed(floorPlan, presetConfig) {
+function computeDeterministicSeed(floorPlan, presetConfig, distribution) {
     const bounds = floorPlan?.bounds || {};
+
+    // Serialize distribution to ensure seed changes when distribution values change
+    let distString = '';
+    if (distribution && typeof distribution === 'object') {
+        distString = Object.keys(distribution).sort().map(k => `${k}:${distribution[k]}`).join('|');
+    }
+
     const source = [
         presetConfig?.id || 'default',
         bounds.minX ?? 0,
         bounds.minY ?? 0,
         bounds.maxX ?? 0,
         bounds.maxY ?? 0,
-        floorPlan?.urn || ''
+        floorPlan?.urn || '',
+        distString
     ].join('|');
 
     let hash = 2166136261;
