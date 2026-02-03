@@ -1082,6 +1082,90 @@ export class FloorPlanRenderer {
         this.render();
     }
 
+    /**
+     * Render exclusion (gray) zones around obstacles
+     * These are buffer areas where ilots cannot be placed
+     */
+    renderExclusionZones(exclusionZones) {
+        // Create a group for exclusion zones if not exists
+        if (!this.exclusionZonesGroup) {
+            this.exclusionZonesGroup = new THREE.Group();
+            this.exclusionZonesGroup.name = 'exclusionZones';
+            this.scene.add(this.exclusionZonesGroup);
+        }
+
+        // Clear existing exclusion zones
+        while (this.exclusionZonesGroup.children.length > 0) {
+            const child = this.exclusionZonesGroup.children[0];
+            this.exclusionZonesGroup.remove(child);
+            if (child.geometry) child.geometry.dispose();
+            if (child.material) child.material.dispose();
+        }
+
+        if (!exclusionZones || exclusionZones.length === 0) {
+            console.log('[Renderer] No exclusion zones to render');
+            return;
+        }
+
+        // Gray semi-transparent material for exclusion zones
+        const exclusionMaterial = new THREE.MeshBasicMaterial({
+            color: 0x9CA3AF, // Gray-400
+            transparent: true,
+            opacity: 0.4,
+            side: THREE.DoubleSide
+        });
+
+        // Gray outline material
+        const outlineMaterial = new THREE.LineBasicMaterial({
+            color: 0x6B7280, // Gray-500
+            linewidth: 2
+        });
+
+        exclusionZones.forEach(zone => {
+            // Create rectangle shape
+            const shape = new THREE.Shape();
+            shape.moveTo(0, 0);
+            shape.lineTo(zone.width, 0);
+            shape.lineTo(zone.width, zone.height);
+            shape.lineTo(0, zone.height);
+            shape.lineTo(0, 0);
+
+            const geometry = new THREE.ShapeGeometry(shape);
+            const mesh = new THREE.Mesh(geometry, exclusionMaterial.clone());
+            mesh.position.set(zone.x, zone.y, 0.02); // Slightly above ground
+            mesh.userData = { zone, type: 'exclusionZone' };
+            this.exclusionZonesGroup.add(mesh);
+
+            // Add outline
+            const outlinePoints = [
+                new THREE.Vector3(zone.x, zone.y, 0.03),
+                new THREE.Vector3(zone.x + zone.width, zone.y, 0.03),
+                new THREE.Vector3(zone.x + zone.width, zone.y + zone.height, 0.03),
+                new THREE.Vector3(zone.x, zone.y + zone.height, 0.03),
+                new THREE.Vector3(zone.x, zone.y, 0.03)
+            ];
+            const outlineGeom = new THREE.BufferGeometry().setFromPoints(outlinePoints);
+            const outline = new THREE.Line(outlineGeom, outlineMaterial);
+            this.exclusionZonesGroup.add(outline);
+
+            // Add zone type label
+            if (zone.zoneType && this.createTextSprite) {
+                const labelText = zone.zoneType.charAt(0).toUpperCase() + zone.zoneType.slice(1);
+                const label = this.createTextSprite(labelText, {
+                    fontsize: 12,
+                    fillStyle: '#374151', // Gray-700
+                    backgroundColor: 'rgba(243, 244, 246, 0.9)'
+                });
+                label.position.set(zone.x + zone.width / 2, zone.y + zone.height / 2, 0.05);
+                label.scale.set(0.3, 0.15, 1);
+                this.exclusionZonesGroup.add(label);
+            }
+        });
+
+        console.log(`[Renderer] Rendered ${exclusionZones.length} exclusion zones`);
+        this.render();
+    }
+
     clearCorridorArrows() {
         this.arrowMeshes.forEach(mesh => {
             this.corridorArrowsGroup.remove(mesh);
