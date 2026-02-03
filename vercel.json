@@ -1,13 +1,10 @@
 {
     "version": 2,
+    "outputDirectory": "public",
     "rewrites": [
         {
             "source": "/api/(.*)",
             "destination": "/api"
-        },
-        {
-            "source": "/(.*)",
-            "destination": "/public/$1"
         }
     ],
     "functions": {
@@ -15,5 +12,6 @@
             "maxDuration": 30,
             "memory": 1024
         }
-    }
+    },
+    "buildCommand": "echo 'Skipping build for serverless Express'"
 }
