@@ -745,7 +745,13 @@ export class FloorPlanRenderer {
             const fillColor = ilot.color ? parseInt(ilot.color.replace('#', ''), 16) : (colorMap[ilot.type] || 0xffffff);
 
             if (this.is3DMode) {
-                const extrudeSettings = { depth: 2.8, bevelEnabled: true, bevelThickness: 0.1, bevelSize: 0.1, bevelSegments: 2 };
+                // Variable height based on ilot area (larger ilots = taller)
+                const area = ilot.area || (ilot.width * ilot.height);
+                const baseHeight = 1.5; // Minimum height
+                const heightScale = 0.3; // How much to scale by area
+                const maxHeight = 5.0; // Maximum height cap
+                const variableDepth = Math.min(baseHeight + area * heightScale, maxHeight);
+                const extrudeSettings = { depth: variableDepth, bevelEnabled: true, bevelThickness: 0.1, bevelSize: 0.1, bevelSegments: 2 };
                 geometry = new THREE.ExtrudeGeometry(shape, extrudeSettings);
                 material = new THREE.MeshStandardMaterial({
                     color: fillColor,

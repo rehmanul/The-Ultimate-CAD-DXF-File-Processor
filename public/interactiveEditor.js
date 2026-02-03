@@ -212,4 +212,103 @@ export class InteractiveEditor {
             console.error('TransformControls update failed:', error);
         }
     }
+
+    /**
+     * Split selected ilot into smaller cells
+     * @param {number} divisions - Number of divisions (2 = split in half, 4 = quarters)
+     * @param {string} direction - 'horizontal' or 'vertical' or 'both'
+     */
+    splitSelected(divisions = 2, direction = 'horizontal') {
+        if (!this.selectedMesh || !this.selectedMesh.userData.ilot) return null;
+
+        const ilot = this.selectedMesh.userData.ilot;
+        const newIlots = [];
+
+        if (direction === 'horizontal' || direction === 'both') {
+            const newWidth = ilot.width / divisions;
+            for (let i = 0; i < divisions; i++) {
+                newIlots.push({
+                    ...ilot,
+                    x: ilot.x + i * newWidth,
+                    width: newWidth,
+                    area: newWidth * ilot.height,
+                    id: `${ilot.id}_H${i}`
+                });
+            }
+        } else if (direction === 'vertical') {
+            const newHeight = ilot.height / divisions;
+            for (let i = 0; i < divisions; i++) {
+                newIlots.push({
+                    ...ilot,
+                    y: ilot.y + i * newHeight,
+                    height: newHeight,
+                    area: ilot.width * newHeight,
+                    id: `${ilot.id}_V${i}`
+                });
+            }
+        }
+
+        // Return new ilots (caller should remove original and add these)
+        return {
+            originalIndex: this.selectedMesh.userData.index,
+            newIlots: newIlots
+        };
+    }
+
+    /**
+     * Check if two ilots can be merged (adjacent and same height/width)
+     */
+    canMerge(ilot1, ilot2) {
+        const tolerance = 0.01;
+
+        // Check horizontal adjacency (same Y, touching X)
+        if (Math.abs(ilot1.y - ilot2.y) < tolerance &&
+            Math.abs(ilot1.height - ilot2.height) < tolerance) {
+            if (Math.abs(ilot1.x + ilot1.width - ilot2.x) < tolerance ||
+                Math.abs(ilot2.x + ilot2.width - ilot1.x) < tolerance) {
+                return 'horizontal';
+            }
+        }
+
+        // Check vertical adjacency (same X, touching Y)
+        if (Math.abs(ilot1.x - ilot2.x) < tolerance &&
+            Math.abs(ilot1.width - ilot2.width) < tolerance) {
+            if (Math.abs(ilot1.y + ilot1.height - ilot2.y) < tolerance ||
+                Math.abs(ilot2.y + ilot2.height - ilot1.y) < tolerance) {
+                return 'vertical';
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Merge two adjacent ilots into one
+     */
+    mergeIlots(ilot1, ilot2) {
+        const direction = this.canMerge(ilot1, ilot2);
+        if (!direction) return null;
+
+        if (direction === 'horizontal') {
+            const minX = Math.min(ilot1.x, ilot2.x);
+            const maxX = Math.max(ilot1.x + ilot1.width, ilot2.x + ilot2.width);
+            return {
+                ...ilot1,
+                x: minX,
+                width: maxX - minX,
+                area: (maxX - minX) * ilot1.height,
+                id: `${ilot1.id}_MERGED`
+            };
+        } else {
+            const minY = Math.min(ilot1.y, ilot2.y);
+            const maxY = Math.max(ilot1.y + ilot1.height, ilot2.y + ilot2.height);
+            return {
+                ...ilot1,
+                y: minY,
+                height: maxY - minY,
+                area: ilot1.width * (maxY - minY),
+                id: `${ilot1.id}_MERGED`
+            };
+        }
+    }
 }
