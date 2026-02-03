@@ -757,7 +757,7 @@ if (!fs.existsSync(uploadsDir)) {
     fs.mkdirSync(uploadsDir, { recursive: true });
 }
 
-const upload = multer({ 
+const upload = multer({
     dest: uploadsDir,
     limits: {
         fileSize: 50 * 1024 * 1024 // 50MB limit
@@ -1126,13 +1126,7 @@ app.post('/api/ilots', async (req, res) => {
                         maxCellArea: 60,     // larger maximum area
                         strictValidation: false, // relaxed edge validation
                         corridorWidth,
-                        cellAspectRatio: 0.5,
-                        cellWidth: Math.max(0.9, corridorWidth * 0.9),
-                        cellHeight: Math.max(1.8, corridorWidth * 2.0),
-                        mainRowGapEvery: 4,
-                        mainRowGapWidth: corridorWidth * 1.6,
-                        columnGapEvery: 8,
-                        columnGapWidth: corridorWidth * 1.2,
+                        seed: generatorOptions.seed, // Pass seed for reproducible distribution-based generation
                         entranceClearance: 1.2,
                         forbiddenClearance: 0.25,
                         wallClearance: 0.3
@@ -2269,7 +2263,7 @@ app.post('/api/costo/export/dwg', async (req, res) => {
         const dwgContent = CostoExports.exportToDWG(solution, floorPlan, options);
         const filename = `costo_layout_${Date.now()}.dxf`;
         const filepath = path.join(__dirname, 'exports', filename);
-        
+
         if (!fs.existsSync(path.dirname(filepath))) {
             fs.mkdirSync(path.dirname(filepath), { recursive: true });
         }
@@ -2298,7 +2292,7 @@ app.post('/api/costo/export/pdf', async (req, res) => {
         const pdfBytes = await CostoExports.exportToPDF(solution, floorPlan, metrics, options);
         const filename = `costo_layout_${Date.now()}.pdf`;
         const filepath = path.join(__dirname, 'exports', filename);
-        
+
         if (!fs.existsSync(path.dirname(filepath))) {
             fs.mkdirSync(path.dirname(filepath), { recursive: true });
         }
@@ -2327,7 +2321,7 @@ app.post('/api/costo/export/svg', (req, res) => {
         const svgContent = CostoExports.exportToInteractiveSVG(solution, floorPlan, options);
         const filename = `costo_layout_${Date.now()}.svg`;
         const filepath = path.join(__dirname, 'exports', filename);
-        
+
         if (!fs.existsSync(path.dirname(filepath))) {
             fs.mkdirSync(path.dirname(filepath), { recursive: true });
         }
@@ -2356,7 +2350,7 @@ app.post('/api/costo/export/excel', (req, res) => {
         const excelBuffer = CostoExports.exportToExcel(solution, unitMix, deviation, options);
         const filename = `costo_data_${Date.now()}.xlsx`;
         const filepath = path.join(__dirname, 'exports', filename);
-        
+
         if (!fs.existsSync(path.dirname(filepath))) {
             fs.mkdirSync(path.dirname(filepath), { recursive: true });
         }
@@ -2385,7 +2379,7 @@ app.post('/api/costo/export/csv', (req, res) => {
         const csvContent = CostoExports.exportToCSV(solution, options);
         const filename = `costo_data_${Date.now()}.csv`;
         const filepath = path.join(__dirname, 'exports', filename);
-        
+
         if (!fs.existsSync(path.dirname(filepath))) {
             fs.mkdirSync(path.dirname(filepath), { recursive: true });
         }
@@ -2414,7 +2408,7 @@ app.post('/api/costo/export/report', async (req, res) => {
         const pdfBytes = await CostoExports.exportReportPDF(solution, metrics, compliance, deviation, options);
         const filename = `costo_report_${Date.now()}.pdf`;
         const filepath = path.join(__dirname, 'exports', filename);
-        
+
         if (!fs.existsSync(path.dirname(filepath))) {
             fs.mkdirSync(path.dirname(filepath), { recursive: true });
         }
@@ -2446,7 +2440,7 @@ app.post('/api/costo/export/reference-pdf', async (req, res) => {
         const pdfBytes = await CostoExports.exportToReferencePDF(solution, floorPlan, metrics, options);
         const filename = `costo_reference_${Date.now()}.pdf`;
         const filepath = path.join(__dirname, 'exports', filename);
-        
+
         if (!fs.existsSync(path.dirname(filepath))) {
             fs.mkdirSync(path.dirname(filepath), { recursive: true });
         }
@@ -2512,7 +2506,7 @@ app.get('/api/costo/project/:projectId', (req, res) => {
     try {
         const { projectId } = req.params;
         const project = CostoProjectManager.loadProject(projectId);
-        
+
         if (!project) {
             return res.status(404).json({ error: 'Project not found' });
         }
@@ -2538,7 +2532,7 @@ app.delete('/api/costo/project/:projectId', (req, res) => {
     try {
         const { projectId } = req.params;
         const deleted = CostoProjectManager.deleteProject(projectId);
-        
+
         if (!deleted) {
             return res.status(404).json({ error: 'Project not found' });
         }

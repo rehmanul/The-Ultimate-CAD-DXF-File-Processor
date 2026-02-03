@@ -53,7 +53,7 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     const container = document.getElementById('threeContainer');
-    
+
     // Initialize upload and file input immediately (before renderer) so upload works even if init is delayed
     const uploadBtn = document.getElementById('uploadBtn');
     const fileInput = document.getElementById('fileInput');
@@ -232,136 +232,136 @@ function initializeModules() {
     // Setup editor callbacks with collision detection and undo/redo
     if (editor) {
         editor.onIlotModified = (ilot, index, changeData) => {
-        // Validate new position
-        if (collisionDetector) {
-            const validation = collisionDetector.isIlotValid(ilot, generatedIlots.filter((_, i) => i !== index));
-            if (!validation.valid) {
-                showNotification(`Invalid position: ${validation.reason}`, 'warning');
-                // Revert to old state
-                ilot.x = changeData.oldPosition.x;
-                ilot.y = changeData.oldPosition.y;
-                ilot.width = changeData.oldSize.width;
-                ilot.height = changeData.oldSize.height;
+            // Validate new position
+            if (collisionDetector) {
+                const validation = collisionDetector.isIlotValid(ilot, generatedIlots.filter((_, i) => i !== index));
+                if (!validation.valid) {
+                    showNotification(`Invalid position: ${validation.reason}`, 'warning');
+                    // Revert to old state
+                    ilot.x = changeData.oldPosition.x;
+                    ilot.y = changeData.oldPosition.y;
+                    ilot.width = changeData.oldSize.width;
+                    ilot.height = changeData.oldSize.height;
+                    renderer.renderIlots(generatedIlots);
+                    updateLegendTable(); // Update legend when ilots are rendered
+                    if (textLabels) {
+                        textLabels.clear();
+                        generatedIlots.forEach((il, i) => textLabels.addIlotLabel(il, i));
+                    }
+                    return;
+                }
+            }
+
+            // Create appropriate undo command
+            if (changeData.positionChanged && changeData.sizeChanged) {
+                // Both changed - use transform command
+                const command = new TransformIlotCommand(
+                    ilot,
+                    { ...changeData.oldPosition, ...changeData.oldSize },
+                    { ...changeData.newPosition, ...changeData.newSize },
+                    () => {
+                        renderer.renderIlots(generatedIlots);
+                        updateLegendTable(); // Update legend when ilots are rendered
+                        if (textLabels) {
+                            textLabels.clear();
+                            generatedIlots.forEach((il, i) => textLabels.addIlotLabel(il, i));
+                        }
+                    }
+                );
+                undoManager.addToHistory(command);
+            } else if (changeData.positionChanged) {
+                // Only position changed
+                const command = new MoveIlotCommand(
+                    ilot,
+                    changeData.oldPosition,
+                    changeData.newPosition,
+                    () => {
+                        renderer.renderIlots(generatedIlots);
+                        updateLegendTable(); // Update legend when ilots are rendered
+                        if (textLabels) {
+                            textLabels.clear();
+                            generatedIlots.forEach((il, i) => textLabels.addIlotLabel(il, i));
+                        }
+                    }
+                );
+                undoManager.addToHistory(command);
+            } else if (changeData.sizeChanged) {
+                // Only size changed
+                const command = new ResizeIlotCommand(
+                    ilot,
+                    changeData.oldSize,
+                    changeData.newSize,
+                    () => {
+                        renderer.renderIlots(generatedIlots);
+                        updateLegendTable(); // Update legend when ilots are rendered
+                        if (textLabels) {
+                            textLabels.clear();
+                            generatedIlots.forEach((il, i) => textLabels.addIlotLabel(il, i));
+                        }
+                    }
+                );
+                undoManager.addToHistory(command);
+            }
+
+            // Update the ilot in array
+            generatedIlots[index] = ilot;
+
+            // Re-render to show changes
+            renderer.renderIlots(generatedIlots);
+            updateLegendTable(); // Update legend when ilots are rendered
+            if (textLabels) {
+                textLabels.clear();
+                generatedIlots.forEach((il, i) => textLabels.addIlotLabel(il, i));
+            }
+
+            // Update editor's mesh reference if it was selected
+            if (editor.selectedMesh && editor.selectedMesh.userData.index === index) {
+                editor.selectedMesh = renderer.ilotMeshes[index];
+                if (editor.transformControl.object) {
+                    editor.transformControl.detach();
+                    editor.transformControl.attach(editor.selectedMesh);
+                }
+            }
+        };
+
+        // Listen for keyboard events
+        document.addEventListener('deleteIlot', (e) => {
+            const mesh = e.detail.mesh;
+            if (!mesh || !mesh.userData.ilot) return;
+
+            const index = mesh.userData.index;
+            const command = new DeleteIlotCommand(generatedIlots, index, () => {
                 renderer.renderIlots(generatedIlots);
-        updateLegendTable(); // Update legend when ilots are rendered
+                updateLegendTable(); // Update legend when ilots are rendered
                 if (textLabels) {
                     textLabels.clear();
                     generatedIlots.forEach((il, i) => textLabels.addIlotLabel(il, i));
                 }
-                return;
-            }
-        }
+                updateStats();
+            });
 
-        // Create appropriate undo command
-        if (changeData.positionChanged && changeData.sizeChanged) {
-            // Both changed - use transform command
-            const command = new TransformIlotCommand(
-                ilot,
-                { ...changeData.oldPosition, ...changeData.oldSize },
-                { ...changeData.newPosition, ...changeData.newSize },
-                () => {
-                    renderer.renderIlots(generatedIlots);
-        updateLegendTable(); // Update legend when ilots are rendered
-                    if (textLabels) {
-                        textLabels.clear();
-                        generatedIlots.forEach((il, i) => textLabels.addIlotLabel(il, i));
-                    }
-                }
-            );
-            undoManager.addToHistory(command);
-        } else if (changeData.positionChanged) {
-            // Only position changed
-            const command = new MoveIlotCommand(
-                ilot,
-                changeData.oldPosition,
-                changeData.newPosition,
-                () => {
-                    renderer.renderIlots(generatedIlots);
-        updateLegendTable(); // Update legend when ilots are rendered
-                    if (textLabels) {
-                        textLabels.clear();
-                        generatedIlots.forEach((il, i) => textLabels.addIlotLabel(il, i));
-                    }
-                }
-            );
-            undoManager.addToHistory(command);
-        } else if (changeData.sizeChanged) {
-            // Only size changed
-            const command = new ResizeIlotCommand(
-                ilot,
-                changeData.oldSize,
-                changeData.newSize,
-                () => {
-                    renderer.renderIlots(generatedIlots);
-        updateLegendTable(); // Update legend when ilots are rendered
-                    if (textLabels) {
-                        textLabels.clear();
-                        generatedIlots.forEach((il, i) => textLabels.addIlotLabel(il, i));
-                    }
-                }
-            );
-            undoManager.addToHistory(command);
-        }
-
-        // Update the ilot in array
-        generatedIlots[index] = ilot;
-
-        // Re-render to show changes
-        renderer.renderIlots(generatedIlots);
-        updateLegendTable(); // Update legend when ilots are rendered
-        if (textLabels) {
-            textLabels.clear();
-            generatedIlots.forEach((il, i) => textLabels.addIlotLabel(il, i));
-        }
-
-        // Update editor's mesh reference if it was selected
-        if (editor.selectedMesh && editor.selectedMesh.userData.index === index) {
-            editor.selectedMesh = renderer.ilotMeshes[index];
-            if (editor.transformControl.object) {
-                editor.transformControl.detach();
-                editor.transformControl.attach(editor.selectedMesh);
-            }
-        }
-    };
-
-    // Listen for keyboard events
-    document.addEventListener('deleteIlot', (e) => {
-        const mesh = e.detail.mesh;
-        if (!mesh || !mesh.userData.ilot) return;
-
-        const index = mesh.userData.index;
-        const command = new DeleteIlotCommand(generatedIlots, index, () => {
-            renderer.renderIlots(generatedIlots);
-        updateLegendTable(); // Update legend when ilots are rendered
-            if (textLabels) {
-                textLabels.clear();
-                generatedIlots.forEach((il, i) => textLabels.addIlotLabel(il, i));
-            }
-            updateStats();
+            undoManager.execute(command);
+            editor.transformControl.detach();
+            editor.selectedMesh = null;
+            renderer.clearSelection();
+            showNotification('Ilot deleted (Ctrl+Z to undo)', 'info');
         });
 
-        undoManager.execute(command);
-        editor.transformControl.detach();
-        editor.selectedMesh = null;
-        renderer.clearSelection();
-        showNotification('Ilot deleted (Ctrl+Z to undo)', 'info');
-    });
+        document.addEventListener('ilotDuplicated', (e) => {
+            const newIlot = e.detail.ilot;
+            const command = new AddIlotCommand(generatedIlots, newIlot, () => {
+                renderer.renderIlots(generatedIlots);
+                updateLegendTable(); // Update legend when ilots are rendered
+                if (textLabels) {
+                    textLabels.clear();
+                    generatedIlots.forEach((il, i) => textLabels.addIlotLabel(il, i));
+                }
+                updateStats();
+            });
 
-    document.addEventListener('ilotDuplicated', (e) => {
-        const newIlot = e.detail.ilot;
-        const command = new AddIlotCommand(generatedIlots, newIlot, () => {
-            renderer.renderIlots(generatedIlots);
-        updateLegendTable(); // Update legend when ilots are rendered
-            if (textLabels) {
-                textLabels.clear();
-                generatedIlots.forEach((il, i) => textLabels.addIlotLabel(il, i));
-            }
-            updateStats();
+            undoManager.execute(command);
+            showNotification('Ilot duplicated (Ctrl+Z to undo)', 'success');
         });
-
-        undoManager.execute(command);
-        showNotification('Ilot duplicated (Ctrl+Z to undo)', 'success');
-    });
 
         document.addEventListener('statsUpdate', () => {
             updateStats();
@@ -793,11 +793,11 @@ function initializeModules() {
                 showNotification('Generate ilots first', 'warning');
                 return;
             }
-            
+
             try {
                 showNotification('Exporting reference-style PDF...', 'info');
                 const API = window.__API_BASE__ || window.location.origin;
-                
+
                 // Convert ilots to boxes format - ensure all data is included
                 const boxes = generatedIlots.map(ilot => {
                     const area = ilot.area || (ilot.width * ilot.height) || 0;
@@ -818,7 +818,7 @@ function initializeModules() {
                         }
                         return closest;
                     })();
-                    
+
                     return {
                         id: ilot.id || `BOX_${generatedIlots.indexOf(ilot) + 1}`,
                         x: ilot.x || 0,
@@ -832,18 +832,18 @@ function initializeModules() {
                         row: ilot.row || 0
                     };
                 });
-                
+
                 // Convert corridors
                 const corridors = corridorNetwork.map(corridor => ({
                     corners: corridor.polygon || (corridor.corners || []),
                     width: corridor.width || 1.2
                 }));
-                
+
                 const solution = {
                     boxes: boxes,
                     corridors: corridors
                 };
-                
+
                 // Ensure floorPlan includes all necessary data
                 const exportFloorPlan = {
                     ...currentFloorPlan,
@@ -856,7 +856,7 @@ function initializeModules() {
                     specialRooms: currentFloorPlan.specialRooms || [], // Include RM-xxx rooms
                     greenZones: currentFloorPlan.greenZones || [] // Include green zones
                 };
-                
+
                 const response = await fetch(`${API}/api/costo/export/reference-pdf`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -883,14 +883,14 @@ function initializeModules() {
                         }
                     })
                 });
-                
+
                 if (!response.ok) {
                     const error = await response.json();
                     throw new Error(error.error || 'Export failed');
                 }
-                
+
                 const result = await response.json();
-                
+
                 // Download the file
                 const downloadResponse = await fetch(`${API}/exports/${result.filename}`);
                 const blob = await downloadResponse.blob();
@@ -902,7 +902,7 @@ function initializeModules() {
                 a.click();
                 document.body.removeChild(a);
                 window.URL.revokeObjectURL(url);
-                
+
                 showNotification('Reference PDF exported successfully!', 'success');
             } catch (error) {
                 console.error('Reference PDF export error:', error);
@@ -1127,7 +1127,7 @@ DRAG - Move selected ilot
 
 async function handleFileUpload(e) {
     console.log('handleFileUpload called', e);
-    
+
     // Handle both direct file input events and programmatic calls
     const target = e?.target || e?.currentTarget || document.getElementById('fileInput');
     if (!target) {
@@ -1135,7 +1135,7 @@ async function handleFileUpload(e) {
         showNotification('File input not found. Please refresh the page.', 'error');
         return;
     }
-    
+
     if (!target.files || !target.files[0]) {
         console.warn('No file selected');
         return;
@@ -1151,7 +1151,7 @@ async function handleFileUpload(e) {
         // Use current origin for API (works in production)
         const API = window.__API_BASE__ || window.location.origin;
         console.log('Uploading to:', `${API}/api/jobs`);
-        
+
         const response = await fetch(`${API}/api/jobs`, {
             method: 'POST',
             body: formData,
@@ -1323,15 +1323,15 @@ function renderCurrentState() {
         console.warn('Renderer not available for renderCurrentState');
         return;
     }
-    
+
     try {
         console.log('renderCurrentState called:', generatedIlots.length, 'ilots,', corridorNetwork.length, 'corridors');
-        
+
         // Ensure floor plan is loaded
         if (currentFloorPlan) {
             renderer.loadFloorPlan(currentFloorPlan);
         }
-        
+
         // Render ilots
         if (generatedIlots.length > 0) {
             renderer.renderIlots(generatedIlots);
@@ -1352,7 +1352,7 @@ function renderCurrentState() {
         if (!stackVisualizationEnabled && renderer.clearCrossFloorRoutes) {
             renderer.clearCrossFloorRoutes();
         }
-        
+
         // Ensure final render
         renderer.render();
     } catch (e) {
@@ -2376,7 +2376,7 @@ function parseDistribution() {
     if (activePresetConfig?.normalizedDistribution) {
         return activePresetConfig.normalizedDistribution;
     }
-    
+
     // Check distribution editor
     const txt = document.getElementById('distributionEditor')?.value;
     if (txt && txt.trim() !== '') {
@@ -2387,20 +2387,20 @@ function parseDistribution() {
             console.warn('Distribution JSON is invalid, using default:', e);
         }
     }
-    
+
     // Check distribution inputs in UI
     const distributionInputs = document.querySelectorAll('.distribution-input');
     if (distributionInputs.length > 0) {
         const distribution = {};
         const ranges = ['0-1', '1-3', '3-5', '5-10'];
         let hasValues = false;
-        
+
         distributionInputs.forEach((input, index) => {
             const value = parseFloat(input.value) || 0;
             if (value > 0) hasValues = true;
             distribution[ranges[index]] = value;
         });
-        
+
         if (hasValues) {
             try {
                 return normalizePresetDistribution(distribution);
@@ -2409,15 +2409,15 @@ function parseDistribution() {
             }
         }
     }
-    
+
     // Use default distribution if nothing is configured
     const defaultDistribution = {
-        '0-2': 25,
-        '2-5': 35,
-        '5-10': 30,
-        '10-20': 10
+        '0-1': 10,
+        '1-3': 25,
+        '3-5': 30,
+        '5-10': 35
     };
-    
+
     console.log('Using default distribution:', defaultDistribution);
     return normalizePresetDistribution(defaultDistribution);
 }
@@ -2690,7 +2690,7 @@ function computeDeterministicSeed(floorPlan, presetConfig, distribution) {
     }
 
     const source = [
-        presetConfig?.id || 'default',
+        activePresetConfig?.id || 'default',
         bounds.minX ?? 0,
         bounds.minY ?? 0,
         bounds.maxX ?? 0,
@@ -2778,20 +2778,20 @@ function initializeLayoutChrome() {
 function initializeHeaderActions() {
     const uploadBtn = document.getElementById('uploadBtn');
     const fileInput = document.getElementById('fileInput');
-    
+
     if (!uploadBtn) {
         console.warn('Upload button not found');
         return;
     }
-    
+
     if (!fileInput) {
         console.warn('File input not found');
         return;
     }
-    
+
     // Ensure button type is set correctly
     uploadBtn.type = 'button';
-    
+
     // Remove any existing listeners to prevent duplicates
     const oldTrigger = uploadBtn._triggerUpload;
     if (oldTrigger) {
@@ -2799,23 +2799,23 @@ function initializeHeaderActions() {
         uploadBtn.removeEventListener('pointerdown', oldTrigger);
         uploadBtn.removeEventListener('touchstart', oldTrigger);
     }
-    
+
     // Create new trigger function
     const triggerUpload = (event) => {
         if (event) {
             event.preventDefault();
             event.stopPropagation();
         }
-        
+
         console.log('Upload button clicked, triggering file input');
-        
+
         // Ensure file input is accessible
         if (!fileInput) {
             console.error('File input not available');
             showNotification('File input not available. Please refresh the page.', 'error');
             return;
         }
-        
+
         // Reset and trigger file input
         try {
             fileInput.value = '';
@@ -2826,10 +2826,10 @@ function initializeHeaderActions() {
             showNotification('Error opening file dialog: ' + error.message, 'error');
         }
     };
-    
+
     // Store reference for cleanup
     uploadBtn._triggerUpload = triggerUpload;
-    
+
     // Add event listeners
     uploadBtn.addEventListener('click', triggerUpload, { passive: false });
     uploadBtn.addEventListener('pointerdown', triggerUpload, { passive: false });
@@ -2840,9 +2840,9 @@ function initializeHeaderActions() {
             triggerUpload(event);
         }
     });
-    
+
     console.log('Upload button initialized successfully');
-    
+
     // Also handle data-trigger="upload" elements
     const uploadTriggers = document.querySelectorAll('[data-trigger="upload"]');
     uploadTriggers.forEach(trigger => {
@@ -2984,7 +2984,7 @@ function showNotification(message, type = 'info', options = {}) {
         options = type;
         type = options.type || 'info';
     }
-    
+
     // Handle duration parameter (can be passed as third arg or in options)
     if (typeof options === 'number') {
         options = { duration: options };
@@ -3290,12 +3290,12 @@ function showLegend() {
 function updateLegendTable() {
     const tableBody = document.getElementById('legendTableBody');
     const unitTable = document.getElementById('legendUnitTable');
-    
+
     if (!tableBody || !unitTable || !generatedIlots || generatedIlots.length === 0) {
         if (unitTable) unitTable.style.display = 'none';
         return;
     }
-    
+
     // Calculate unit size statistics (using consistent calculation)
     const unitSizeMap = {};
     generatedIlots.forEach(ilot => {
@@ -3314,7 +3314,7 @@ function updateLegendTable() {
         if (area > 25) {
             closest = Math.round(area * 2) / 2;
         }
-        
+
         // Get group (consistent with backend)
         const size = closest;
         let group = 'A';
@@ -3324,7 +3324,7 @@ function updateLegendTable() {
         else if (size <= 10) group = 'D';
         else if (size <= 15) group = 'E';
         else group = 'F';
-        
+
         if (!unitSizeMap[closest]) {
             unitSizeMap[closest] = {
                 size: closest,
@@ -3336,13 +3336,13 @@ function updateLegendTable() {
         unitSizeMap[closest].count++;
         unitSizeMap[closest].totalArea += area;
     });
-    
+
     // Sort by size
     const unitSizes = Object.values(unitSizeMap).sort((a, b) => a.size - b.size);
-    
+
     // Clear and populate table - Match reference: RM No., DESCRIPTION, AREA (SQ.FT.)
     tableBody.innerHTML = '';
-    
+
     // Use actual rooms if available, otherwise use unit sizes
     const rooms = currentFloorPlan?.rooms || [];
     const roomRows = rooms.length > 0 ? rooms.slice(0, 26).map((room, idx) => ({
@@ -3354,7 +3354,7 @@ function updateLegendTable() {
         description: 'Unit',
         area: ((unit.size * unit.count) * 10.764).toFixed(1)
     }));
-    
+
     roomRows.slice(0, 26).forEach(row => {
         const rowEl = document.createElement('div');
         rowEl.className = 'legend-table-row';
@@ -3365,7 +3365,7 @@ function updateLegendTable() {
         `;
         tableBody.appendChild(rowEl);
     });
-    
+
     unitTable.style.display = 'block';
 }
 
@@ -3441,7 +3441,7 @@ function initializeEditTools() {
 
                     // Re-render
                     renderer.renderIlots(generatedIlots);
-        updateLegendTable(); // Update legend when ilots are rendered
+                    updateLegendTable(); // Update legend when ilots are rendered
                     updateStats();
 
                     showNotification('Ilot deleted', 'success');
@@ -3661,10 +3661,10 @@ function calculateUnitMixVariance() {
     activeUnitMix.typologies.forEach(typo => {
         // Normalize typology name for matching
         const typoBaseName = normalizeTypeName(typo.name);
-        
+
         // Try exact match first, then normalized match
         let actual = ilotsByType[typo.name] || ilotsByType[typoBaseName] || [];
-        
+
         // If still no match, try case-insensitive match
         if (actual.length === 0) {
             for (const [type, ilots] of Object.entries(ilotsByType)) {
@@ -3674,7 +3674,7 @@ function calculateUnitMixVariance() {
                 }
             }
         }
-        
+
         const actualArea = actual.reduce((sum, ilot) => sum + (ilot.area || ilot.width * ilot.height), 0);
         const deviation = actualArea - typo.targetArea;
         const isWithinTolerance = Math.abs(deviation) <= typo.tolerance;
@@ -4069,8 +4069,8 @@ if (gridToggleBtnEl) {
 // ============ ADVANCED KEYBOARD SHORTCUTS FOR CAD-STYLE EDITING ============
 document.addEventListener('keydown', (e) => {
     if (!editor || !editor.transformControl) return;
-    
-    switch(e.key.toLowerCase()) {
+
+    switch (e.key.toLowerCase()) {
         case 'g':
             editor.transformControl.setMode('translate');
             showNotification('Move mode (G)', 'info');
