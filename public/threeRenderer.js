@@ -871,6 +871,23 @@ export class FloorPlanRenderer {
                 const areaScale = Math.min(ilot.width, ilot.height) * 0.25;
                 areaSprite.scale.set(areaScale, areaScale * 0.5, 1);
                 this.ilotsGroup.add(areaSprite);
+
+                // PHASE 3: Add dimensions label (width x height) for professional labeling
+                const dimText = `${ilot.width.toFixed(1)} x ${ilot.height.toFixed(1)}`;
+                const dimSprite = this.createTextSprite(dimText, {
+                    fontsize: 14,
+                    fillStyle: '#4B5563', // Gray-600
+                    backgroundColor: 'rgba(255, 255, 255, 0.7)',
+                    fontWeight: 'normal'
+                });
+                dimSprite.position.set(
+                    ilot.x + ilot.width / 2,
+                    ilot.y + ilot.height / 2 - (ilot.height * 0.35), // Below area label
+                    0.2
+                );
+                const dimScale = Math.min(ilot.width, ilot.height) * 0.18;
+                dimSprite.scale.set(dimScale, dimScale * 0.4, 1);
+                this.ilotsGroup.add(dimSprite);
             }
         });
 
@@ -911,6 +928,26 @@ export class FloorPlanRenderer {
             }
         }
 
+        // PHASE 2: Gray fill material for Tole Grise
+        const grayFillMaterial = new THREE.MeshBasicMaterial({
+            color: 0xD1D5DB, // Gray-300
+            transparent: true,
+            opacity: 0.6,
+            side: THREE.DoubleSide
+        });
+
+        // Diagonal line material for hatching
+        const hatchMaterial = new THREE.LineBasicMaterial({
+            color: 0x6B7280, // Gray-500
+            linewidth: 1
+        });
+
+        // Blue centerline material
+        const blueCenterMaterial = new THREE.LineBasicMaterial({
+            color: 0x3B82F6, // Blue-500
+            linewidth: 2
+        });
+
         // Red dashed corridors to match reference "Ligne circulation" style
         const corridorColor = 0xff0000; // Red like reference
         const lineMaterial = new THREE.LineDashedMaterial({
@@ -922,19 +959,82 @@ export class FloorPlanRenderer {
         });
 
         corridors.forEach(corridor => {
-            // Draw center-line through corridor (walking path style)
+            // PHASE 2: Draw gray filled rectangle (Tole Grise base)
+            const corridorShape = new THREE.Shape();
+            corridorShape.moveTo(0, 0);
+            corridorShape.lineTo(corridor.width, 0);
+            corridorShape.lineTo(corridor.width, corridor.height);
+            corridorShape.lineTo(0, corridor.height);
+            corridorShape.closePath();
+
+            const fillGeometry = new THREE.ShapeGeometry(corridorShape);
+            const fillMesh = new THREE.Mesh(fillGeometry, grayFillMaterial.clone());
+            fillMesh.position.set(corridor.x, corridor.y, 0.01);
+            this.corridorsGroup.add(fillMesh);
+
+            // Draw 45° diagonal hatching lines
+            const hatchSpacing = 0.3; // 30cm between lines
+            const diagLength = Math.sqrt(corridor.width ** 2 + corridor.height ** 2);
+            const numLines = Math.ceil(diagLength / hatchSpacing) + 5;
+
+            for (let i = -numLines; i <= numLines; i++) {
+                const offset = i * hatchSpacing;
+
+                // Calculate intersection points with corridor rectangle
+                // Line equation: y = x + offset (45° angle)
+                const points = [];
+
+                // Check intersection with bottom edge (y = 0)
+                const xAtBottom = -offset;
+                if (xAtBottom >= 0 && xAtBottom <= corridor.width) {
+                    points.push(new THREE.Vector3(corridor.x + xAtBottom, corridor.y, 0.02));
+                }
+
+                // Check intersection with left edge (x = 0)
+                const yAtLeft = offset;
+                if (yAtLeft >= 0 && yAtLeft <= corridor.height) {
+                    points.push(new THREE.Vector3(corridor.x, corridor.y + yAtLeft, 0.02));
+                }
+
+                // Check intersection with top edge (y = height)
+                const xAtTop = corridor.height - offset;
+                if (xAtTop >= 0 && xAtTop <= corridor.width) {
+                    points.push(new THREE.Vector3(corridor.x + xAtTop, corridor.y + corridor.height, 0.02));
+                }
+
+                // Check intersection with right edge (x = width)
+                const yAtRight = corridor.width + offset;
+                if (yAtRight >= 0 && yAtRight <= corridor.height) {
+                    points.push(new THREE.Vector3(corridor.x + corridor.width, corridor.y + yAtRight, 0.02));
+                }
+
+                if (points.length >= 2) {
+                    const hatchGeom = new THREE.BufferGeometry().setFromPoints([points[0], points[1]]);
+                    const hatchLine = new THREE.Line(hatchGeom, hatchMaterial);
+                    this.corridorsGroup.add(hatchLine);
+                }
+            }
+
+            // Draw blue center-line through corridor
             const centerLine = [];
 
             if (corridor.type === 'horizontal' || corridor.width > corridor.height) {
                 // Horizontal corridor - draw horizontal line through center
                 const centerY = corridor.y + (corridor.height || this.corridorWidth || 1) / 2;
-                centerLine.push(new THREE.Vector3(corridor.x, centerY, 0.1));
-                centerLine.push(new THREE.Vector3(corridor.x + corridor.width, centerY, 0.1));
+                centerLine.push(new THREE.Vector3(corridor.x, centerY, 0.08));
+                centerLine.push(new THREE.Vector3(corridor.x + corridor.width, centerY, 0.08));
             } else {
                 // Vertical corridor - draw vertical line through center
                 const centerX = corridor.x + (corridor.width || this.corridorWidth || 1) / 2;
-                centerLine.push(new THREE.Vector3(centerX, corridor.y, 0.1));
-                centerLine.push(new THREE.Vector3(centerX, corridor.y + corridor.height, 0.1));
+                centerLine.push(new THREE.Vector3(centerX, corridor.y, 0.08));
+                centerLine.push(new THREE.Vector3(centerX, corridor.y + corridor.height, 0.08));
+            }
+
+            // Draw the blue centerline first
+            if (centerLine.length >= 2) {
+                const blueLineGeom = new THREE.BufferGeometry().setFromPoints(centerLine);
+                const blueLine = new THREE.Line(blueLineGeom, blueCenterMaterial);
+                this.corridorsGroup.add(blueLine);
             }
 
             if (centerLine.length >= 2) {
@@ -1079,6 +1179,110 @@ export class FloorPlanRenderer {
         });
 
         console.log(`Added circulation lines and arrows to ${corridors.length} corridors`);
+        this.render();
+    }
+
+    /**
+     * PHASE 4: Render radiators as small black rectangles along walls
+     * Either from DXF data or auto-generated at intervals
+     */
+    renderRadiators(radiators, walls, options = {}) {
+        // Create radiators group if not exists
+        if (!this.radiatorsGroup) {
+            this.radiatorsGroup = new THREE.Group();
+            this.radiatorsGroup.name = 'radiators';
+            this.scene.add(this.radiatorsGroup);
+        }
+
+        // Clear existing radiators
+        while (this.radiatorsGroup.children.length > 0) {
+            const child = this.radiatorsGroup.children[0];
+            this.radiatorsGroup.remove(child);
+            if (child.geometry) child.geometry.dispose();
+            if (child.material) child.material.dispose();
+        }
+
+        const {
+            radiatorWidth = 0.6,    // 60cm width
+            radiatorDepth = 0.1,    // 10cm depth
+            autoSpacing = 3.0,      // Generate every 3m if no DXF data
+            wallOffset = 0.05       // 5cm from wall
+        } = options;
+
+        // Black material for radiators
+        const radiatorMaterial = new THREE.MeshBasicMaterial({
+            color: 0x1F2937, // Gray-800 (dark)
+            side: THREE.DoubleSide
+        });
+
+        let radiatorsToRender = [];
+
+        // Use provided radiators if available
+        if (radiators && radiators.length > 0) {
+            radiatorsToRender = radiators;
+        } else if (walls && walls.length > 0) {
+            // Auto-generate radiators along walls
+            console.log('[Radiators] Auto-generating from walls...');
+
+            walls.forEach(wall => {
+                const start = wall.start || { x: wall.x1, y: wall.y1 };
+                const end = wall.end || { x: wall.x2, y: wall.y2 };
+
+                if (!start || !end) return;
+
+                const wallLength = Math.hypot(end.x - start.x, end.y - start.y);
+                if (wallLength < autoSpacing) return; // Wall too short
+
+                const isHorizontal = Math.abs(end.y - start.y) < 0.1;
+                const isVertical = Math.abs(end.x - start.x) < 0.1;
+
+                if (!isHorizontal && !isVertical) return; // Only process orthogonal walls
+
+                const numRadiators = Math.floor(wallLength / autoSpacing);
+                for (let i = 1; i <= numRadiators; i++) {
+                    const t = i / (numRadiators + 1);
+                    const x = start.x + (end.x - start.x) * t;
+                    const y = start.y + (end.y - start.y) * t;
+
+                    radiatorsToRender.push({
+                        x, y,
+                        horizontal: isHorizontal,
+                        width: radiatorWidth,
+                        depth: radiatorDepth
+                    });
+                }
+            });
+        }
+
+        // Render each radiator
+        radiatorsToRender.forEach(rad => {
+            const w = rad.width || radiatorWidth;
+            const d = rad.depth || radiatorDepth;
+
+            const shape = new THREE.Shape();
+            if (rad.horizontal !== false) {
+                // Radiator along horizontal wall
+                shape.moveTo(-w / 2, 0);
+                shape.lineTo(w / 2, 0);
+                shape.lineTo(w / 2, d);
+                shape.lineTo(-w / 2, d);
+                shape.closePath();
+            } else {
+                // Radiator along vertical wall
+                shape.moveTo(0, -w / 2);
+                shape.lineTo(d, -w / 2);
+                shape.lineTo(d, w / 2);
+                shape.lineTo(0, w / 2);
+                shape.closePath();
+            }
+
+            const geometry = new THREE.ShapeGeometry(shape);
+            const mesh = new THREE.Mesh(geometry, radiatorMaterial.clone());
+            mesh.position.set(rad.x, rad.y, 0.03);
+            this.radiatorsGroup.add(mesh);
+        });
+
+        console.log(`[Radiators] Rendered ${radiatorsToRender.length} radiator symbols`);
         this.render();
     }
 
