@@ -838,7 +838,7 @@ export class FloorPlanRenderer {
                 // Store calculated unit size for export consistency
                 ilot.unitSize = closest;
 
-                // Display unit size label
+                // Display unit size label (unit number at top)
                 const unitSizeText = String(closest);
                 const labelSprite = this.createTextSprite(unitSizeText, {
                     fontsize: 24,
@@ -848,12 +848,29 @@ export class FloorPlanRenderer {
                 });
                 labelSprite.position.set(
                     ilot.x + ilot.width / 2,
-                    ilot.y + ilot.height / 2,
+                    ilot.y + ilot.height / 2 + (ilot.height * 0.12),
                     0.2
                 );
                 const scale = Math.min(ilot.width, ilot.height) * 0.3;
                 labelSprite.scale.set(scale, scale * 0.5, 1);
                 this.ilotsGroup.add(labelSprite);
+
+                // Display area in m² below unit number (SPEC REQUIREMENT)
+                const areaText = `${area.toFixed(2)} m²`;
+                const areaSprite = this.createTextSprite(areaText, {
+                    fontsize: 16,
+                    fillStyle: '#214181', // Dark blue per spec
+                    backgroundColor: 'transparent',
+                    fontWeight: 'normal'
+                });
+                areaSprite.position.set(
+                    ilot.x + ilot.width / 2,
+                    ilot.y + ilot.height / 2 - (ilot.height * 0.12),
+                    0.2
+                );
+                const areaScale = Math.min(ilot.width, ilot.height) * 0.22;
+                areaSprite.scale.set(areaScale, areaScale * 0.4, 1);
+                this.ilotsGroup.add(areaSprite);
             }
         });
 
@@ -894,11 +911,11 @@ export class FloorPlanRenderer {
             }
         }
 
-        // PHASE 2: Gray fill material for Tole Grise
+        // PHASE 2: Gray fill material for Tole Grise (corridors only, subtle)
         const grayFillMaterial = new THREE.MeshBasicMaterial({
-            color: 0xD1D5DB, // Gray-300
+            color: 0xE5E7EB, // Lighter gray
             transparent: true,
-            opacity: 0.6,
+            opacity: 0.25,   // Much more subtle
             side: THREE.DoubleSide
         });
 
@@ -1175,9 +1192,9 @@ export class FloorPlanRenderer {
             wallOffset = 0.05       // 5cm from wall
         } = options;
 
-        // Black material for radiators
+        // BROWN material for radiators per COSTO spec (RGB 136 0 21)
         const radiatorMaterial = new THREE.MeshBasicMaterial({
-            color: 0x1F2937, // Gray-800 (dark)
+            color: 0x880015, // Dark red/brown per spec
             side: THREE.DoubleSide
         });
 
