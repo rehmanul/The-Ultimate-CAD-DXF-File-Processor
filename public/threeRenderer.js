@@ -795,22 +795,8 @@ export class FloorPlanRenderer {
                 // Store calculated unit size for export consistency
                 ilot.unitSize = closest;
 
-                // COSTO CLEAN: Single small area label centered in box (matching reference)
-                const areaText = `${area.toFixed(1)}m²`;
-                const labelSprite = this.createTextSprite(areaText, {
-                    fontsize: 14,
-                    fillStyle: '#214181', // Dark blue like reference
-                    backgroundColor: 'transparent',
-                    fontWeight: 'normal'
-                });
-                labelSprite.position.set(
-                    ilot.x + ilot.width / 2,
-                    ilot.y + ilot.height / 2,
-                    0.2
-                );
-                const scale = Math.min(ilot.width, ilot.height) * 0.25;
-                labelSprite.scale.set(scale, scale * 0.4, 1);
-                this.ilotsGroup.add(labelSprite);
+                // COSTO REFERENCE: NO labels inside boxes - clean look
+                // Labels are only shown in the side panel table, not on the drawing
             }
         });
 
