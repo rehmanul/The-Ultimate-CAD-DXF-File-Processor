@@ -988,6 +988,100 @@ export class FloorPlanRenderer {
         this.render();
     }
 
+    /**
+     * Render circulation lines (red zigzag) and direction arrows (green triangles)
+     * Call this after renderCorridors for professional appearance
+     */
+    renderCirculationLines(corridors) {
+        // Red zigzag material for "Ligne circulation" style
+        const zigzagMaterial = new THREE.LineBasicMaterial({
+            color: 0xff0000,
+            linewidth: 2
+        });
+
+        // Green arrow material for direction indicators
+        const arrowMaterial = new THREE.MeshBasicMaterial({
+            color: 0x00aa00,
+            side: THREE.DoubleSide
+        });
+
+        corridors.forEach(corridor => {
+            const isHorizontal = corridor.type === 'horizontal' || corridor.width > corridor.height;
+            const centerX = corridor.x + corridor.width / 2;
+            const centerY = corridor.y + corridor.height / 2;
+
+            // Draw RED ZIGZAG line through center
+            const zigzagPoints = [];
+            const zigzagAmplitude = 0.25;
+            const zigzagFrequency = 0.4;
+
+            if (isHorizontal) {
+                const startX = corridor.x;
+                const endX = corridor.x + corridor.width;
+                let peak = true;
+                for (let x = startX; x <= endX; x += zigzagFrequency) {
+                    const offsetY = peak ? zigzagAmplitude : -zigzagAmplitude;
+                    zigzagPoints.push(new THREE.Vector3(x, centerY + offsetY, 0.1));
+                    peak = !peak;
+                }
+            } else {
+                const startY = corridor.y;
+                const endY = corridor.y + corridor.height;
+                let peak = true;
+                for (let y = startY; y <= endY; y += zigzagFrequency) {
+                    const offsetX = peak ? zigzagAmplitude : -zigzagAmplitude;
+                    zigzagPoints.push(new THREE.Vector3(centerX + offsetX, y, 0.1));
+                    peak = !peak;
+                }
+            }
+
+            if (zigzagPoints.length > 1) {
+                const zigzagGeom = new THREE.BufferGeometry().setFromPoints(zigzagPoints);
+                const zigzagLine = new THREE.Line(zigzagGeom, zigzagMaterial);
+                this.corridorsGroup.add(zigzagLine);
+            }
+
+            // Draw GREEN DIRECTION ARROWS
+            if (corridor.hasArrows !== false) {
+                const arrowSize = 0.35;
+                const arrowSpacing = 2.5;
+
+                if (isHorizontal) {
+                    for (let x = corridor.x + arrowSpacing; x < corridor.x + corridor.width - arrowSpacing; x += arrowSpacing) {
+                        const dir = corridor.direction === 'right-to-left' ? -1 : 1;
+                        const arrowShape = new THREE.Shape();
+                        arrowShape.moveTo(x - arrowSize * dir, centerY - arrowSize * 0.5);
+                        arrowShape.lineTo(x + arrowSize * dir, centerY);
+                        arrowShape.lineTo(x - arrowSize * dir, centerY + arrowSize * 0.5);
+                        arrowShape.closePath();
+
+                        const arrowGeom = new THREE.ShapeGeometry(arrowShape);
+                        const arrow = new THREE.Mesh(arrowGeom, arrowMaterial);
+                        arrow.position.z = 0.12;
+                        this.corridorsGroup.add(arrow);
+                    }
+                } else {
+                    for (let y = corridor.y + arrowSpacing; y < corridor.y + corridor.height - arrowSpacing; y += arrowSpacing) {
+                        const dir = corridor.direction === 'down' ? -1 : 1;
+                        const arrowShape = new THREE.Shape();
+                        arrowShape.moveTo(centerX - arrowSize * 0.5, y - arrowSize * dir);
+                        arrowShape.lineTo(centerX, y + arrowSize * dir);
+                        arrowShape.lineTo(centerX + arrowSize * 0.5, y - arrowSize * dir);
+                        arrowShape.closePath();
+
+                        const arrowGeom = new THREE.ShapeGeometry(arrowShape);
+                        const arrow = new THREE.Mesh(arrowGeom, arrowMaterial);
+                        arrow.position.z = 0.12;
+                        this.corridorsGroup.add(arrow);
+                    }
+                }
+            }
+        });
+
+        console.log(`Added circulation lines and arrows to ${corridors.length} corridors`);
+        this.render();
+    }
+
     clearCorridorArrows() {
         this.arrowMeshes.forEach(mesh => {
             this.corridorArrowsGroup.remove(mesh);

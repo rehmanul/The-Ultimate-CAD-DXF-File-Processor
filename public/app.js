@@ -1346,7 +1346,12 @@ function renderCurrentState() {
             renderer.renderCorridors([]);
         } else {
             // Render solid corridors when arrows are unavailable
-            renderer.renderCorridors(getFilteredCorridors());
+            const filteredCorridors = getFilteredCorridors();
+            renderer.renderCorridors(filteredCorridors);
+            // Add red zigzag lines and green direction arrows
+            if (renderer.renderCirculationLines && filteredCorridors.length > 0) {
+                renderer.renderCirculationLines(filteredCorridors);
+            }
         }
 
         if (!stackVisualizationEnabled && renderer.clearCrossFloorRoutes) {
