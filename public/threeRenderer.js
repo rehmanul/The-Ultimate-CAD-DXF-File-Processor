@@ -960,9 +960,11 @@ export class FloorPlanRenderer {
 
             if (centerLine.length >= 2) {
                 const geometry = new THREE.BufferGeometry().setFromPoints(centerLine);
-                // Compute line distance for dashed material
-                geometry.computeLineDistances();
                 const line = new THREE.Line(geometry, lineMaterial);
+                // Compute line distance for dashed material (call on Line, not geometry)
+                if (line.computeLineDistances) {
+                    line.computeLineDistances();
+                }
                 this.corridorsGroup.add(line);
 
                 // Add corridor width annotation if available
