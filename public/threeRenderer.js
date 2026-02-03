@@ -441,53 +441,10 @@ export class FloorPlanRenderer {
             const color = entity.color || defaultColor || 0x000000;
             if (entity.polygon) {
                 this.drawPolygon(entity.polygon, color, group, false);
-                // Add dimension labels for polygon edges
-                if (entity.polygon && entity.polygon.length >= 2) {
-                    for (let i = 0; i < entity.polygon.length; i++) {
-                        const pt1 = entity.polygon[i];
-                        const pt2 = entity.polygon[(i + 1) % entity.polygon.length];
-                        const x1 = Array.isArray(pt1) ? pt1[0] : pt1.x;
-                        const y1 = Array.isArray(pt1) ? pt1[1] : pt1.y;
-                        const x2 = Array.isArray(pt2) ? pt2[0] : pt2.x;
-                        const y2 = Array.isArray(pt2) ? pt2[1] : pt2.y;
-                        const length = Math.hypot(x2 - x1, y2 - y1);
-                        if (length > 0.5) { // Only show dimensions for lines > 0.5m
-                            const midX = (x1 + x2) / 2;
-                            const midY = (y1 + y2) / 2;
-                            const dimText = `${length.toFixed(2)}m`;
-                            const dimSprite = this.createTextSprite(dimText, {
-                                fontsize: 16,
-                                fillStyle: '#ff00ff', // Magenta like reference dimensions
-                                backgroundColor: 'rgba(255, 255, 255, 0.9)',
-                                fontWeight: 'normal'
-                            });
-                            dimSprite.position.set(midX, midY, 0.15);
-                            dimSprite.scale.set(0.8, 0.4, 1);
-                            this.wallsGroup.add(dimSprite);
-                        }
-                    }
-                }
+                // COSTO CLEAN: No dimension labels - reference style is minimal
             } else if (entity.start && entity.end) {
                 this.drawLine(entity.start, entity.end, color, group);
-                // Add dimension label for line
-                const length = Math.hypot(
-                    entity.end.x - entity.start.x,
-                    entity.end.y - entity.start.y
-                );
-                if (length > 0.5) { // Only show dimensions for lines > 0.5m
-                    const midX = (entity.start.x + entity.end.x) / 2;
-                    const midY = (entity.start.y + entity.end.y) / 2;
-                    const dimText = `${length.toFixed(2)}m`;
-                    const dimSprite = this.createTextSprite(dimText, {
-                        fontsize: 16,
-                        fillStyle: '#ff00ff', // Magenta like reference dimensions
-                        backgroundColor: 'rgba(255, 255, 255, 0.9)',
-                        fontWeight: 'normal'
-                    });
-                    dimSprite.position.set(midX, midY, 0.15);
-                    dimSprite.scale.set(0.8, 0.4, 1);
-                    this.wallsGroup.add(dimSprite);
-                }
+                // COSTO CLEAN: No dimension labels - reference style is minimal
             }
         };
 
@@ -838,39 +795,22 @@ export class FloorPlanRenderer {
                 // Store calculated unit size for export consistency
                 ilot.unitSize = closest;
 
-                // Display unit size label (unit number at top)
-                const unitSizeText = String(closest);
-                const labelSprite = this.createTextSprite(unitSizeText, {
-                    fontsize: 24,
-                    fillStyle: '#1F2937', // Dark gray text
-                    backgroundColor: 'transparent', // NO white background
-                    fontWeight: 'bold'
-                });
-                labelSprite.position.set(
-                    ilot.x + ilot.width / 2,
-                    ilot.y + ilot.height / 2 + (ilot.height * 0.12),
-                    0.2
-                );
-                const scale = Math.min(ilot.width, ilot.height) * 0.3;
-                labelSprite.scale.set(scale, scale * 0.5, 1);
-                this.ilotsGroup.add(labelSprite);
-
-                // Display area in m² below unit number (SPEC REQUIREMENT)
-                const areaText = `${area.toFixed(2)} m²`;
-                const areaSprite = this.createTextSprite(areaText, {
-                    fontsize: 16,
-                    fillStyle: '#214181', // Dark blue per spec
+                // COSTO CLEAN: Single small area label centered in box (matching reference)
+                const areaText = `${area.toFixed(1)}m²`;
+                const labelSprite = this.createTextSprite(areaText, {
+                    fontsize: 14,
+                    fillStyle: '#214181', // Dark blue like reference
                     backgroundColor: 'transparent',
                     fontWeight: 'normal'
                 });
-                areaSprite.position.set(
+                labelSprite.position.set(
                     ilot.x + ilot.width / 2,
-                    ilot.y + ilot.height / 2 - (ilot.height * 0.12),
+                    ilot.y + ilot.height / 2,
                     0.2
                 );
-                const areaScale = Math.min(ilot.width, ilot.height) * 0.22;
-                areaSprite.scale.set(areaScale, areaScale * 0.4, 1);
-                this.ilotsGroup.add(areaSprite);
+                const scale = Math.min(ilot.width, ilot.height) * 0.25;
+                labelSprite.scale.set(scale, scale * 0.4, 1);
+                this.ilotsGroup.add(labelSprite);
             }
         });
 
@@ -911,163 +851,51 @@ export class FloorPlanRenderer {
             }
         }
 
-        // PHASE 2: Gray fill material for Tole Grise (corridors only, subtle)
-        const grayFillMaterial = new THREE.MeshBasicMaterial({
-            color: 0xE5E7EB, // Lighter gray
-            transparent: true,
-            opacity: 0.25,   // Much more subtle
-            side: THREE.DoubleSide
-        });
-
-        // Diagonal line material for hatching
-        const hatchMaterial = new THREE.LineBasicMaterial({
-            color: 0x6B7280, // Gray-500
-            linewidth: 1
-        });
-
-        // Blue centerline material
-        const blueCenterMaterial = new THREE.LineBasicMaterial({
-            color: 0x3B82F6, // Blue-500
+        // COSTO CLEAN: Only draw red zigzag circulation lines
+        // Reference style has NO corridor fills, NO hatching - just clean red zigzag
+        const zigzagMaterial = new THREE.LineBasicMaterial({
+            color: 0xff0000, // Red like reference "Ligne circulation"
             linewidth: 2
         });
 
-        // Red dashed corridors to match reference "Ligne circulation" style
-        const corridorColor = 0xff0000; // Red like reference
-        const lineMaterial = new THREE.LineDashedMaterial({
-            color: corridorColor,
-            linewidth: 2,
-            dashSize: 0.5,
-            gapSize: 0.3,
-            scale: 1
-        });
-
         corridors.forEach(corridor => {
-            // PHASE 2: Draw gray filled rectangle (Tole Grise base)
-            const corridorShape = new THREE.Shape();
-            corridorShape.moveTo(0, 0);
-            corridorShape.lineTo(corridor.width, 0);
-            corridorShape.lineTo(corridor.width, corridor.height);
-            corridorShape.lineTo(0, corridor.height);
-            corridorShape.closePath();
+            const isHorizontal = corridor.type === 'horizontal' || corridor.width > corridor.height;
+            const centerX = corridor.x + corridor.width / 2;
+            const centerY = corridor.y + corridor.height / 2;
 
-            const fillGeometry = new THREE.ShapeGeometry(corridorShape);
-            const fillMesh = new THREE.Mesh(fillGeometry, grayFillMaterial.clone());
-            fillMesh.position.set(corridor.x, corridor.y, 0.01);
-            this.corridorsGroup.add(fillMesh);
+            // Draw RED ZIGZAG line through center (matching reference exactly)
+            const zigzagPoints = [];
+            const zigzagAmplitude = 0.3;  // Height of zigzag peaks
+            const zigzagFrequency = 0.5;  // Distance between peaks
 
-            // Draw 45° diagonal hatching lines
-            const hatchSpacing = 0.3; // 30cm between lines
-            const diagLength = Math.sqrt(corridor.width ** 2 + corridor.height ** 2);
-            const numLines = Math.ceil(diagLength / hatchSpacing) + 5;
-
-            for (let i = -numLines; i <= numLines; i++) {
-                const offset = i * hatchSpacing;
-
-                // Calculate intersection points with corridor rectangle
-                // Line equation: y = x + offset (45° angle)
-                const points = [];
-
-                // Check intersection with bottom edge (y = 0)
-                const xAtBottom = -offset;
-                if (xAtBottom >= 0 && xAtBottom <= corridor.width) {
-                    points.push(new THREE.Vector3(corridor.x + xAtBottom, corridor.y, 0.02));
+            if (isHorizontal) {
+                const startX = corridor.x;
+                const endX = corridor.x + corridor.width;
+                let peak = true;
+                for (let x = startX; x <= endX; x += zigzagFrequency) {
+                    const offsetY = peak ? zigzagAmplitude : -zigzagAmplitude;
+                    zigzagPoints.push(new THREE.Vector3(x, centerY + offsetY, 0.1));
+                    peak = !peak;
                 }
-
-                // Check intersection with left edge (x = 0)
-                const yAtLeft = offset;
-                if (yAtLeft >= 0 && yAtLeft <= corridor.height) {
-                    points.push(new THREE.Vector3(corridor.x, corridor.y + yAtLeft, 0.02));
-                }
-
-                // Check intersection with top edge (y = height)
-                const xAtTop = corridor.height - offset;
-                if (xAtTop >= 0 && xAtTop <= corridor.width) {
-                    points.push(new THREE.Vector3(corridor.x + xAtTop, corridor.y + corridor.height, 0.02));
-                }
-
-                // Check intersection with right edge (x = width)
-                const yAtRight = corridor.width + offset;
-                if (yAtRight >= 0 && yAtRight <= corridor.height) {
-                    points.push(new THREE.Vector3(corridor.x + corridor.width, corridor.y + yAtRight, 0.02));
-                }
-
-                if (points.length >= 2) {
-                    const hatchGeom = new THREE.BufferGeometry().setFromPoints([points[0], points[1]]);
-                    const hatchLine = new THREE.Line(hatchGeom, hatchMaterial);
-                    this.corridorsGroup.add(hatchLine);
-                }
-            }
-
-            // Draw blue center-line through corridor
-            const centerLine = [];
-
-            if (corridor.type === 'horizontal' || corridor.width > corridor.height) {
-                // Horizontal corridor - draw horizontal line through center
-                const centerY = corridor.y + (corridor.height || this.corridorWidth || 1) / 2;
-                centerLine.push(new THREE.Vector3(corridor.x, centerY, 0.08));
-                centerLine.push(new THREE.Vector3(corridor.x + corridor.width, centerY, 0.08));
             } else {
-                // Vertical corridor - draw vertical line through center
-                const centerX = corridor.x + (corridor.width || this.corridorWidth || 1) / 2;
-                centerLine.push(new THREE.Vector3(centerX, corridor.y, 0.08));
-                centerLine.push(new THREE.Vector3(centerX, corridor.y + corridor.height, 0.08));
-            }
-
-            // Draw the blue centerline first
-            if (centerLine.length >= 2) {
-                const blueLineGeom = new THREE.BufferGeometry().setFromPoints(centerLine);
-                const blueLine = new THREE.Line(blueLineGeom, blueCenterMaterial);
-                this.corridorsGroup.add(blueLine);
-            }
-
-            if (centerLine.length >= 2) {
-                // Add dimension label for corridor length
-                const start = centerLine[0];
-                const end = centerLine[centerLine.length - 1];
-                const length = Math.hypot(end.x - start.x, end.y - start.y);
-                if (length > 0.5) {
-                    const midX = (start.x + end.x) / 2;
-                    const midY = (start.y + end.y) / 2;
-                    const dimText = `${length.toFixed(2)}m`;
-                    const dimSprite = this.createTextSprite(dimText, {
-                        fontsize: 14,
-                        fillStyle: '#ff0000', // Red like corridors
-                        backgroundColor: 'rgba(255, 255, 255, 0.9)',
-                        fontWeight: 'normal'
-                    });
-                    dimSprite.position.set(midX, midY, 0.15);
-                    dimSprite.scale.set(0.7, 0.35, 1);
-                    this.corridorsGroup.add(dimSprite);
+                const startY = corridor.y;
+                const endY = corridor.y + corridor.height;
+                let peak = true;
+                for (let y = startY; y <= endY; y += zigzagFrequency) {
+                    const offsetX = peak ? zigzagAmplitude : -zigzagAmplitude;
+                    zigzagPoints.push(new THREE.Vector3(centerX + offsetX, y, 0.1));
+                    peak = !peak;
                 }
             }
 
-            if (centerLine.length >= 2) {
-                const geometry = new THREE.BufferGeometry().setFromPoints(centerLine);
-                const line = new THREE.Line(geometry, lineMaterial);
-                // Compute line distance for dashed material (call on Line, not geometry)
-                if (line.computeLineDistances) {
-                    line.computeLineDistances();
-                }
-                this.corridorsGroup.add(line);
-
-                // Add corridor width annotation if available
-                if (corridor.width && centerLine.length >= 2) {
-                    const midX = (centerLine[0].x + centerLine[1].x) / 2;
-                    const midY = (centerLine[0].y + centerLine[1].y) / 2;
-                    const widthText = `${Math.round(corridor.width * 1000)}`;
-                    const labelSprite = this.createTextSprite(widthText, {
-                        fontsize: 16,
-                        fillStyle: '#ff0000',
-                        backgroundColor: 'rgba(255, 255, 255, 0.9)'
-                    });
-                    labelSprite.position.set(midX, midY, 0.15);
-                    labelSprite.scale.set(0.3, 0.3, 1);
-                    this.corridorsGroup.add(labelSprite);
-                }
+            if (zigzagPoints.length > 1) {
+                const zigzagGeom = new THREE.BufferGeometry().setFromPoints(zigzagPoints);
+                const zigzagLine = new THREE.Line(zigzagGeom, zigzagMaterial);
+                this.corridorsGroup.add(zigzagLine);
             }
         });
 
-        console.log(`Rendered ${corridors.length} corridor paths`);
+        console.log(`Rendered ${corridors.length} corridor zigzag lines (COSTO clean style)`);
         this.render();
     }
 
