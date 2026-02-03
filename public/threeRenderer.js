@@ -841,53 +841,19 @@ export class FloorPlanRenderer {
                 // Display unit size label
                 const unitSizeText = String(closest);
                 const labelSprite = this.createTextSprite(unitSizeText, {
-                    fontsize: 28,
-                    fillStyle: '#000000', // Black text like reference
-                    backgroundColor: 'rgba(255, 255, 255, 0.9)', // White background
+                    fontsize: 24,
+                    fillStyle: '#1F2937', // Dark gray text
+                    backgroundColor: 'transparent', // NO white background
                     fontWeight: 'bold'
                 });
                 labelSprite.position.set(
                     ilot.x + ilot.width / 2,
-                    ilot.y + ilot.height / 2 + (ilot.height * 0.15), // Slightly above center
+                    ilot.y + ilot.height / 2,
                     0.2
                 );
-                const scale = Math.min(ilot.width, ilot.height) * 0.4;
-                labelSprite.scale.set(scale, scale * 0.6, 1);
+                const scale = Math.min(ilot.width, ilot.height) * 0.3;
+                labelSprite.scale.set(scale, scale * 0.5, 1);
                 this.ilotsGroup.add(labelSprite);
-
-                // Display surface area in m² below unit size
-                const areaText = `${area.toFixed(2)} m²`;
-                const areaSprite = this.createTextSprite(areaText, {
-                    fontsize: 20,
-                    fillStyle: '#000000',
-                    backgroundColor: 'rgba(255, 255, 255, 0.9)',
-                    fontWeight: 'normal'
-                });
-                areaSprite.position.set(
-                    ilot.x + ilot.width / 2,
-                    ilot.y + ilot.height / 2 - (ilot.height * 0.15), // Slightly below center
-                    0.2
-                );
-                const areaScale = Math.min(ilot.width, ilot.height) * 0.25;
-                areaSprite.scale.set(areaScale, areaScale * 0.5, 1);
-                this.ilotsGroup.add(areaSprite);
-
-                // PHASE 3: Add dimensions label (width x height) for professional labeling
-                const dimText = `${ilot.width.toFixed(1)} x ${ilot.height.toFixed(1)}`;
-                const dimSprite = this.createTextSprite(dimText, {
-                    fontsize: 14,
-                    fillStyle: '#4B5563', // Gray-600
-                    backgroundColor: 'rgba(255, 255, 255, 0.7)',
-                    fontWeight: 'normal'
-                });
-                dimSprite.position.set(
-                    ilot.x + ilot.width / 2,
-                    ilot.y + ilot.height / 2 - (ilot.height * 0.35), // Below area label
-                    0.2
-                );
-                const dimScale = Math.min(ilot.width, ilot.height) * 0.18;
-                dimSprite.scale.set(dimScale, dimScale * 0.4, 1);
-                this.ilotsGroup.add(dimSprite);
             }
         });
 
@@ -2390,9 +2356,11 @@ export class FloorPlanRenderer {
         // Re-set font after canvas resize
         context.font = `${fontWeight} ${fontsize}px Arial`;
 
-        // Background
-        context.fillStyle = backgroundColor;
-        context.fillRect(0, 0, canvas.width, canvas.height);
+        // Background - SKIP if transparent
+        if (backgroundColor !== 'transparent' && backgroundColor !== 'none') {
+            context.fillStyle = backgroundColor;
+            context.fillRect(0, 0, canvas.width, canvas.height);
+        }
 
         // Text
         context.fillStyle = fillStyle;
