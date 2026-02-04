@@ -437,8 +437,9 @@ export class FloorPlanRenderer {
         }
 
         // Draw all entities with proper colors matching reference
-        const drawEntity = (entity, group, defaultColor) => {
-            const color = entity.color || defaultColor || 0x000000;
+        // forceColor = true to override DXF entity colors and match legend
+        const drawEntity = (entity, group, defaultColor, forceColor = false) => {
+            const color = forceColor ? defaultColor : (entity.color || defaultColor || 0x000000);
             if (entity.polygon) {
                 this.drawPolygon(entity.polygon, color, group, false);
                 // COSTO CLEAN: No dimension labels - reference style is minimal
@@ -448,10 +449,10 @@ export class FloorPlanRenderer {
             }
         };
 
-        // Walls: black (Tôle Blanche)
+        // Walls: FORCE black (Tôle Blanche) - ignore DXF embedded colors
         if (floorPlan.walls) {
             floorPlan.walls.forEach(entity => {
-                drawEntity(entity, this.wallsGroup, 0x000000);
+                drawEntity(entity, this.wallsGroup, 0x000000, true); // Force black
             });
         }
 
