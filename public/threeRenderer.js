@@ -697,9 +697,9 @@ export class FloorPlanRenderer {
             ]);
 
             let geometry, material;
-
             // Use ilot.color for size category distinction if available
-            const fillColor = ilot.color ? parseInt(ilot.color.replace('#', ''), 16) : (colorMap[ilot.type] || 0xffffff);
+            // COSTO CLEAN: Use white/transparent fill - reference shows only blue outlines
+            const fillColor = 0xffffff; // White fill like reference
 
             if (this.is3DMode) {
                 // Variable height based on ilot area (larger ilots = taller)
@@ -719,11 +719,11 @@ export class FloorPlanRenderer {
                 });
             } else {
                 geometry = new THREE.ShapeGeometry(shape);
-                // Use size category color with slight transparency for visual distinction
+                // COSTO CLEAN: Nearly invisible white fill, just blue outlines
                 material = new THREE.MeshBasicMaterial({
-                    color: fillColor,
+                    color: 0xffffff, // White
                     transparent: true,
-                    opacity: ilot.color ? 0.35 : 0.1, // More visible fill when color is set
+                    opacity: 0.02, // Nearly invisible
                     side: THREE.DoubleSide
                 });
             }

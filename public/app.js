@@ -178,7 +178,9 @@ function initializeModules() {
     const hasRenderer = !!renderer;
     undoManager = new UndoRedoManager();
     if (hasRenderer) {
-        textLabels = new TextLabels(renderer);
+        // COSTO CLEAN: Disable textLabels to remove ilot canvas labels
+        // textLabels = new TextLabels(renderer);
+        textLabels = null; // No canvas labels - clean like reference
         professionalExport = new ProfessionalExport(renderer);
         editor = new InteractiveEditor(renderer, null);
         effects = new AdvancedEffects(renderer);

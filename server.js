@@ -617,9 +617,15 @@ app.use((req, res, next) => {
 const staticCacheMaxAge = USING_DIST_BUILD ? '1h' : 0;
 app.use(express.static(STATIC_ROOT, {
     maxAge: staticCacheMaxAge,
+    etag: false, // Disable etag for development
+    lastModified: true,
     setHeaders: (res, filePath) => {
         if (filePath.endsWith('.js') || filePath.endsWith('.mjs')) {
             res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
+            // Force no-cache for development
+            res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+            res.setHeader('Pragma', 'no-cache');
+            res.setHeader('Expires', '0');
         }
     }
 }));
