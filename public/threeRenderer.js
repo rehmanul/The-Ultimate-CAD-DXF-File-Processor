@@ -1003,8 +1003,8 @@ export class FloorPlanRenderer {
     }
 
     /**
-     * COSTO-style perimeter circulation: red zigzag around outer edges of ilot groups
-     * This matches the professional reference output
+     * COSTO-style perimeter circulation: red zigzag around row clusters
+     * Detects horizontal row groups and draws zigzag around each cluster's contour
      */
     renderPerimeterCirculation(ilots, bounds) {
         if (!ilots || ilots.length === 0) return;
@@ -1016,7 +1016,6 @@ export class FloorPlanRenderer {
             if (child.geometry) child.geometry.dispose();
             if (child.material) child.material.dispose();
         }
-        console.log('[COSTO] Drawing perimeter circulation around', ilots.length, 'ilots');
 
         // Red zigzag material
         const zigzagMaterial = new THREE.LineBasicMaterial({
@@ -1024,34 +1023,45 @@ export class FloorPlanRenderer {
             linewidth: 2
         });
 
-        // Blue arrow material for flow direction
+        // Cyan arrow material for flow direction
         const arrowMaterial = new THREE.MeshBasicMaterial({
-            color: 0x00aaff,
+            color: 0x00ccff,
             side: THREE.DoubleSide
         });
 
-        // Calculate bounding box of all ilots
-        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+        // Group ilots by Y position to detect horizontal rows
+        const rowTolerance = 0.5; // Y positions within this tolerance are same row
+        const rows = [];
+
         ilots.forEach(ilot => {
-            minX = Math.min(minX, ilot.x);
-            minY = Math.min(minY, ilot.y);
-            maxX = Math.max(maxX, ilot.x + (ilot.width || 1));
-            maxY = Math.max(maxY, ilot.y + (ilot.height || 1));
+            const centerY = ilot.y + (ilot.height || 1) / 2;
+            let foundRow = rows.find(r => Math.abs(r.centerY - centerY) < rowTolerance);
+            if (foundRow) {
+                foundRow.ilots.push(ilot);
+                foundRow.minX = Math.min(foundRow.minX, ilot.x);
+                foundRow.maxX = Math.max(foundRow.maxX, ilot.x + (ilot.width || 1));
+                foundRow.minY = Math.min(foundRow.minY, ilot.y);
+                foundRow.maxY = Math.max(foundRow.maxY, ilot.y + (ilot.height || 1));
+            } else {
+                rows.push({
+                    centerY,
+                    ilots: [ilot],
+                    minX: ilot.x,
+                    maxX: ilot.x + (ilot.width || 1),
+                    minY: ilot.y,
+                    maxY: ilot.y + (ilot.height || 1)
+                });
+            }
         });
 
-        // Add margin for circulation path
-        const margin = 0.8;
-        const perimeterMinX = minX - margin;
-        const perimeterMinY = minY - margin;
-        const perimeterMaxX = maxX + margin;
-        const perimeterMaxY = maxY + margin;
+        // Sort rows by Y position
+        rows.sort((a, b) => a.minY - b.minY);
 
-        // Zigzag parameters
-        const amplitude = 0.25;
-        const frequency = 0.4;
+        // Zigzag helper function
+        const amplitude = 0.2;
+        const frequency = 0.3;
 
-        // Draw zigzag along all 4 sides of the perimeter
-        const drawZigzagLine = (startX, startY, endX, endY, isHorizontal) => {
+        const drawZigzag = (startX, startY, endX, endY, isHorizontal) => {
             const points = [];
             let peak = true;
 
@@ -1078,51 +1088,39 @@ export class FloorPlanRenderer {
             }
         };
 
-        // Draw perimeter zigzags (all 4 sides)
-        drawZigzagLine(perimeterMinX, perimeterMinY, perimeterMaxX, perimeterMinY, true);  // Bottom
-        drawZigzagLine(perimeterMaxX, perimeterMinY, perimeterMaxX, perimeterMaxY, false); // Right
-        drawZigzagLine(perimeterMaxX, perimeterMaxY, perimeterMinX, perimeterMaxY, true);  // Top
-        drawZigzagLine(perimeterMinX, perimeterMaxY, perimeterMinX, perimeterMinY, false); // Left
+        // Draw zigzag around each row cluster
+        const margin = 0.3;
+        rows.forEach((row, idx) => {
+            const x1 = row.minX - margin;
+            const x2 = row.maxX + margin;
+            const y1 = row.minY - margin;
+            const y2 = row.maxY + margin;
 
-        // Add direction arrows along perimeter
-        const arrowSize = 0.5;
-        const arrowPositions = [
-            { x: (perimeterMinX + perimeterMaxX) / 2, y: perimeterMinY, dir: 'right' },
-            { x: perimeterMaxX, y: (perimeterMinY + perimeterMaxY) / 2, dir: 'up' },
-            { x: (perimeterMinX + perimeterMaxX) / 2, y: perimeterMaxY, dir: 'left' },
-            { x: perimeterMinX, y: (perimeterMinY + perimeterMaxY) / 2, dir: 'down' }
-        ];
+            // Draw zigzag on all 4 sides of this row
+            drawZigzag(x1, y1, x2, y1, true);  // Bottom
+            drawZigzag(x2, y1, x2, y2, false); // Right
+            drawZigzag(x2, y2, x1, y2, true);  // Top
+            drawZigzag(x1, y2, x1, y1, false); // Left
 
-        arrowPositions.forEach(pos => {
-            const arrowShape = new THREE.Shape();
-            if (pos.dir === 'right') {
+            // Add flow arrow in middle of row
+            if (row.ilots.length > 2) {
+                const arrowSize = 0.4;
+                const arrowShape = new THREE.Shape();
                 arrowShape.moveTo(-arrowSize / 2, -arrowSize / 3);
                 arrowShape.lineTo(arrowSize / 2, 0);
                 arrowShape.lineTo(-arrowSize / 2, arrowSize / 3);
-            } else if (pos.dir === 'up') {
-                arrowShape.moveTo(-arrowSize / 3, -arrowSize / 2);
-                arrowShape.lineTo(0, arrowSize / 2);
-                arrowShape.lineTo(arrowSize / 3, -arrowSize / 2);
-            } else if (pos.dir === 'left') {
-                arrowShape.moveTo(arrowSize / 2, -arrowSize / 3);
-                arrowShape.lineTo(-arrowSize / 2, 0);
-                arrowShape.lineTo(arrowSize / 2, arrowSize / 3);
-            } else {
-                arrowShape.moveTo(-arrowSize / 3, arrowSize / 2);
-                arrowShape.lineTo(0, -arrowSize / 2);
-                arrowShape.lineTo(arrowSize / 3, arrowSize / 2);
-            }
-            arrowShape.closePath();
+                arrowShape.closePath();
 
-            const arrowMesh = new THREE.Mesh(
-                new THREE.ShapeGeometry(arrowShape),
-                arrowMaterial
-            );
-            arrowMesh.position.set(pos.x, pos.y, 0.2);
-            this.perimeterGroup.add(arrowMesh);
+                const arrowMesh = new THREE.Mesh(
+                    new THREE.ShapeGeometry(arrowShape),
+                    arrowMaterial
+                );
+                arrowMesh.position.set((x1 + x2) / 2, (y1 + y2) / 2, 0.2);
+                this.perimeterGroup.add(arrowMesh);
+            }
         });
 
-        console.log(`Rendered COSTO perimeter circulation around ${ilots.length} ilots`);
+        console.log(`[COSTO] Rendered perimeter for ${rows.length} row clusters (${ilots.length} ilots)`);
         this.render();
     }
 
