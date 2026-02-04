@@ -2675,6 +2675,11 @@ function normalizePresetDistribution(distribution) {
 function buildIlotOptions(targetIlots, distribution) {
     const corridorWidth = getActiveCorridorWidth();
     const presetOptions = activePresetConfig?.options || {};
+
+    // Check COSTO style checkbox
+    const costoCheckbox = document.getElementById('costoLayoutCheckbox');
+    const useCostoStyle = costoCheckbox && costoCheckbox.checked;
+
     return {
         totalIlots: targetIlots,
         seed: computeDeterministicSeed(currentFloorPlan, activePresetConfig, distribution),
@@ -2683,7 +2688,8 @@ function buildIlotOptions(targetIlots, distribution) {
         maxAttemptsPerIlot: 800,
         margin: typeof presetOptions.margin === 'number' ? presetOptions.margin : (presetOptions.minRowDistance || 1.0),
         spacing: typeof presetOptions.spacing === 'number' ? presetOptions.spacing : 0.3,
-        corridorWidth
+        corridorWidth,
+        style: useCostoStyle ? 'COSTO' : null  // COSTO layout style
     };
 }
 

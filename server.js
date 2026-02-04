@@ -8,6 +8,7 @@ const { spawn, spawnSync } = require('child_process');
 const net = require('net');
 const ProfessionalCADProcessor = require('./lib/professionalCADProcessor');
 const RowBasedIlotPlacer = require('./lib/RowBasedIlotPlacer');
+const COSTOLayoutPlacer = require('./lib/COSTOLayoutPlacer');
 const ProductionCorridorGenerator = require('./lib/productionCorridorGenerator');
 const AdvancedCorridorGenerator = require('./lib/advancedCorridorGenerator');
 const ExportManager = require('./lib/exportManager');
@@ -1076,7 +1077,14 @@ app.post('/api/ilots', async (req, res) => {
         let placementSummary = null;
 
         try {
-            const ilotPlacer = new RowBasedIlotPlacer(normalizedFloorPlan, generatorOptions);
+            // Support COSTO style via options.style = 'COSTO'
+            let ilotPlacer;
+            if (options.style === 'COSTO') {
+                console.log('[Ilots] Using COSTOLayoutPlacer for organized horizontal rows');
+                ilotPlacer = new COSTOLayoutPlacer(normalizedFloorPlan, generatorOptions);
+            } else {
+                ilotPlacer = new RowBasedIlotPlacer(normalizedFloorPlan, generatorOptions);
+            }
             ilotsRaw = await ilotPlacer.generateIlots(normalizedDistribution, generatorOptions.totalIlots, unitMix);
             placementSummary = ilotPlacer.stats || null;
         } catch (error) {
