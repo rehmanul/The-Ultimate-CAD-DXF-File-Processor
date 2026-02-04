@@ -164,9 +164,16 @@ function buildProductionCorridorNetwork(floorPlanData, generationOptions = {}) {
         urn: planId
     };
 
-    const corridorGenerator = new ProductionCorridorGenerator(normalizedFloorPlan, ilots, { corridorWidth });
-    const rawCorridors = corridorGenerator.generateCorridors() || [];
-    const corridors = rawCorridors.map(sanitizeCorridor).filter(Boolean);
+    // Use AdvancedCorridorGenerator for better ilot overlap detection
+    const corridorGenerator = new AdvancedCorridorGenerator(normalizedFloorPlan, ilots, {
+        corridorWidth,
+        margin: 0.3,
+        minCorridorLength: 1.0,
+        generateVertical: true,
+        generateHorizontal: true
+    });
+    const result = corridorGenerator.generate();
+    const corridors = (result.corridors || []).map(sanitizeCorridor).filter(Boolean);
 
     // 🎯 ADVANCED ARROW GENERATION - TRUE PRODUCTION SYSTEM
     const AdvancedCorridorArrowGenerator = require('./lib/advancedCorridorArrowGenerator');
