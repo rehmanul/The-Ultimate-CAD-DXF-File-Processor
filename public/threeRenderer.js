@@ -469,34 +469,9 @@ export class FloorPlanRenderer {
             });
         }
 
-        // Draw room numbers (use actual extracted numbers from DXF, 1-26 like reference)
-        if (floorPlan.rooms && Array.isArray(floorPlan.rooms)) {
-            floorPlan.rooms.forEach((room) => {
-                // Use extracted room number if available, otherwise use index+1
-                const roomNumber = room.number || room.id?.replace('room_', '') ||
-                    (floorPlan.rooms.indexOf(room) + 1);
-
-                if (roomNumber <= 26) { // Reference shows up to 26
-                    // Use labelPosition if available (from TEXT entity extraction), otherwise center
-                    const labelX = room.labelPosition?.x || room.center?.x || room.centroid?.x ||
-                        (room.bounds ? (room.bounds.minX + room.bounds.maxX) / 2 : 0);
-                    const labelY = room.labelPosition?.y || room.center?.y || room.centroid?.y ||
-                        (room.bounds ? (room.bounds.minY + room.bounds.maxY) / 2 : 0);
-
-                    if (labelX && labelY) {
-                        const labelSprite = this.createTextSprite(String(roomNumber), {
-                            fontsize: 24,
-                            fillStyle: '#000000', // Black text like reference
-                            backgroundColor: 'rgba(255, 255, 255, 0.9)',
-                            fontWeight: 'bold'
-                        });
-                        labelSprite.position.set(labelX, labelY, 0.1);
-                        labelSprite.scale.set(2, 2, 1);
-                        this.wallsGroup.add(labelSprite);
-                    }
-                }
-            });
-        }
+        // COSTO CLEAN: Room numbers disabled - reference shows clean drawing without labels
+        // Room numbers are shown in the LEGENDE table on the side panel instead
+        // if (floorPlan.rooms && Array.isArray(floorPlan.rooms)) { ... }
 
         // Draw RM-xxx special rooms with red filled areas
         if (floorPlan.specialRooms && Array.isArray(floorPlan.specialRooms)) {
