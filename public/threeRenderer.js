@@ -280,6 +280,48 @@ export class FloorPlanRenderer {
         this.scene.add(defaultGrid);
     }
 
+    /**
+     * Create a text sprite for labels using canvas rendering
+     */
+    createTextSprite(text, options = {}) {
+        const fontSize = options.fontSize || 12;
+        const fontColor = options.fontColor || '#000000';
+        const backgroundColor = options.backgroundColor || 'rgba(255,255,255,0.8)';
+        const padding = options.padding || 2;
+
+        const canvas = document.createElement('canvas');
+        const context = canvas.getContext('2d');
+        context.font = `${fontSize}px Arial`;
+
+        const textWidth = context.measureText(text).width;
+        canvas.width = textWidth + padding * 2;
+        canvas.height = fontSize + padding * 2;
+
+        // Background
+        context.fillStyle = backgroundColor;
+        context.fillRect(0, 0, canvas.width, canvas.height);
+
+        // Text
+        context.font = `${fontSize}px Arial`;
+        context.fillStyle = fontColor;
+        context.textBaseline = 'top';
+        context.fillText(text, padding, padding);
+
+        const texture = new THREE.CanvasTexture(canvas);
+        texture.minFilter = THREE.LinearFilter;
+
+        const material = new THREE.SpriteMaterial({
+            map: texture,
+            transparent: true,
+            depthTest: false
+        });
+
+        const sprite = new THREE.Sprite(material);
+        sprite.scale.set(canvas.width / 20, canvas.height / 20, 1);
+
+        return sprite;
+    }
+
     onResize() {
         const aspect = this.container.clientWidth / this.container.clientHeight;
         const frustumSize = 100;
