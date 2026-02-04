@@ -405,8 +405,8 @@ export class FloorPlanRenderer {
                         new THREE.Vector3(line.end.x, line.end.y, 0)
                     ]);
                     const material = new THREE.LineBasicMaterial({
-                        color: 0x00ff00, // Bright green
-                        linewidth: 3 // Thick line like reference
+                        color: 0x000000, // Black - matching legend "Tôle Blanche"
+                        linewidth: 2
                     });
                     this.wallsGroup.add(new THREE.Line(geometry, material));
                 }
@@ -423,8 +423,8 @@ export class FloorPlanRenderer {
                     { start: { x: minX, y: maxY }, end: { x: minX, y: minY } }
                 ];
                 const envelopeMaterial = new THREE.LineBasicMaterial({
-                    color: 0x00ff00, // Bright green
-                    linewidth: 3 // Thick line like reference
+                    color: 0x000000, // Black - matching legend "Tôle Blanche"
+                    linewidth: 2
                 });
                 envelopeLines.forEach(line => {
                     const geometry = new THREE.BufferGeometry().setFromPoints([
