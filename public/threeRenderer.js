@@ -944,9 +944,50 @@ export class FloorPlanRenderer {
                 const zigzagLine = new THREE.Line(zigzagGeom, zigzagMaterial);
                 this.corridorsGroup.add(zigzagLine);
             }
+
+            // Add cyan direction arrows along the corridor
+            const arrowMaterial = new THREE.MeshBasicMaterial({
+                color: 0x00bcd4, // Cyan like reference
+                side: THREE.DoubleSide
+            });
+
+            const arrowSpacing = 3.0; // Distance between arrows
+            const arrowSize = 0.4;    // Size of arrow triangles
+
+            if (isHorizontal) {
+                const startX = corridor.x + arrowSpacing / 2;
+                const endX = corridor.x + corridor.width - arrowSpacing / 2;
+                for (let x = startX; x < endX; x += arrowSpacing) {
+                    const arrowGeom = new THREE.BufferGeometry();
+                    // Arrow pointing right (positive X direction)
+                    const vertices = new Float32Array([
+                        x - arrowSize, centerY - arrowSize * 0.5, 0.15,
+                        x - arrowSize, centerY + arrowSize * 0.5, 0.15,
+                        x + arrowSize, centerY, 0.15
+                    ]);
+                    arrowGeom.setAttribute('position', new THREE.BufferAttribute(vertices, 3));
+                    const arrow = new THREE.Mesh(arrowGeom, arrowMaterial);
+                    this.corridorsGroup.add(arrow);
+                }
+            } else {
+                const startY = corridor.y + arrowSpacing / 2;
+                const endY = corridor.y + corridor.height - arrowSpacing / 2;
+                for (let y = startY; y < endY; y += arrowSpacing) {
+                    const arrowGeom = new THREE.BufferGeometry();
+                    // Arrow pointing up (positive Y direction)
+                    const vertices = new Float32Array([
+                        centerX - arrowSize * 0.5, y - arrowSize, 0.15,
+                        centerX + arrowSize * 0.5, y - arrowSize, 0.15,
+                        centerX, y + arrowSize, 0.15
+                    ]);
+                    arrowGeom.setAttribute('position', new THREE.BufferAttribute(vertices, 3));
+                    const arrow = new THREE.Mesh(arrowGeom, arrowMaterial);
+                    this.corridorsGroup.add(arrow);
+                }
+            }
         });
 
-        console.log(`Rendered ${corridors.length} corridor zigzag lines (COSTO clean style)`);
+        console.log(`Rendered ${corridors.length} corridor zigzag lines with direction arrows (COSTO style)`);
         this.render();
     }
 
