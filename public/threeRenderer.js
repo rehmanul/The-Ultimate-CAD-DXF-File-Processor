@@ -839,8 +839,8 @@ export class FloorPlanRenderer {
 
         console.log(`Rendered ${ilots.length} ilots in Three.js`);
 
-        // COSTO: Auto-generate perimeter circulation around ilots
-        this.renderPerimeterCirculation(ilots, null);
+        // Perimeter circulation is handled by renderCorridors - disabled here
+        // this.renderPerimeterCirculation(ilots, null);
 
         this.render();
     }
