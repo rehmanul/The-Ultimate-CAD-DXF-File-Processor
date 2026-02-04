@@ -799,8 +799,21 @@ export class FloorPlanRenderer {
                 // Store calculated unit size for export consistency
                 ilot.unitSize = closest;
 
-                // COSTO REFERENCE: NO labels inside boxes - clean look
-                // Labels are only shown in the side panel table, not on the drawing
+                // COSTO: Add width dimension label at top of box
+                const widthLabel = ilot.width.toFixed(2);
+                const labelSprite = this.createTextSprite(widthLabel, {
+                    fontSize: 10,
+                    fontColor: '#333333',
+                    backgroundColor: 'rgba(255,255,255,0.7)',
+                    padding: 1
+                });
+                labelSprite.position.set(
+                    ilot.x + ilot.width / 2,
+                    ilot.y + ilot.height - 0.2,
+                    0.1
+                );
+                labelSprite.scale.set(0.6, 0.3, 1);
+                this.ilotsGroup.add(labelSprite);
             }
         });
 
@@ -823,6 +836,10 @@ export class FloorPlanRenderer {
         }
 
         console.log(`Rendered ${ilots.length} ilots in Three.js`);
+
+        // COSTO: Auto-generate perimeter circulation around ilots
+        this.renderPerimeterCirculation(ilots, null);
+
         this.render();
     }
 
@@ -980,6 +997,121 @@ export class FloorPlanRenderer {
         });
 
         console.log(`Added circulation lines and arrows to ${corridors.length} corridors`);
+        this.render();
+    }
+
+    /**
+     * COSTO-style perimeter circulation: red zigzag around outer edges of ilot groups
+     * This matches the professional reference output
+     */
+    renderPerimeterCirculation(ilots, bounds) {
+        if (!ilots || ilots.length === 0) return;
+
+        // Red zigzag material
+        const zigzagMaterial = new THREE.LineBasicMaterial({
+            color: 0xff0000,
+            linewidth: 2
+        });
+
+        // Blue arrow material for flow direction
+        const arrowMaterial = new THREE.MeshBasicMaterial({
+            color: 0x00aaff,
+            side: THREE.DoubleSide
+        });
+
+        // Calculate bounding box of all ilots
+        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+        ilots.forEach(ilot => {
+            minX = Math.min(minX, ilot.x);
+            minY = Math.min(minY, ilot.y);
+            maxX = Math.max(maxX, ilot.x + (ilot.width || 1));
+            maxY = Math.max(maxY, ilot.y + (ilot.height || 1));
+        });
+
+        // Add margin for circulation path
+        const margin = 0.8;
+        const perimeterMinX = minX - margin;
+        const perimeterMinY = minY - margin;
+        const perimeterMaxX = maxX + margin;
+        const perimeterMaxY = maxY + margin;
+
+        // Zigzag parameters
+        const amplitude = 0.25;
+        const frequency = 0.4;
+
+        // Draw zigzag along all 4 sides of the perimeter
+        const drawZigzagLine = (startX, startY, endX, endY, isHorizontal) => {
+            const points = [];
+            let peak = true;
+
+            if (isHorizontal) {
+                const dx = endX > startX ? frequency : -frequency;
+                for (let x = startX; (endX > startX ? x <= endX : x >= endX); x += dx) {
+                    const offsetY = peak ? amplitude : -amplitude;
+                    points.push(new THREE.Vector3(x, startY + offsetY, 0.15));
+                    peak = !peak;
+                }
+            } else {
+                const dy = endY > startY ? frequency : -frequency;
+                for (let y = startY; (endY > startY ? y <= endY : y >= endY); y += dy) {
+                    const offsetX = peak ? amplitude : -amplitude;
+                    points.push(new THREE.Vector3(startX + offsetX, y, 0.15));
+                    peak = !peak;
+                }
+            }
+
+            if (points.length > 1) {
+                const geom = new THREE.BufferGeometry().setFromPoints(points);
+                const line = new THREE.Line(geom, zigzagMaterial);
+                this.corridorsGroup.add(line);
+            }
+        };
+
+        // Draw perimeter zigzags (all 4 sides)
+        drawZigzagLine(perimeterMinX, perimeterMinY, perimeterMaxX, perimeterMinY, true);  // Bottom
+        drawZigzagLine(perimeterMaxX, perimeterMinY, perimeterMaxX, perimeterMaxY, false); // Right
+        drawZigzagLine(perimeterMaxX, perimeterMaxY, perimeterMinX, perimeterMaxY, true);  // Top
+        drawZigzagLine(perimeterMinX, perimeterMaxY, perimeterMinX, perimeterMinY, false); // Left
+
+        // Add direction arrows along perimeter
+        const arrowSize = 0.5;
+        const arrowPositions = [
+            { x: (perimeterMinX + perimeterMaxX) / 2, y: perimeterMinY, dir: 'right' },
+            { x: perimeterMaxX, y: (perimeterMinY + perimeterMaxY) / 2, dir: 'up' },
+            { x: (perimeterMinX + perimeterMaxX) / 2, y: perimeterMaxY, dir: 'left' },
+            { x: perimeterMinX, y: (perimeterMinY + perimeterMaxY) / 2, dir: 'down' }
+        ];
+
+        arrowPositions.forEach(pos => {
+            const arrowShape = new THREE.Shape();
+            if (pos.dir === 'right') {
+                arrowShape.moveTo(-arrowSize / 2, -arrowSize / 3);
+                arrowShape.lineTo(arrowSize / 2, 0);
+                arrowShape.lineTo(-arrowSize / 2, arrowSize / 3);
+            } else if (pos.dir === 'up') {
+                arrowShape.moveTo(-arrowSize / 3, -arrowSize / 2);
+                arrowShape.lineTo(0, arrowSize / 2);
+                arrowShape.lineTo(arrowSize / 3, -arrowSize / 2);
+            } else if (pos.dir === 'left') {
+                arrowShape.moveTo(arrowSize / 2, -arrowSize / 3);
+                arrowShape.lineTo(-arrowSize / 2, 0);
+                arrowShape.lineTo(arrowSize / 2, arrowSize / 3);
+            } else {
+                arrowShape.moveTo(-arrowSize / 3, arrowSize / 2);
+                arrowShape.lineTo(0, -arrowSize / 2);
+                arrowShape.lineTo(arrowSize / 3, arrowSize / 2);
+            }
+            arrowShape.closePath();
+
+            const arrowMesh = new THREE.Mesh(
+                new THREE.ShapeGeometry(arrowShape),
+                arrowMaterial
+            );
+            arrowMesh.position.set(pos.x, pos.y, 0.2);
+            this.corridorsGroup.add(arrowMesh);
+        });
+
+        console.log(`Rendered COSTO perimeter circulation around ${ilots.length} ilots`);
         this.render();
     }
 
