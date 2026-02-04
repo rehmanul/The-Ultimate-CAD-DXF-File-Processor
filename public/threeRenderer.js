@@ -159,6 +159,7 @@ export class FloorPlanRenderer {
         this.forbiddenGroup = new THREE.Group();
         this.ilotsGroup = new THREE.Group();
         this.corridorsGroup = new THREE.Group();
+        this.perimeterGroup = new THREE.Group(); // COSTO perimeter circulation
         this.corridorArrowsGroup = new THREE.Group();
         this.measurementsGroup = new THREE.Group();
         this.labelsGroup = new THREE.Group();
@@ -194,6 +195,7 @@ export class FloorPlanRenderer {
             this.forbiddenGroup,
             this.ilotsGroup,
             this.corridorsGroup,
+            this.perimeterGroup, // COSTO perimeter circulation
             this.corridorArrowsGroup,
             this.measurementsGroup,
             this.labelsGroup,
@@ -1007,6 +1009,15 @@ export class FloorPlanRenderer {
     renderPerimeterCirculation(ilots, bounds) {
         if (!ilots || ilots.length === 0) return;
 
+        // Clear existing perimeter circulation
+        while (this.perimeterGroup.children.length > 0) {
+            const child = this.perimeterGroup.children[0];
+            this.perimeterGroup.remove(child);
+            if (child.geometry) child.geometry.dispose();
+            if (child.material) child.material.dispose();
+        }
+        console.log('[COSTO] Drawing perimeter circulation around', ilots.length, 'ilots');
+
         // Red zigzag material
         const zigzagMaterial = new THREE.LineBasicMaterial({
             color: 0xff0000,
@@ -1063,7 +1074,7 @@ export class FloorPlanRenderer {
             if (points.length > 1) {
                 const geom = new THREE.BufferGeometry().setFromPoints(points);
                 const line = new THREE.Line(geom, zigzagMaterial);
-                this.corridorsGroup.add(line);
+                this.perimeterGroup.add(line);
             }
         };
 
@@ -1108,7 +1119,7 @@ export class FloorPlanRenderer {
                 arrowMaterial
             );
             arrowMesh.position.set(pos.x, pos.y, 0.2);
-            this.corridorsGroup.add(arrowMesh);
+            this.perimeterGroup.add(arrowMesh);
         });
 
         console.log(`Rendered COSTO perimeter circulation around ${ilots.length} ilots`);
