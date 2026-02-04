@@ -463,10 +463,38 @@ export class FloorPlanRenderer {
             });
         }
 
-        // Forbidden zones: blue
+        // Forbidden zones: DARK YELLOW with visible fill
         if (floorPlan.forbiddenZones) {
             floorPlan.forbiddenZones.forEach(entity => {
-                drawEntity(entity, this.forbiddenGroup, 0x0000ff);
+                // Draw filled forbidden zone in dark yellow/orange
+                if (entity.polygon) {
+                    const points = entity.polygon.map(pt =>
+                        new THREE.Vector2(Array.isArray(pt) ? pt[0] : pt.x, Array.isArray(pt) ? pt[1] : pt.y)
+                    );
+                    const shape = new THREE.Shape(points);
+                    const fillMesh = new THREE.Mesh(
+                        new THREE.ShapeGeometry(shape),
+                        new THREE.MeshBasicMaterial({
+                            color: 0xffcc00, // Dark yellow/gold
+                            transparent: true,
+                            opacity: 0.5, // Semi-transparent fill
+                            side: THREE.DoubleSide
+                        })
+                    );
+                    fillMesh.position.z = 0.05; // Above floor but below ilots
+                    this.forbiddenGroup.add(fillMesh);
+
+                    // Also draw outline
+                    const linePoints = points.map(p => new THREE.Vector3(p.x, p.y, 0.06));
+                    linePoints.push(linePoints[0]); // Close the shape
+                    const outline = new THREE.Line(
+                        new THREE.BufferGeometry().setFromPoints(linePoints),
+                        new THREE.LineBasicMaterial({ color: 0xcc9900, linewidth: 2 }) // Darker yellow outline
+                    );
+                    this.forbiddenGroup.add(outline);
+                } else {
+                    drawEntity(entity, this.forbiddenGroup, 0xffcc00, true);
+                }
             });
         }
 

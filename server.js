@@ -26,7 +26,7 @@ const UnitMixParser = require('./lib/unitMixParser');
 const UnitMixReport = require('./lib/unitMixReport');
 const ComplianceReport = require('./lib/complianceReport');
 const RuleManager = require('./lib/ruleManager');
-const { sanitizeIlot, sanitizeCorridor, sanitizeArrow } = require('./lib/sanitizers');
+const { sanitizeIlot, clipIlotToBounds, sanitizeCorridor, sanitizeArrow } = require('./lib/sanitizers');
 const { extractGridCells } = require('./lib/gridCellExtractor');
 const CostoAPI = require('./lib/costoAPI');
 const CostoLayerStandard = require('./lib/costoLayerStandard');
@@ -1112,8 +1112,11 @@ app.post('/api/ilots', async (req, res) => {
             normalizedFloorPlan.rooms = fallbackFloorPlan.rooms;
         }
 
-        // sanitize placements to ensure numeric fields for client
-        let ilots = Array.isArray(ilotsRaw) ? ilotsRaw.map(sanitizeIlot).filter(Boolean) : [];
+        // sanitize placements to ensure numeric fields for client, then clip to floor boundaries
+        let ilots = Array.isArray(ilotsRaw)
+            ? ilotsRaw.map(sanitizeIlot).filter(Boolean)
+                .map(ilot => clipIlotToBounds(ilot, normalizedFloorPlan.bounds)).filter(Boolean)
+            : [];
 
         if (Number.isFinite(generatorOptions.totalIlots)) {
             if (ilots.length > generatorOptions.totalIlots) {
@@ -1144,7 +1147,8 @@ app.post('/api/ilots', async (req, res) => {
                         forbiddenClearance: 0.25,
                         wallClearance: 0.3
                     }
-                ).map(sanitizeIlot).filter(Boolean);
+                ).map(sanitizeIlot).filter(Boolean)
+                    .map(ilot => clipIlotToBounds(ilot, normalizedFloorPlan.bounds)).filter(Boolean);
 
                 console.log(`[Ilots] Grid extraction returned ${gridCells.length} cells`);
 
