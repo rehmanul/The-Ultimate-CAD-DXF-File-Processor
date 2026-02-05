@@ -1075,17 +1075,21 @@ app.post('/api/ilots', async (req, res) => {
 
         let ilotsRaw = null;
         let placementSummary = null;
+        let costoCorridors = null; // Store COSTO placer corridors
 
         try {
             // Support COSTO style via options.style = 'COSTO'
             let ilotPlacer;
             if (options.style === 'COSTO') {
-                console.log('[Ilots] Using COSTOLayoutPlacer for organized horizontal rows');
+                console.log('[Ilots] Using COSTOLayoutPlacer for organized horizontal strips');
                 ilotPlacer = new COSTOLayoutPlacer(normalizedFloorPlan, generatorOptions);
+                ilotsRaw = ilotPlacer.generateIlots(normalizedDistribution, generatorOptions.totalIlots, unitMix);
+                costoCorridors = ilotPlacer.getCorridors(); // Get corridors from COSTO placer
+                console.log(`[Ilots] COSTO placer generated ${costoCorridors.length} corridors`);
             } else {
                 ilotPlacer = new RowBasedIlotPlacer(normalizedFloorPlan, generatorOptions);
+                ilotsRaw = await ilotPlacer.generateIlots(normalizedDistribution, generatorOptions.totalIlots, unitMix);
             }
-            ilotsRaw = await ilotPlacer.generateIlots(normalizedDistribution, generatorOptions.totalIlots, unitMix);
             placementSummary = ilotPlacer.stats || null;
         } catch (error) {
             const msg = (error && error.message) ? error.message : String(error);
@@ -1193,6 +1197,12 @@ app.post('/api/ilots', async (req, res) => {
 
         console.log(`Îlot generation: ${ilots.length} placed, total area: ${totalArea.toFixed(2)} m²`);
 
+        // Store COSTO corridors globally so /api/corridors can use them
+        if (costoCorridors && costoCorridors.length > 0) {
+            global.lastCostoCorridors = costoCorridors;
+            console.log(`[Ilots] Stored ${costoCorridors.length} COSTO corridors for later use`);
+        }
+
 
         const validator = new ArchitecturalValidator({ ...normalizedFloorPlan, ilots });
         const validationReport = validator.validate();
@@ -1210,6 +1220,8 @@ app.post('/api/ilots', async (req, res) => {
             placementSummary: placementSummary,
             validation: validationReport,
             suggestions: suggestions,
+            costoCorridors: costoCorridors || null,  // Include COSTO layout corridors if any
+            useCostoCorridors: !!(costoCorridors && costoCorridors.length > 0),
             message: `Generated ${ilots.length} ilots with ${totalArea.toFixed(2)} m² total area`
         });
 

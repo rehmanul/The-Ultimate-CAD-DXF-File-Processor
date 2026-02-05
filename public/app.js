@@ -2369,6 +2369,19 @@ async function generateIlots() {
         }, 500);
 
         showNotification(`Generated ${generatedIlots.length} îlots (${data.totalArea?.toFixed(2)} m²)`, 'success');
+
+        // If COSTO corridors are provided, use them directly instead of manual corridor generation
+        if (data.useCostoCorridors && data.costoCorridors && data.costoCorridors.length > 0) {
+            console.log('[COSTO] Using COSTO layout corridors:', data.costoCorridors.length);
+            corridorNetwork = data.costoCorridors;
+
+            // Render corridors immediately
+            if (renderer && typeof renderer.renderCorridors === 'function') {
+                renderer.renderCorridors(corridorNetwork);
+            }
+            showNotification(`COSTO layout: ${generatedIlots.length} îlots + ${corridorNetwork.length} corridors`, 'success');
+        }
+
         hideLoader();
     } catch (error) {
         console.error('Îlot generation error:', error);
