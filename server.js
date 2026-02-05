@@ -9,6 +9,7 @@ const net = require('net');
 const ProfessionalCADProcessor = require('./lib/professionalCADProcessor');
 const RowBasedIlotPlacer = require('./lib/RowBasedIlotPlacer');
 const COSTOLayoutPlacer = require('./lib/COSTOLayoutPlacer');
+const LayerZoneDetector = require('./lib/LayerZoneDetector');
 const ProductionCorridorGenerator = require('./lib/productionCorridorGenerator');
 const AdvancedCorridorGenerator = require('./lib/advancedCorridorGenerator');
 const ExportManager = require('./lib/exportManager');
@@ -1009,6 +1010,7 @@ app.post('/api/ilots', async (req, res) => {
             entrances: floorPlan.entrances || [],
             bounds: floorPlan.bounds,
             rooms: floorPlan.rooms || [],
+            entities: floorPlan.entities || [], // DXF entities for layer-based zone detection
             urn: floorPlan.urn || floorPlan.id
         };
 
@@ -1082,9 +1084,38 @@ app.post('/api/ilots', async (req, res) => {
             let ilotPlacer;
             if (options.style === 'COSTO') {
                 console.log('[Ilots] Using COSTOLayoutPlacer for organized horizontal strips');
-                ilotPlacer = new COSTOLayoutPlacer(normalizedFloorPlan, generatorOptions);
+
+                // Use LayerZoneDetector to get zones from DXF entities
+                let costoFloorPlan = { ...normalizedFloorPlan };
+                if (normalizedFloorPlan.entities && normalizedFloorPlan.entities.length > 0) {
+                    console.log(`[Ilots] Detecting zones from ${normalizedFloorPlan.entities.length} DXF entities`);
+                    const detected = LayerZoneDetector.detectZones(
+                        normalizedFloorPlan.entities,
+                        normalizedFloorPlan.bounds
+                    );
+                    costoFloorPlan.layerZones = detected.zones;
+                    // Merge detected forbidden zones with existing ones
+                    if (detected.forbiddenZones.length > 0) {
+                        costoFloorPlan.forbiddenZones = [
+                            ...(normalizedFloorPlan.forbiddenZones || []),
+                            ...detected.forbiddenZones
+                        ];
+                    }
+                    // Merge detected entrances
+                    if (detected.entrances.length > 0) {
+                        costoFloorPlan.entrances = [
+                            ...(normalizedFloorPlan.entrances || []),
+                            ...detected.entrances
+                        ];
+                    }
+                    console.log(`[Ilots] LayerZoneDetector: ${detected.zones.length} zones, ${detected.forbiddenZones.length} forbidden, ${detected.entrances.length} entrances`);
+                } else {
+                    console.log('[Ilots] No DXF entities for layer detection, using default zones');
+                }
+
+                ilotPlacer = new COSTOLayoutPlacer(costoFloorPlan, generatorOptions);
                 ilotsRaw = ilotPlacer.generateIlots(normalizedDistribution, generatorOptions.totalIlots, unitMix);
-                costoCorridors = ilotPlacer.getCorridors(); // Get corridors from COSTO placer
+                costoCorridors = ilotPlacer.getCorridors();
                 console.log(`[Ilots] COSTO placer generated ${costoCorridors.length} corridors`);
             } else {
                 ilotPlacer = new RowBasedIlotPlacer(normalizedFloorPlan, generatorOptions);
