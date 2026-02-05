@@ -1189,6 +1189,7 @@ async function handleFileUpload(e) {
             bounds: analysisData.bounds || { minX: 0, minY: 0, maxX: 100, maxY: 100 },
             totalArea: analysisData.totalArea || 0,
             rooms: analysisData.rooms || [],
+            entities: analysisData.entities || [], // DXF entities for layer-based zone detection
             placementTransform: analysisData.placementTransform || null,
             sourceFile: file.name,
             name: file.name ? file.name.replace(/\.[^.]+$/, '') : (result.urn || 'Untitled'),
@@ -2275,6 +2276,7 @@ async function generateIlots() {
             walls: currentFloorPlan.walls || [],
             forbiddenZones: currentFloorPlan.forbiddenZones || [],
             entrances: currentFloorPlan.entrances || [],
+            entities: currentFloorPlan.entities || [], // DXF entities for LayerZoneDetector
             bounds: bounds
         };
 
