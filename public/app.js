@@ -24,6 +24,7 @@ let textLabels = null;
 let collisionDetector = null;
 let undoManager = null;
 let professionalExport = null;
+let container = null;
 let presetSelector = null;  // Phase 2: Preset selector instance
 let multiFloorStack = [];
 let multiFloorResult = null;
@@ -52,7 +53,7 @@ document.addEventListener('DOMContentLoaded', function () {
         showNotification('FloorPlan Pro loading...', 'info', { duration: 2000 });
     }
 
-    const container = document.getElementById('threeContainer');
+    container = document.getElementById('threeContainer');
 
     // Initialize upload and file input immediately (before renderer) so upload works even if init is delayed
     const uploadBtn = document.getElementById('uploadBtn');
@@ -208,6 +209,8 @@ function initializeModules() {
     // Initialize Edit Tools (requires renderer)
     if (hasRenderer) {
         initializeEditTools();
+        initializeLayerToggles();
+        initializeAutosave();
     }
 
     // Initialize Unit Mix Import
@@ -800,64 +803,78 @@ function initializeModules() {
                 showNotification('Exporting reference-style PDF...', 'info');
                 const API = window.__API_BASE__ || window.location.origin;
 
-                // Convert ilots to boxes format - ensure all data is included
-                const boxes = generatedIlots.map(ilot => {
-                    const area = ilot.area || (ilot.width * ilot.height) || 0;
-                    // Use pre-calculated unitSize from renderer if available
-                    const unitSize = ilot.unitSize || (() => {
-                        const standardSizes = [0.5, 1, 1.5, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 20, 25];
-                        let closest = standardSizes[0];
-                        let minDiff = Math.abs(area - closest);
-                        for (const size of standardSizes) {
-                            const diff = Math.abs(area - size);
-                            if (diff < minDiff) {
-                                minDiff = diff;
-                                closest = size;
+                const buildSolution = (ilots, corridors) => {
+                    const boxes = (ilots || []).map((ilot, idx) => {
+                        const area = ilot.area || (ilot.width * ilot.height) || 0;
+                        const unitSize = ilot.unitSize || (() => {
+                            const standardSizes = [0.5, 1, 1.5, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 20, 25];
+                            let closest = standardSizes[0];
+                            let minDiff = Math.abs(area - closest);
+                            for (const size of standardSizes) {
+                                const diff = Math.abs(area - size);
+                                if (diff < minDiff) {
+                                    minDiff = diff;
+                                    closest = size;
+                                }
                             }
-                        }
-                        if (area > 25) {
-                            closest = Math.round(area * 2) / 2;
-                        }
-                        return closest;
-                    })();
+                            if (area > 25) {
+                                closest = Math.round(area * 2) / 2;
+                            }
+                            return closest;
+                        })();
+
+                        return {
+                            id: ilot.id || `BOX_${idx + 1}`,
+                            x: ilot.x || 0,
+                            y: ilot.y || 0,
+                            width: ilot.width || 0,
+                            height: ilot.height || 0,
+                            area: area,
+                            unitSize: unitSize,
+                            type: ilot.type || ilot.sizeCategory || 'M',
+                            zone: ilot.zone || '',
+                            row: ilot.row || 0
+                        };
+                    });
+
+                    const corridorPayload = (corridors || []).map(corridor => ({
+                        corners: corridor.polygon || (corridor.corners || []),
+                        width: corridor.width || 1.2
+                    }));
 
                     return {
-                        id: ilot.id || `BOX_${generatedIlots.indexOf(ilot) + 1}`,
-                        x: ilot.x || 0,
-                        y: ilot.y || 0,
-                        width: ilot.width || 0,
-                        height: ilot.height || 0,
-                        area: area,
-                        unitSize: unitSize, // Pre-calculated unit size for export consistency
-                        type: ilot.type || ilot.sizeCategory || 'M',
-                        zone: ilot.zone || '',
-                        row: ilot.row || 0
+                        boxes,
+                        corridors: corridorPayload,
+                        radiators: window._costoRadiators || [],
+                        circulationPaths: window._costoCirculationPaths || []
                     };
+                };
+
+                const buildExportFloorPlan = (plan) => ({
+                    ...plan,
+                    doors: plan.doors || [],
+                    dimensions: plan.dimensions || [],
+                    rooms: plan.rooms || [],
+                    envelope: plan.envelope || [],
+                    annotations: plan.annotations || [],
+                    functionalAreas: plan.functionalAreas || [],
+                    specialRooms: plan.specialRooms || [],
+                    greenZones: plan.greenZones || []
                 });
 
-                // Convert corridors
-                const corridors = corridorNetwork.map(corridor => ({
-                    corners: corridor.polygon || (corridor.corners || []),
-                    width: corridor.width || 1.2
-                }));
+                const isMultiFloorExport = Array.isArray(multiFloorStack) && multiFloorStack.length >= 2;
+                const solution = buildSolution(generatedIlots, corridorNetwork);
+                const exportFloorPlan = buildExportFloorPlan(currentFloorPlan);
+                let floorPlans = null;
+                let solutions = null;
+                let floorLabels = null;
 
-                const solution = {
-                    boxes: boxes,
-                    corridors: corridors
-                };
-
-                // Ensure floorPlan includes all necessary data
-                const exportFloorPlan = {
-                    ...currentFloorPlan,
-                    doors: currentFloorPlan.doors || [], // Include doors
-                    dimensions: currentFloorPlan.dimensions || [], // Include dimensions
-                    rooms: currentFloorPlan.rooms || [], // Include rooms with numbers
-                    envelope: currentFloorPlan.envelope || [], // Include envelope
-                    annotations: currentFloorPlan.annotations || [], // Include annotations
-                    functionalAreas: currentFloorPlan.functionalAreas || [], // Include functional areas
-                    specialRooms: currentFloorPlan.specialRooms || [], // Include RM-xxx rooms
-                    greenZones: currentFloorPlan.greenZones || [] // Include green zones
-                };
+                if (isMultiFloorExport) {
+                    const ordered = [...multiFloorStack].sort((a, b) => a.level - b.level);
+                    floorPlans = ordered.map(entry => buildExportFloorPlan(entry.floorPlan));
+                    solutions = ordered.map(entry => buildSolution(entry.ilots, entry.corridors));
+                    floorLabels = ordered.map((entry, idx) => `PLAN ETAGE ${String(idx + 1).padStart(2, '0')}`);
+                }
 
                 const response = await fetch(`${API}/api/costo/export/reference-pdf`, {
                     method: 'POST',
@@ -869,19 +886,32 @@ function initializeModules() {
                             totalArea: currentFloorPlan.totalArea || 0,
                             yieldRatio: 0.85,
                             unitMixCompliance: 0.95,
-                            totalBoxes: boxes.length
+                            totalBoxes: solution.boxes.length
                         },
                         options: {
                             pageSize: 'A1',
                             title: 'COSTO V1 - Storage Layout',
                             showLegend: true,
                             showTitleBlock: true,
-                            scale: '1:100',
-                            drawingNumber: '[01]',
+                            scale: '1-200',
+                            drawingNumber: '',
+                            sheetNumber: '3',
+                            documentId: '',
+                            companyName: 'COSTO',
+                            companyAddress: '5 chemin de la dime 95700 Roissy FRANCE',
+                            version: `v1.${new Date().toISOString().slice(0, 10)}`,
+                            versionId: `ex_${Date.now()}`,
+                            legendMode: 'reference',
+                            includeCompass: true,
+                            showScaleInfo: false,
                             showDimensions: true,
                             showUnitLabels: true,
-                            showAreas: true, // Ensure areas are shown
-                            showDoors: true // Ensure doors are shown
+                            showAreas: true,
+                            showDoors: true,
+                            multiFloor: isMultiFloorExport,
+                            floorPlans,
+                            solutions,
+                            floorLabels
                         }
                     })
                 });
@@ -1330,7 +1360,23 @@ function renderCurrentState() {
     try {
         console.log('renderCurrentState called:', generatedIlots.length, 'ilots,', corridorNetwork.length, 'corridors');
 
-        // Ensure floor plan is loaded
+        // If COSTO layout data is available, use the unified clean renderer
+        const hasCostoData = window._costoRadiators || window._costoCirculationPaths;
+        if (hasCostoData && generatedIlots.length > 0 && currentFloorPlan &&
+            renderer.renderCostoLayout) {
+            renderer.renderCostoLayout(currentFloorPlan, {
+                units: generatedIlots,
+                corridors: corridorNetwork || [],
+                radiators: window._costoRadiators || [],
+                circulationPaths: window._costoCirculationPaths || []
+            });
+            renderer.render();
+            updateConnectorVisualization();
+            if (generatedIlots.length > 0) updateVarianceDisplay();
+            return;
+        }
+
+        // Non-COSTO fallback: load raw floor plan + overlay
         if (currentFloorPlan) {
             renderer.loadFloorPlan(currentFloorPlan);
         }
@@ -1338,37 +1384,29 @@ function renderCurrentState() {
         // Render ilots
         if (generatedIlots.length > 0) {
             renderer.renderIlots(generatedIlots);
-            updateLegendTable(); // Update legend when ilots are rendered
+            updateLegendTable();
         }
 
         // Only render arrows (circulation indicators), not solid corridor rectangles
         if (renderer.renderCorridorArrows && corridorArrows.length > 0) {
             renderer.renderCorridorArrows(corridorArrows);
             renderer.setCorridorArrowsVisible(corridorArrowsVisible);
-            // Hide solid corridors when arrows are available
             renderer.renderCorridors([]);
         } else {
-            // Render solid corridors when arrows are unavailable
             const filteredCorridors = getFilteredCorridors();
             renderer.renderCorridors(filteredCorridors);
-            // Add red zigzag lines and green direction arrows
-            if (renderer.renderCirculationLines && filteredCorridors.length > 0) {
-                renderer.renderCirculationLines(filteredCorridors);
-            }
         }
 
         if (!stackVisualizationEnabled && renderer.clearCrossFloorRoutes) {
             renderer.clearCrossFloorRoutes();
         }
 
-        // Ensure final render
         renderer.render();
     } catch (e) {
         console.error('renderCurrentState error:', e);
     }
     updateConnectorVisualization();
 
-    // Update variance display after rendering ilots
     if (generatedIlots.length > 0) {
         updateVarianceDisplay();
     }
@@ -2243,6 +2281,253 @@ function syncActiveStackFloor() {
 }
 
 
+/**
+ * Generate All (One-Click) - Unified COSTO Pipeline
+ * Calls /api/costo/generate which chains: analyze → complete gaps → generate ilots → corridors
+ */
+async function generateAllCosto() {
+    if (!currentFloorPlan) {
+        showNotification('Please upload a CAD file first', 'warning');
+        return;
+    }
+
+    try {
+        showLoader('Generating complete layout...', 5);
+        console.log('[Generate All] Starting unified COSTO pipeline...');
+
+        const bounds = currentFloorPlan.bounds;
+        if (!bounds) {
+            hideLoader();
+            showNotification('Floor plan bounds missing.', 'error');
+            return;
+        }
+
+        // Build floor plan payload
+        const floorPlan = {
+            ...currentFloorPlan,
+            walls: currentFloorPlan.walls || [],
+            forbiddenZones: currentFloorPlan.forbiddenZones || [],
+            entrances: currentFloorPlan.entrances || [],
+            entities: currentFloorPlan.entities || [],
+            bounds: bounds
+        };
+
+        // Build unit mix payload if loaded
+        const unitMixPayload = activeUnitMix && Array.isArray(activeUnitMix.typologies)
+            ? activeUnitMix.typologies.map(typo => ({
+                type: typo.name,
+                targetArea: typo.targetArea,
+                tolerance: typo.tolerance,
+                priority: typo.priority
+            }))
+            : null;
+
+        const API = window.__API_BASE__ || window.location.origin;
+
+        showLoader('Completing gaps and generating layout...', 30);
+
+        // Get current floor level from UI if available
+        const floorLevelInput = document.getElementById('floorLevelInput');
+        const floorLevel = floorLevelInput ? parseInt(floorLevelInput.value) || 1 : 1;
+
+        const response = await fetch(`${API}/api/costo/generate`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                floorPlan: floorPlan,
+                unitMix: unitMixPayload,
+                options: {
+                    skipGapCompletion: false,
+                    corridorWidth: parseFloat(document.getElementById('corridorWidthSlider')?.value) || 1.2,
+                    optimize: true,  // Enable multi-criteria optimization
+                    maxIterations: 50,
+                    optimizationMethod: 'hybrid',
+                    floor: floorLevel,  // Pass floor number for numbering (101, 102...)
+                    floorStart: 1,
+                    startNumber: 1,
+                    style: 'COSTO',
+                    strictMode: true,
+                    fillPlan: true
+                }
+            })
+        });
+
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+            throw new Error(errorData.error || 'COSTO generation failed');
+        }
+
+        showLoader('Processing results...', 70);
+
+        const data = await response.json();
+        console.log('[Generate All] Result:', data.metrics);
+        console.log('[Generate All] Corridors received:', (data.corridors || []).length);
+        console.log('[Generate All] Radiators received:', (data.radiators || []).length);
+        console.log('[Generate All] CirculationPaths received:', (data.circulationPaths || []).length);
+
+        // Update generated ilots
+        generatedIlots = data.ilots || [];
+        corridorNetwork = data.corridors || [];
+
+        // Add labels to ilots
+        if (textLabels) {
+            textLabels.clear();
+            generatedIlots.forEach((ilot, i) => textLabels.addIlotLabel(ilot, i));
+        }
+
+        // Update floor plan with completed version
+        if (data.completedPlan) {
+            currentFloorPlan = { ...currentFloorPlan, ...data.completedPlan };
+        }
+
+        showLoader('Rendering visualization...', 90);
+
+        // Render everything
+        if (renderer) {
+            // Clear existing ilots if method exists
+            if (typeof renderer.clearIlots === 'function') {
+                renderer.clearIlots();
+            } else if (typeof renderer.clearOverlays === 'function') {
+                renderer.clearOverlays();
+            }
+
+            // Render ilots with safety check
+            if (typeof renderer.renderIlots === 'function') {
+                renderer.renderIlots(generatedIlots);
+            }
+
+            // Render corridors with safety check
+            if (data.corridors && data.corridors.length > 0 && typeof renderer.renderCorridors === 'function') {
+                console.log('[Generate All] Rendering corridors:', data.corridors.length, 'Sample:', JSON.stringify(data.corridors[0]).substring(0, 200));
+                renderer.renderCorridors(data.corridors);
+            } else {
+                console.warn('[Generate All] No corridors to render or renderCorridors missing');
+            }
+
+            if (data.radiators && data.radiators.length > 0 && typeof renderer.renderRadiators === 'function') {
+                console.log('[Generate All] Rendering radiators:', data.radiators.length, 'Sample:', JSON.stringify(data.radiators[0]).substring(0, 200));
+                renderer.renderRadiators(data.radiators);
+            } else {
+                console.warn('[Generate All] No radiators to render or renderRadiators missing');
+            }
+
+            if (data.circulationPaths && data.circulationPaths.length > 0 && typeof renderer.renderCirculationPaths === 'function') {
+                renderer.renderCirculationPaths(data.circulationPaths);
+            }
+
+            // Fit view to show all content
+            if (typeof renderer.fitToView === 'function') {
+                renderer.fitToView();
+            } else if (typeof renderer.resetView === 'function') {
+                renderer.resetView();
+            }
+        }
+
+        // Update statistics (with safety checks)
+        if (typeof updateIlotStatistics === 'function') {
+            updateIlotStatistics(generatedIlots);
+        }
+        if (typeof updateCorridorStatistics === 'function') {
+            updateCorridorStatistics(data.corridors);
+        }
+
+        // Update compliance display
+        const complianceDisplay = document.getElementById('complianceDisplay');
+        const complianceRateEl = document.getElementById('complianceRate');
+        if (complianceDisplay && complianceRateEl && data.complianceReport?.summary) {
+            const rate = (data.complianceReport.summary.weightedComplianceRate * 100).toFixed(1);
+            complianceRateEl.textContent = `${rate}%`;
+            complianceRateEl.style.color = rate >= 90 ? 'var(--success-color)' :
+                rate >= 70 ? 'var(--warning-color)' : 'var(--error-color)';
+            complianceDisplay.style.display = 'block';
+        }
+
+        hideLoader();
+
+        // Show summary notification with compliance
+        const metrics = data.metrics || {};
+        const complianceText = metrics.complianceRate
+            ? ` | ${(metrics.complianceRate * 100).toFixed(0)}% compliant`
+            : '';
+        showNotification(
+            `Generated ${metrics.totalBoxes || generatedIlots.length} boxes (${metrics.totalArea?.toFixed(1) || 0} m²) ` +
+            `with ${metrics.corridorCount || 0} corridors${complianceText}`,
+            'success'
+        );
+
+        console.log('[Generate All] Complete:', {
+            boxes: generatedIlots.length,
+            corridors: corridorNetwork.length,
+            typeDistribution: metrics.typeDistribution,
+            complianceRate: metrics.complianceRate
+        });
+
+    } catch (error) {
+        console.error('[Generate All] Error:', error);
+        hideLoader();
+        showNotification(`Generation failed: ${error.message}`, 'error');
+    }
+}
+
+/**
+ * Export COSTO layout to DXF, PDF, or SVG format
+ */
+async function exportCostoLayout(format = 'dxf') {
+    if (!currentFloorPlan || !generatedIlots || generatedIlots.length === 0) {
+        showNotification('Please generate a layout first', 'warning');
+        return;
+    }
+
+    try {
+        showLoader(`Exporting ${format.toUpperCase()}...`, 30);
+        console.log(`[Export] Starting ${format} export...`);
+
+        const API = window.__API_BASE__ || window.location.origin;
+
+        const response = await fetch(`${API}/api/costo/export`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                floorPlan: currentFloorPlan,
+                ilots: generatedIlots,
+                corridors: corridorNetwork || [],
+                format: format,
+                options: {
+                    returnBase64: true,
+                    filename: `costo_layout_${Date.now()}.${format}`
+                }
+            })
+        });
+
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({ error: 'Export failed' }));
+            throw new Error(errorData.error || 'Export failed');
+        }
+
+        const data = await response.json();
+
+        // Create download link and trigger download
+        const blob = new Blob([Uint8Array.from(atob(data.data), c => c.charCodeAt(0))], { type: data.contentType });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = data.filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+
+        hideLoader();
+        showNotification(`Exported ${generatedIlots.length} boxes to ${format.toUpperCase()}`, 'success');
+        console.log(`[Export] ${format.toUpperCase()} export complete:`, data.filename);
+
+    } catch (error) {
+        console.error('[Export] Error:', error);
+        hideLoader();
+        showNotification(`Export failed: ${error.message}`, 'error');
+    }
+}
+
 async function generateIlots() {
     if (!currentFloorPlan) {
         showNotification('Please upload a CAD file first', 'warning');
@@ -2296,7 +2581,11 @@ async function generateIlots() {
             showNotification('Unable to compute usable area. Check room detection and bounds.', 'error');
             return;
         }
-        const targetIlots = Math.max(1, Math.floor(floorArea / 10));
+        const targetInput = document.getElementById('targetIlotsInput');
+        const userTarget = targetInput && targetInput.value.trim() ? parseInt(targetInput.value, 10) : null;
+        const targetIlots = Number.isFinite(userTarget) && userTarget >= 1
+            ? Math.min(500, Math.max(1, userTarget))
+            : Math.max(1, Math.floor(floorArea / 5));
 
         const distribution = parseDistribution();
         console.log('Using distribution configuration:', distribution);
@@ -2364,24 +2653,41 @@ async function generateIlots() {
         syncActiveStackFloor();
         refreshMultiFloorUI();
 
-        // Wait for viewer to be ready before rendering
-        setTimeout(() => {
-            renderCurrentState();
-            updateLegendTable(); // Update legend with unit statistics
-        }, 500);
-
-        showNotification(`Generated ${generatedIlots.length} îlots (${data.totalArea?.toFixed(2)} m²)`, 'success');
-
-        // If COSTO corridors are provided, use them directly instead of manual corridor generation
+        // If COSTO corridors are provided, use the unified COSTO renderer
         if (data.useCostoCorridors && data.costoCorridors && data.costoCorridors.length > 0) {
-            console.log('[COSTO] Using COSTO layout corridors:', data.costoCorridors.length);
+            console.log('[COSTO] Using unified renderCostoLayout');
             corridorNetwork = data.costoCorridors;
 
-            // Render corridors immediately
-            if (renderer && typeof renderer.renderCorridors === 'function') {
-                renderer.renderCorridors(corridorNetwork);
+            // Store for export
+            if (data.costoRadiators) window._costoRadiators = data.costoRadiators;
+            if (data.costoCirculationPaths) window._costoCirculationPaths = data.costoCirculationPaths;
+
+            // Draw the COMPLETE professional plan in one shot
+            if (renderer && typeof renderer.renderCostoLayout === 'function') {
+                renderer.renderCostoLayout(currentFloorPlan, {
+                    units: generatedIlots,
+                    corridors: corridorNetwork,
+                    radiators: data.costoRadiators || [],
+                    circulationPaths: data.costoCirculationPaths || []
+                });
             }
-            showNotification(`COSTO layout: ${generatedIlots.length} îlots + ${corridorNetwork.length} corridors`, 'success');
+
+            updateLegendTable();
+
+            const radCount = (data.costoRadiators || []).length;
+            const circCount = (data.costoCirculationPaths || []).length;
+            showNotification(
+                `COSTO layout: ${generatedIlots.length} îlots + ${corridorNetwork.length} corridors` +
+                (radCount ? ` + ${radCount} radiators` : '') +
+                (circCount ? ` + ${circCount} circulation paths` : ''),
+                'success'
+            );
+        } else {
+            // Non-COSTO fallback: use old piecemeal rendering
+            setTimeout(() => {
+                renderCurrentState();
+                updateLegendTable();
+            }, 500);
         }
 
         hideLoader();
@@ -2455,20 +2761,43 @@ async function generateCorridors() {
     }
 
     try {
-        showLoader('Generating corridors...', 20);
+        showLoader('Generating corridors and radiators...', 20);
+
+        // Check if COSTO corridors/radiators were already generated with ilots
+        if (corridorNetwork && corridorNetwork.length > 0) {
+            console.log('[Corridors] Using existing COSTO corridors:', corridorNetwork.length);
+
+            if (renderer) {
+                renderer.renderCorridors(corridorNetwork);
+
+                const radiators = window._costoRadiators || window.generatedRadiators || [];
+                if (radiators.length > 0 && typeof renderer.renderRadiators === 'function') {
+                    renderer.renderRadiators(radiators);
+                }
+
+                const circPaths = window._costoCirculationPaths || [];
+                if (circPaths.length > 0 && typeof renderer.renderCirculationPaths === 'function') {
+                    renderer.renderCirculationPaths(circPaths);
+                }
+            }
+
+            hideLoader();
+            showNotification(`Rendered ${corridorNetwork.length} corridors`, 'success');
+            return;
+        }
 
         const API = window.__API_BASE__ || window.location.origin;
-        const corridorWidth = getActiveCorridorWidth();
-        const generateArrows = document.getElementById('generate-arrows') ? document.getElementById('generate-arrows').checked : true;
 
+        // Generate corridors for existing ilots using the advanced corridor generator
         const response = await fetch(`${API}/api/corridors/advanced`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 floorPlan: currentFloorPlan,
+                ilots: generatedIlots,
                 options: {
-                    corridor_width: corridorWidth,
-                    generate_arrows: generateArrows
+                    corridorWidth: parseFloat(document.getElementById('corridorWidthSlider')?.value) || 1.2,
+                    generate_arrows: true
                 }
             })
         });
@@ -2477,31 +2806,28 @@ async function generateCorridors() {
             throw new Error('Corridor generation failed');
         }
 
-        const result = await response.json();
-        if (result.error) {
-            throw new Error(result.error);
+        const data = await response.json();
+        if (data.error) {
+            throw new Error(data.error);
         }
-        corridorNetwork = Array.isArray(result.corridors) ? result.corridors : [];
-        corridorArrows = Array.isArray(result.arrows) ? result.arrows : [];
-        corridorStatistics = result.statistics || null;
-        console.log(`Generated ${corridorNetwork.length} corridors`);
-        console.log('First corridor:', corridorNetwork[0]);
+
+        corridorNetwork = data.corridors || [];
+        console.log(`[Corridors] Generated ${corridorNetwork.length} corridors`);
 
         updateStats();
-        syncActiveStackFloor();
-        refreshMultiFloorUI();
 
-        setTimeout(() => {
-            renderCurrentState();
-        }, 500);
-
-        if (renderer && renderer.renderCorridorArrows) {
-            renderer.renderCorridorArrows(corridorArrows);
-            renderer.setCorridorArrowsVisible(corridorArrowsVisible);
+        // Render corridors
+        if (renderer) {
+            if (typeof renderer.renderCorridors === 'function' && corridorNetwork.length > 0) {
+                renderer.renderCorridors(corridorNetwork);
+            }
+            // Render arrows if available
+            if (data.arrows && data.arrows.length > 0 && typeof renderer.renderCorridorArrows === 'function') {
+                renderer.renderCorridorArrows(data.arrows);
+            }
         }
 
-        const arrowMessage = corridorArrows.length ? `${corridorArrows.length} circulation arrows` : `${corridorNetwork.length} corridors`;
-        showNotification(`Generated ${arrowMessage}`, 'success');
+        showNotification(`Generated ${corridorNetwork.length} corridors`, 'success');
         hideLoader();
 
     } catch (error) {
@@ -2516,52 +2842,91 @@ async function exportToPDF() {
         showNotification('No floor plan to export.', 'warning');
         return;
     }
-    showNotification('Generating PDF...', 'info');
+    if (!generatedIlots || generatedIlots.length === 0) {
+        showNotification('Generate ilots first before exporting.', 'warning');
+        return;
+    }
+
+    showNotification('Generating professional COSTO PDF...', 'info');
     try {
         const API = window.__API_BASE__ || window.location.origin;
-        const response = await fetch(`${API}/api/export/pdf`, {
+
+        const floorLevelInput = document.getElementById('floorLevelInput');
+        const floorLevel = floorLevelInput ? parseInt(floorLevelInput.value) || 1 : 1;
+        const floorLabel = floorLevel === 1 ? 'PLAN ETAGE 01' : `PLAN ETAGE ${String(floorLevel).padStart(2, '0')}`;
+
+        const solution = {
+            boxes: generatedIlots,
+            corridors: corridorNetwork || [],
+            radiators: window._costoRadiators || [],
+            circulationPaths: window._costoCirculationPaths || []
+        };
+
+        const response = await fetch(`${API}/api/costo/export/reference-pdf`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ floorPlan: currentFloorPlan, ilots: generatedIlots, corridors: corridorNetwork, arrows: corridorArrows })
+            body: JSON.stringify({
+                solution: solution,
+                floorPlan: currentFloorPlan,
+                metrics: {
+                    totalArea: generatedIlots.reduce((sum, b) => sum + (b.area || b.width * b.height || 0), 0),
+                    totalBoxes: generatedIlots.length,
+                    yieldRatio: 0.85
+                },
+                options: {
+                    pageSize: 'A1',
+                    title: `${floorLabel} 1-200`,
+                    scale: '1:200',
+                    showLegend: true,
+                    showTitleBlock: true,
+                    companyName: 'COSTO',
+                    companyAddress: '5 chemin de la dime 95700 Roissy FRANCE',
+                    includeCompass: true,
+                    legendMode: 'reference',
+                    showScaleInfo: true,
+                    showUnitLabels: true,
+                    showAreas: true,
+                    showBoxNumbers: true,
+                    sheetNumber: '3'
+                }
+            })
         });
 
         const result = await response.json();
-        if (result && result.filepath) {
+        if (result && result.success && result.filename) {
             showNotification('PDF exported: ' + result.filename, 'success');
-            // Trigger download
-            const API = window.__API_BASE__ || window.location.origin;
             window.open(`${API}/exports/${result.filename}`, '_blank');
         } else {
-            showNotification('PDF export failed', 'error');
+            showNotification('PDF export failed: ' + (result.error || 'Unknown error'), 'error');
         }
     } catch (e) {
+        console.error('PDF export failed:', e);
         showNotification('PDF export failed: ' + e.message, 'error');
     }
 }
+
+
 
 async function exportToImage() {
     if (!currentFloorPlan) {
         showNotification('No floor plan to export.', 'warning');
         return;
     }
-    showNotification('Generating Image...', 'info');
+    if (!renderer) {
+        showNotification('Renderer not available.', 'error');
+        return;
+    }
+    showNotification('Generating PNG image...', 'info');
     try {
-        const API = window.__API_BASE__ || window.location.origin;
-        const response = await fetch(`${API}/api/export/image`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ floorPlan: currentFloorPlan, ilots: generatedIlots, corridors: corridorNetwork, arrows: corridorArrows })
-        });
-
-        const result = await response.json();
-        if (result && result.filepath) {
-            showNotification('Image exported: ' + result.filename, 'success');
-            const API = window.__API_BASE__ || window.location.origin;
-            window.open(`${API}/exports/${result.filename}`, '_blank');
-        } else {
-            showNotification('Image export failed', 'error');
-        }
+        // Capture the Three.js canvas directly at high resolution
+        const dataURL = renderer.exportImage(4096, 4096);
+        const link = document.createElement('a');
+        link.download = `floorplan_${Date.now()}.png`;
+        link.href = dataURL;
+        link.click();
+        showNotification('PNG image exported successfully', 'success');
     } catch (e) {
+        console.error('Image export failed:', e);
         showNotification('Image export failed: ' + e.message, 'error');
     }
 }
@@ -2691,21 +3056,39 @@ function buildIlotOptions(targetIlots, distribution) {
     const corridorWidth = getActiveCorridorWidth();
     const presetOptions = activePresetConfig?.options || {};
 
-    // Check COSTO style checkbox
+    // COSTO layout: organized rows with 1.2m corridors – wire checkbox
     const costoCheckbox = document.getElementById('costoLayoutCheckbox');
-    const useCostoStyle = costoCheckbox && costoCheckbox.checked;
+    const useCostoStyle = costoCheckbox ? costoCheckbox.checked : true;
+    const minZoneArea = typeof presetOptions.minZoneArea === 'number' ? presetOptions.minZoneArea : 5;
+    const boxDepth = typeof presetOptions.boxDepth === 'number' ? presetOptions.boxDepth : 2.5;
+    const boxWidth = typeof presetOptions.boxWidth === 'number' ? presetOptions.boxWidth : null;
 
-    return {
+    // Get current floor level for numbering
+    const floorLevelInput = document.getElementById('floorLevelInput');
+    const floorLevel = floorLevelInput ? parseInt(floorLevelInput.value) || 1 : 1;
+
+    const options = {
         totalIlots: targetIlots,
         seed: computeDeterministicSeed(currentFloorPlan, activePresetConfig, distribution),
         minEntranceDistance: 1.0,
         minIlotDistance: 0.5,
         maxAttemptsPerIlot: 800,
-        margin: typeof presetOptions.margin === 'number' ? presetOptions.margin : (presetOptions.minRowDistance || 1.0),
-        spacing: typeof presetOptions.spacing === 'number' ? presetOptions.spacing : 0.3,
+        margin: typeof presetOptions.margin === 'number' ? presetOptions.margin : (presetOptions.minRowDistance || 0.2),
+        spacing: typeof presetOptions.spacing === 'number' ? presetOptions.spacing : 0.05,
         corridorWidth,
-        style: useCostoStyle ? 'COSTO' : null  // COSTO layout style
+        style: useCostoStyle ? 'COSTO' : null,  // COSTO layout style
+        strictMode: true,
+        fillPlan: true,
+        minZoneArea,
+        boxDepth,
+        floor: floorLevel,  // Pass floor for numbering (101, 102...)
+        floorStart: 1,
+        startNumber: 1
     };
+    if (boxWidth) {
+        options.boxWidth = boxWidth;
+    }
+    return options;
 }
 
 function computeDeterministicSeed(floorPlan, presetConfig, distribution) {
@@ -3455,6 +3838,109 @@ function initializeEditTools() {
         });
     }
 
+    // Split ilot
+    const splitBtn = document.getElementById('splitIlotBtn');
+    if (splitBtn && editor) {
+        splitBtn.addEventListener('click', () => {
+            if (!renderer?.selectedIlots?.length || !editor) return;
+            const mesh = renderer.selectedIlots[0];
+            const ilot = mesh?.userData?.ilot;
+            const idx = mesh?.userData?.index;
+            if (!ilot || typeof idx !== 'number' || ilot.locked) {
+                showNotification('Select an unlocked unit to split', 'warning');
+                return;
+            }
+            const result = editor.splitSelected(2, 'horizontal');
+            if (!result) return;
+            const { originalIndex, newIlots } = result;
+            generatedIlots.splice(originalIndex, 1, ...newIlots);
+            renderer.renderIlots(generatedIlots);
+            updateLegendTable();
+            updateStats();
+            showNotification('Unit split into 2', 'success');
+        });
+    }
+
+    // Merge with adjacent
+    const mergeBtn = document.getElementById('mergeIlotBtn');
+    if (mergeBtn && editor) {
+        mergeBtn.addEventListener('click', () => {
+            if (!renderer?.selectedIlots?.length || !editor) return;
+            const mesh = renderer.selectedIlots[0];
+            const ilot1 = mesh?.userData?.ilot;
+            const idx1 = mesh?.userData?.index;
+            if (!ilot1 || ilot1.locked) {
+                showNotification('Select an unlocked unit to merge', 'warning');
+                return;
+            }
+            const otherIdx = generatedIlots.findIndex((i, k) => k !== idx1 && editor.canMerge(ilot1, i));
+            if (otherIdx < 0) {
+                showNotification('No adjacent unit found to merge', 'warning');
+                return;
+            }
+            const ilot2 = generatedIlots[otherIdx];
+            if (ilot2.locked) {
+                showNotification('Adjacent unit is locked', 'warning');
+                return;
+            }
+            const merged = editor.mergeIlots(ilot1, ilot2);
+            if (!merged) return;
+            const indices = [idx1, otherIdx].sort((a, b) => b - a);
+            indices.forEach(i => generatedIlots.splice(i, 1));
+            generatedIlots.push(merged);
+            renderer.renderIlots(generatedIlots);
+            updateLegendTable();
+            updateStats();
+            showNotification('Units merged', 'success');
+        });
+    }
+
+    // Lock row
+    const lockRowBtn = document.getElementById('lockRowBtn');
+    if (lockRowBtn) {
+        lockRowBtn.addEventListener('click', () => {
+            if (!renderer?.selectedIlots?.length) {
+                showNotification('Select a unit to lock its row', 'warning');
+                return;
+            }
+            const ilot = renderer.selectedIlots[0].userData?.ilot;
+            if (!ilot || typeof ilot.y !== 'number') return;
+            const rowTolerance = 0.3;
+            let count = 0;
+            generatedIlots.forEach(i => {
+                if (Math.abs(i.y - ilot.y) < rowTolerance) {
+                    i.locked = true;
+                    count++;
+                }
+            });
+            renderer.renderIlots(generatedIlots);
+            showNotification(`Row locked (${count} units)`, 'success');
+        });
+    }
+
+    // Unlock row
+    const unlockRowBtn = document.getElementById('unlockRowBtn');
+    if (unlockRowBtn) {
+        unlockRowBtn.addEventListener('click', () => {
+            if (!renderer?.selectedIlots?.length) {
+                showNotification('Select a unit to unlock its row', 'warning');
+                return;
+            }
+            const ilot = renderer.selectedIlots[0].userData?.ilot;
+            if (!ilot || typeof ilot.y !== 'number') return;
+            const rowTolerance = 0.3;
+            let count = 0;
+            generatedIlots.forEach(i => {
+                if (Math.abs(i.y - ilot.y) < rowTolerance) {
+                    i.locked = false;
+                    count++;
+                }
+            });
+            renderer.renderIlots(generatedIlots);
+            showNotification(`Row unlocked (${count} units)`, 'success');
+        });
+    }
+
     // Delete key listener
     document.addEventListener('keydown', (e) => {
         if ((e.key === 'Delete' || e.key === 'Backspace') && !e.target.matches('input, textarea')) {
@@ -3463,21 +3949,84 @@ function initializeEditTools() {
                 const selectedIlot = selectedMesh.userData.ilot;
                 const index = selectedMesh.userData.index;
 
+                if (selectedIlot?.locked) {
+                    showNotification('Cannot delete locked unit', 'warning');
+                    e.preventDefault();
+                    return;
+                }
                 if (selectedIlot && typeof index === 'number' && index >= 0 && index < generatedIlots.length) {
-                    // Remove from array
                     generatedIlots.splice(index, 1);
-
-                    // Re-render
                     renderer.renderIlots(generatedIlots);
-                    updateLegendTable(); // Update legend when ilots are rendered
+                    updateLegendTable();
                     updateStats();
-
                     showNotification('Ilot deleted', 'success');
                     e.preventDefault();
                 }
             }
         }
     });
+}
+
+function initializeLayerToggles() {
+    const layerMap = {
+        layerWalls: 'walls',
+        layerEntrances: 'entrances',
+        layerForbidden: 'forbidden',
+        layerIlots: 'ilots',
+        layerCorridors: 'corridors',
+        layerArrows: 'arrows'
+    };
+    Object.entries(layerMap).forEach(([id, name]) => {
+        const cb = document.getElementById(id);
+        if (cb && renderer) {
+            cb.addEventListener('change', () => {
+                renderer.toggleLayer(name, cb.checked);
+            });
+        }
+    });
+}
+
+const AUTOSAVE_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
+const AUTOSAVE_KEY = 'fp-autosave-v1';
+
+function initializeAutosave() {
+    setInterval(() => {
+        if (!currentFloorPlan || !generatedIlots?.length) return;
+        try {
+            const payload = {
+                floorPlan: currentFloorPlan,
+                ilots: generatedIlots,
+                corridors: corridorNetwork,
+                unitMix: activeUnitMix,
+                timestamp: Date.now()
+            };
+            localStorage.setItem(AUTOSAVE_KEY, JSON.stringify(payload));
+        } catch (e) {
+            console.warn('[Autosave] Failed:', e.message);
+        }
+    }, AUTOSAVE_INTERVAL_MS);
+
+    // Restore on load if recent (< 24h)
+    try {
+        const raw = localStorage.getItem(AUTOSAVE_KEY);
+        if (!raw) return;
+        const data = JSON.parse(raw);
+        if (!data?.timestamp || Date.now() - data.timestamp > 24 * 60 * 60 * 1000) return;
+        if (data.floorPlan && data.ilots?.length) {
+            currentFloorPlan = data.floorPlan;
+            generatedIlots = data.ilots;
+            corridorNetwork = data.corridors || [];
+            activeUnitMix = data.unitMix || null;
+            if (renderer) {
+                renderer.loadFloorPlan(currentFloorPlan);
+                renderer.renderIlots(generatedIlots);
+                if (corridorNetwork.length) renderer.renderCorridors(corridorNetwork);
+            }
+            showNotification('Restored from autosave', 'info');
+        }
+    } catch (e) {
+        console.warn('[Autosave] Restore failed:', e.message);
+    }
 }
 
 // ===== UNIT MIX IMPORT SYSTEM =====
@@ -3864,6 +4413,104 @@ function updateVarianceDisplay() {
 // Hook up top bar Generate buttons to trigger sidebar button clicks
 const topGenerateIlotsBtn = document.getElementById('topGenerateIlotsBtn');
 const topGenerateCorridorsBtn = document.getElementById('topGenerateCorridorsBtn');
+const analyzeRawPlanBtn = document.getElementById('analyzeRawPlanBtn');
+const completeRawPlanBtn = document.getElementById('completeRawPlanBtn');
+
+// --- Raw Plan: Analyze (preview gaps before completing) ---
+if (analyzeRawPlanBtn) {
+    analyzeRawPlanBtn.addEventListener('click', async () => {
+        if (!currentFloorPlan || !currentFloorPlan.walls) {
+            showNotification('Upload a floor plan first', 'warning');
+            return;
+        }
+        try {
+            analyzeRawPlanBtn.disabled = true;
+            const API = window.__API_BASE__ || window.location.origin;
+            const resp = await fetch(`${API}/api/raw-plan/analyze`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ floorPlan: currentFloorPlan })
+            });
+            const data = await resp.json();
+            if (!resp.ok) throw new Error(data.error || 'Analysis failed');
+            const a = data.analysis || {};
+            const gapCount = a.gapCount || 0;
+            const openCount = (a.openEndpoints || []).length;
+            const doorCount = (a.doors || []).length;
+            const recs = (a.recommendations || []).join(' ');
+
+            if (gapCount === 0 && openCount === 0) {
+                showNotification('Plan is complete', 'success', {
+                    title: 'Raw Plan Analysis',
+                    description: `No gaps detected. ${doorCount} door(s) found. Ready for ilot generation.`
+                });
+            } else {
+                showNotification(`${gapCount} gap(s), ${openCount} open endpoint(s)`, 'warning', {
+                    title: 'Raw Plan Analysis',
+                    description: `${recs}${doorCount > 0 ? ` ${doorCount} door(s) detected.` : ''} Click "Complete Raw Plan" to auto-fill.`,
+                    action: {
+                        label: 'Complete now',
+                        callback: () => {
+                            if (completeRawPlanBtn) completeRawPlanBtn.click();
+                        }
+                    },
+                    sticky: true
+                });
+            }
+        } catch (e) {
+            showNotification(e.message || 'Raw plan analysis failed', 'error');
+        } finally {
+            analyzeRawPlanBtn.disabled = false;
+        }
+    });
+}
+
+// --- Raw Plan: Complete (fill gaps + validate) ---
+if (completeRawPlanBtn) {
+    completeRawPlanBtn.addEventListener('click', async () => {
+        if (!currentFloorPlan || !currentFloorPlan.walls) {
+            showNotification('Upload a floor plan first', 'warning');
+            return;
+        }
+        try {
+            completeRawPlanBtn.disabled = true;
+            const API = window.__API_BASE__ || window.location.origin;
+            const resp = await fetch(`${API}/api/raw-plan/complete`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ floorPlan: currentFloorPlan, options: { validate: true } })
+            });
+            const data = await resp.json();
+            if (!resp.ok) throw new Error(data.error || 'Completion failed');
+            currentFloorPlan = data.completedPlan || currentFloorPlan;
+            renderCurrentState();
+            const filled = (data.syntheticSegments || []).length;
+            const validation = data.validation;
+            let desc = '';
+            if (validation && validation.summary) {
+                desc = `Validation: ${validation.summary.errors} error(s), ${validation.summary.warnings} warning(s).`;
+            }
+            showNotification(
+                filled > 0 ? `Filled ${filled} gap(s) in raw plan` : 'No gaps to fill – plan is complete',
+                filled > 0 ? 'success' : 'info',
+                {
+                    title: 'Raw Plan Completion',
+                    description: desc || (filled > 0 ? 'Walls updated. Ready for ilot generation.' : 'Plan was already complete.'),
+                    action: filled > 0 ? {
+                        label: 'Generate ilots',
+                        callback: () => {
+                            if (topGenerateIlotsBtn) topGenerateIlotsBtn.click();
+                        }
+                    } : null
+                }
+            );
+        } catch (e) {
+            showNotification(e.message || 'Raw plan completion failed', 'error');
+        } finally {
+            completeRawPlanBtn.disabled = false;
+        }
+    });
+}
 
 if (topGenerateIlotsBtn) {
     topGenerateIlotsBtn.addEventListener('click', () => {
@@ -3921,9 +4568,9 @@ if (heatMapBtn) {
                     mesh.material.color.setRGB(r, g, b);
                     mesh.material.opacity = 0.6; // More visible heat map
                 } else {
-                    // Reset to transparent white fill (blue outline remains)
+                    // No white layer - outlines only (user: remove white fill on boxes)
                     mesh.material.color.setHex(0xffffff);
-                    mesh.material.opacity = 0.1; // Very transparent - outline is main feature
+                    mesh.material.opacity = 0;
                 }
             });
             renderer.render();

@@ -1,0 +1,243 @@
+1) Contexte et objectif
+
+1.1 Contexte
+
+COSTO conçoit et installe des sites de self-stockage. La réponse à un unit mix nécessite aujourd’hui beaucoup d’itérations manuelles (dessin, métrés, vérification circulation/sécurité), alors que les plans sont répétitifs et soumis à des règles.
+
+1.2 Objectif
+
+Développer un logiciel qui, à partir :
+	•	d’un DWG nu (périmètre, poteaux/obstacles, locaux techniques, trémies, escaliers, issues, etc.),
+	•	d’un unit mix cible (quantités/surfaces par typologie),
+	•	et de contraintes d’exploitation / sécurité,
+
+produit automatiquement :
+	•	un plan de boxes optimisé (implantation),
+	•	un quantitatif conforme (surfaces et nombre de boxes par typologie),
+	•	des exports DWG/PDF/SVG,
+	•	et un report d’écarts vs unit mix (si impossible à 100%).
+
+Les plans fournis montrent typiquement des zones de circulation, des noyaux (escaliers/monte-charge), issues, etc. (ex. légendes “MC”, “SORTIE DE SECOURS”, “PORTE COUPE-FEU”, “CONTROLE D’ACCES” visibles sur vos plans RDC/entresol).  ￼
+
+⸻
+
+2) Périmètre (In / Out)
+
+2.1 Inclus (In scope)
+	•	Import DWG/DXF et interprétation de calques “contraintes”.
+	•	Paramétrage d’un catalogue de boxes (tailles, profondeurs, largeurs, portes).
+	•	Saisie / import du unit mix (Excel/CSV).
+	•	Génération automatique d’implantation (1 niveau à la fois, ou multi-niveaux).
+	•	Outils d’édition manuelle (post-optimisation) : déplacer, redimensionner, fusionner, scinder.
+	•	Vérifications et rapports : surfaces, circulations, règles coupe-feu, distances d’évacuation (au minimum contrôles géométriques et règles simples paramétrables).
+	•	Exports : DWG annoté, PDF, SVG “interactif” (survol / clic box = fiche).
+
+2.2 Exclus (Out of scope) – à cadrer en V2
+	•	Calcul structurel (charge admissible), dimensionnement MEP/SSI complet.
+	•	Plan d’exécution industriel complet (détails d’assemblage) : possible en module séparé.
+	•	Devis automatique fournisseurs (possible en extension).
+
+⸻
+
+3) Utilisateurs cibles et cas d’usage
+
+3.1 Profils
+	•	Bureau d’études / Méthodes : génère et ajuste les plans.
+	•	Commerce / Avant-vente : teste plusieurs unit mixes et variantes rapidement.
+	•	Direction technique : valide conformité, productivité m² louables / m² utiles.
+
+3.2 Cas d’usage principaux
+	1.	Charger un DWG nu (niveau).
+	2.	Définir zones exploitables + obstacles + zones interdites.
+	3.	Charger un unit mix (ex. surface par typologie, arrondis éventuels).
+	4.	Paramétrer règles (circulation, largeurs mini, modules, portes).
+	5.	Lancer “Générer”.
+	6.	Obtenir plan + quantitatif + score (taux de conformité unit mix, m² louables, linéaire cloison).
+	7.	Ajuster manuellement si besoin.
+	8.	Exporter DWG/PDF/SVG + rapport.
+
+⸻
+
+4) Données d’entrée
+
+4.1 Fichiers plans
+	•	DWG/DXF : 2D en priorité (3D optionnel).
+	•	Unités : mètres.
+	•	Origine : indifférente, mais cohérente sur le fichier.
+
+4.2 Convention de calques (à standardiser)
+
+Le logiciel doit permettre :
+	•	soit une convention COSTO (recommandé),
+	•	soit une phase de mapping (l’utilisateur associe calques DWG → types d’objets).
+
+Objets attendus (minimum) :
+	•	Enveloppe/périmètre exploitable (polyligne fermée)
+	•	Obstacles (poteaux, gaines, locaux techniques)
+	•	Zones interdites (désenfumage, trémies, vides, etc.)
+	•	Issues / escaliers / monte-charge (pour contraintes de circulation et accès)
+	•	Portes coupe-feu / contrôle d’accès (si intégrés au plan)  ￼
+
+4.3 Unit mix
+
+Format importable (CSV/Excel) :
+	•	Typologie (ex. S, M, L ou 1–2 m², 2–3 m²…)
+	•	Surface cible (m²) ou nb de boxes cible
+	•	Tolérance (± % ou ± m²)
+	•	Priorité (obligatoire / souhaitable)
+
+⸻
+
+5) Catalogue de boxes (paramétrable)
+
+Pour chaque “famille” :
+	•	Surface nominale (ou plage)
+	•	Dimensions possibles (L x P) : soit libre sous contraintes, soit liste de gabarits
+	•	Largeur de porte standard
+	•	Type de cloison (épaisseur, module)
+	•	Option : box accessible PMR (règles spécifiques)
+	•	Option : boxes “premium” (près entrée, grands accès)
+
+⸻
+
+6) Règles métier et contraintes d’implantation
+
+6.1 Circulations
+	•	Largeur mini couloir principal : paramètre (ex. 1,50 m / 1,80 m)
+	•	Largeur mini couloir secondaire : paramètre (ex. 1,20 m)
+	•	Continuité des circulations (pas d’impasse non conforme si interdit)
+	•	Accès aux issues/escaliers/MC garanti (zones d’approche)
+
+6.2 Construction des rangées
+	•	Implantation par “bandes” (rangs de boxes) le long d’axes principaux.
+	•	Gestion des retours en bout d’allée.
+	•	Optimisation du remplissage (minimiser chutes / surfaces perdues).
+
+6.3 Conformité surfaces
+	•	Surface box = surface intérieure nette (à définir).
+	•	Règles d’arrondi éventuelles (ex. arrondi au 0,5 m² supérieur, comme pratique projet) — paramètre.
+	•	Tolérance par typologie.
+
+6.4 Sécurité / exploitation (niveau “règles simples” en V1)
+	•	Interdiction d’empiéter sur zones “désenfumage”, “LT”, etc.
+	•	Maintien des dégagements devant portes coupe-feu / issues.
+	•	Option : distance max à une issue (contrôle géométrique si points d’issues fournis).
+
+⸻
+
+7) Optimisation : logique attendue
+
+7.1 Objectif d’optimisation (score)
+
+Le solveur doit optimiser une fonction multi-critères, pondérable :
+	•	Priorité 1 : conformité au unit mix (écart pondéré)
+	•	Priorité 2 : maximisation m² louables / m² exploitables
+	•	Priorité 3 : minimisation linéaire de cloison (coût)
+	•	Priorité 4 : lisibilité du plan (axes, répétitivité, standardisation)
+
+7.2 Méthode (attendue)
+
+Approche hybride recommandée :
+	•	Génération de “candidats” (bandes + découpe)
+	•	Heuristique / meta-heuristique (ex. recuit simulé, recherche tabou) ou MILP selon complexité
+	•	Post-traitement : nettoyage géométrique, alignements, détection collisions, numérotation
+
+7.3 Gestion d’impossibilité
+
+Si le unit mix est impossible à respecter :
+	•	le logiciel doit produire la meilleure solution + rapport d’écarts :
+	•	typologies manquantes / excédentaires
+	•	m² perdus
+	•	causes probables (contraintes, géométrie)
+
+⸻
+
+8) Interface utilisateur (V1)
+
+8.1 Écran principal
+	•	Vue plan (zoom, pan, snaps)
+	•	Calques (afficher/masquer)
+	•	Panneau “Unit mix” (import, tolérances, priorités)
+	•	Panneau “Règles” (circulations, arrondis, gabarits)
+	•	Bouton “Générer” + affichage score/écarts
+	•	Mode édition : déplacer / redimensionner / verrouiller une rangée
+
+8.2 Objets “Box”
+	•	Sélection : surbrillance + propriétés
+	•	Fiche box : id, dimensions, surface, typologie, rangée, contraintes violées
+	•	Numérotation automatique (schéma paramétrable : zone + rang + numéro)
+
+⸻
+
+9) Sorties attendues
+
+9.1 Exports graphiques
+	•	DWG : calques séparés (boxes, textes, cotes, circulations)
+	•	PDF : plans A3/A1, cartouche, légende
+	•	SVG interactif : survol/clic box = infos (comme vos exports “SVG interactivity”)  ￼
+
+9.2 Exports data
+	•	Excel/CSV :
+	•	liste boxes (ID, surface, L, P, typologie, niveau, zone)
+	•	consolidé par typologie
+	•	écarts vs unit mix
+	•	Rapport PDF :
+	•	hypothèses (règles, versions)
+	•	KPIs : m² louables, rendement, linéaire cloison estimé, taux conformité unit mix
+
+⸻
+
+10) Exigences non fonctionnelles
+	•	Performance : génération < 60 s pour un niveau “standard” (paramétrable).
+	•	Fiabilité : sauvegarde automatique + versionning projet.
+	•	Traçabilité : chaque export porte un identifiant de version + paramètres.
+	•	Compatibilité : Windows (prioritaire), option Web en V2.
+	•	Interop : DWG/DXF via librairie robuste, et SVG/PDF natif.
+
+⸻
+
+11) Architecture (recommandation)
+	•	Moteur géométrique : polygones, offsets, collisions, “no-go zones”
+	•	Solveur d’optimisation : module séparé (API interne)
+	•	UI : viewer CAD (snap, calques, sélection)
+	•	Format projet : fichier unique (JSON + références DWG + exports)
+
+⸻
+
+12) Critères d’acceptation (recette)
+
+12.1 Tests fonctionnels minimaux
+	1.	Import DWG et mapping calques (enveloppe + obstacles).
+	2.	Import unit mix (Excel) et validation format.
+	3.	Génération d’un plan sans collisions, boxes dans enveloppe, circulations respectées.
+	4.	Export DWG : réouverture dans AutoCAD avec calques corrects.
+	5.	Export Excel : cohérence totaux surfaces et nb de boxes.
+	6.	Rapport d’écarts : calcul correct si mix non atteignable.
+
+12.2 KPIs de validation
+	•	Taux conformité unit mix ≥ seuil (ex. 95% surfaces) sur cas de référence.
+	•	Rendement m² louables / m² exploitables ≥ objectif projet (à définir).
+	•	Temps de génération ≤ objectif.
+
+⸻
+
+13) Livrables attendus
+	•	Logiciel (installateur) + licence.
+	•	Manuel utilisateur + guide de convention DWG COSTO.
+	•	Jeu de cas tests (DWG + unit mix + résultats attendus).
+	•	Documentation technique (API interne, formats, paramétrage).
+	•	Support V1 (correctifs) + option évolutions V2.
+
+⸻
+
+14) Roadmap indicative (sans dates)
+	•	Phase 0 : standard COSTO des calques DWG + définition catalogue boxes + règles.
+	•	Phase 1 (MVP) : import DWG + unit mix + génération simple “bandes” + exports.
+	•	Phase 2 : solveur amélioré + édition avancée + contrôle sécurité renforcé.
+	•	Phase 3 : multi-niveaux + optimisation globale site + chiffrage industriel.
+
+⸻
+
+Option utile (si vous voulez aller vite dès V1)
+
+Définir un standard DWG COSTO (noms de calques + types d’objets). Sans cela, le mapping à chaque plan devient la principale source de friction

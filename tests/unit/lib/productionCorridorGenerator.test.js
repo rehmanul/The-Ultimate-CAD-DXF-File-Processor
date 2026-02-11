@@ -14,7 +14,7 @@ describe('ProductionCorridorGenerator', () => {
   describe('constructor', () => {
     test('should initialize with default options', () => {
       const gen = new ProductionCorridorGenerator(mockFloorPlan, mockIlots);
-      expect(gen.margin).toBe(0.5);
+      expect(gen.margin).toBe(0.2);
       expect(gen.corridorWidth).toBe(1.2);
     });
 

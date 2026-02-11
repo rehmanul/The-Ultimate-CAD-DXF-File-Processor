@@ -73,15 +73,14 @@ EOF`;
       expect(response.body.error).toContain('No file uploaded');
     });
 
-    test('should handle invalid file types', async () => {
+    test('should reject unsupported file types with 415', async () => {
       const response = await request(app)
         .post('/api/jobs')
         .attach('file', Buffer.from('invalid content'), 'test.txt')
-        .expect(200);
+        .expect(415);
 
-      // Should still return success but with empty CAD data for non-DXF files
-      expect(response.body).toHaveProperty('success', true);
-      expect(response.body).toHaveProperty('cadData');
+      expect(response.body).toHaveProperty('success', false);
+      expect(response.body.error).toContain('Unsupported file type');
     });
   });
 

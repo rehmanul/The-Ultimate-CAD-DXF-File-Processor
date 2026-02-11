@@ -9,8 +9,9 @@
     ],
     "functions": {
         "api/index.js": {
-            "maxDuration": 30,
-            "memory": 1024
+            "maxDuration": 60,
+            "memory": 1024,
+            "includeFiles": "lib/**,node_modules/pdf-lib/**,node_modules/express/**,node_modules/cors/**,node_modules/multer/**,node_modules/dxf/**,node_modules/dxf-parser/**,node_modules/xlsx/**,node_modules/csv-parse/**,node_modules/dotenv/**"
         }
     },
     "buildCommand": "echo 'Skipping build for serverless Express'"

@@ -49,6 +49,12 @@ export class InteractiveEditor {
     enableEditMode(enabled) {
         if (enabled && this.renderer.selectedIlots.length > 0) {
             this.selectedMesh = this.renderer.selectedIlots[0];
+            const ilot = this.selectedMesh?.userData?.ilot;
+            if (ilot?.locked) {
+                this.selectedMesh = null;
+                this.transformControl.detach();
+                return;
+            }
             this.transformControl.attach(this.selectedMesh);
         } else {
             this.transformControl.detach();

@@ -9,6 +9,9 @@ import { OutlinePass } from 'three/addons/postprocessing/OutlinePass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { GLTFExporter } from 'three/addons/exporters/GLTFExporter.js';
 import { SVGRenderer } from 'three/addons/renderers/SVGRenderer.js';
+import { Line2 } from 'three/addons/lines/Line2.js';
+import { LineMaterial } from 'three/addons/lines/LineMaterial.js';
+import { LineGeometry } from 'three/addons/lines/LineGeometry.js';
 
 export class FloorPlanRenderer {
     constructor(container) {
@@ -34,7 +37,7 @@ export class FloorPlanRenderer {
         this.camera.lookAt(0, 0, 0);
 
         this.perspectiveCamera = new THREE.PerspectiveCamera(60, aspect, 0.1, 10000);
-        this.perspectiveCamera.position.set(0, -200, 150);
+        this.perspectiveCamera.position.set(0, 0, 200); // Top-down view
         this.perspectiveCamera.lookAt(0, 0, 0);
 
         this.rendererType = 'webgl';
@@ -449,7 +452,7 @@ export class FloorPlanRenderer {
                         new THREE.Vector3(line.end.x, line.end.y, 0)
                     ]);
                     const material = new THREE.LineBasicMaterial({
-                        color: 0x000000, // Black - matching legend "Tôle Blanche"
+                        color: 0x6B7280, // Thin gray - matching reference "Tôle Blanche"
                         linewidth: 2
                     });
                     this.wallsGroup.add(new THREE.Line(geometry, material));
@@ -467,7 +470,7 @@ export class FloorPlanRenderer {
                     { start: { x: minX, y: maxY }, end: { x: minX, y: minY } }
                 ];
                 const envelopeMaterial = new THREE.LineBasicMaterial({
-                    color: 0x000000, // Black - matching legend "Tôle Blanche"
+                    color: 0x6B7280, // Thin gray - matching reference "Tôle Blanche"
                     linewidth: 2
                 });
                 envelopeLines.forEach(line => {
@@ -493,10 +496,10 @@ export class FloorPlanRenderer {
             }
         };
 
-        // Walls: FORCE black (Tôle Blanche) - ignore DXF embedded colors
+        // Walls: FORCE thin gray (Tôle Blanche) - ignore DXF embedded colors
         if (floorPlan.walls) {
             floorPlan.walls.forEach(entity => {
-                drawEntity(entity, this.wallsGroup, 0x000000, true); // Force black
+                drawEntity(entity, this.wallsGroup, 0x6B7280, true); // Thin gray
             });
         }
 
@@ -652,18 +655,117 @@ export class FloorPlanRenderer {
         this.render();
     }
 
+    /**
+     * Render green arrows at entrance locations pointing toward floor interior.
+     * Reference style: green triangle arrows at entrances/exits.
+     * @param {Array} entrances - Array of entrance entities with start/end or polygon
+     * @param {Object} bounds - Floor plan bounds {minX, minY, maxX, maxY}
+     */
+    renderEntranceArrows(entrances, bounds) {
+        if (!Array.isArray(entrances) || entrances.length === 0) return;
+        if (!bounds) return;
+
+        // Create or find entrance arrows group
+        if (!this.entranceArrowsGroup) {
+            this.entranceArrowsGroup = new THREE.Group();
+            this.entranceArrowsGroup.name = 'entranceArrows';
+            this.scene.add(this.entranceArrowsGroup);
+        }
+        // Clear existing
+        while (this.entranceArrowsGroup.children.length > 0) {
+            const child = this.entranceArrowsGroup.children[0];
+            this.entranceArrowsGroup.remove(child);
+            if (child.geometry) child.geometry.dispose();
+            if (child.material) child.material.dispose();
+        }
+
+        const arrowMaterial = new THREE.MeshBasicMaterial({
+            color: 0x00aa00, // Green arrows for entrances
+            side: THREE.DoubleSide
+        });
+
+        const centerX = (bounds.minX + bounds.maxX) / 2;
+        const centerY = (bounds.minY + bounds.maxY) / 2;
+
+        entrances.forEach(entrance => {
+            let x, y, angle;
+
+            // Get entrance position
+            if (entrance.start && entrance.end) {
+                x = (entrance.start.x + entrance.end.x) / 2;
+                y = (entrance.start.y + entrance.end.y) / 2;
+                // Calculate direction pointing toward floor center
+                const dx = centerX - x;
+                const dy = centerY - y;
+                angle = Math.atan2(dy, dx);
+            } else if (entrance.x !== undefined && entrance.y !== undefined) {
+                x = entrance.x;
+                y = entrance.y;
+                const dx = centerX - x;
+                const dy = centerY - y;
+                angle = Math.atan2(dy, dx);
+            } else if (entrance.polygon) {
+                // Get centroid of polygon
+                const pts = entrance.polygon;
+                x = pts.reduce((sum, p) => sum + (p.x || p[0] || 0), 0) / pts.length;
+                y = pts.reduce((sum, p) => sum + (p.y || p[1] || 0), 0) / pts.length;
+                const dx = centerX - x;
+                const dy = centerY - y;
+                angle = Math.atan2(dy, dx);
+            } else {
+                return;
+            }
+
+            // Create arrow triangle pointing inward
+            const arrowSize = 0.8;
+            const arrowGeom = new THREE.BufferGeometry();
+            const vertices = new Float32Array([
+                -arrowSize * 0.6, -arrowSize * 0.4, 0.2,
+                -arrowSize * 0.6, arrowSize * 0.4, 0.2,
+                arrowSize * 0.6, 0, 0.2
+            ]);
+            arrowGeom.setAttribute('position', new THREE.BufferAttribute(vertices, 3));
+
+            const arrow = new THREE.Mesh(arrowGeom, arrowMaterial.clone());
+            arrow.position.set(x, y, 0.2);
+            arrow.rotation.z = angle;
+            this.entranceArrowsGroup.add(arrow);
+        });
+
+        console.log(`Rendered ${entrances.length} entrance arrows (green)`);
+        this.render();
+    }
+
+
     drawLine(start, end, color, group) {
+        if (!start || !end) return;
+        const sx = Number(start.x);
+        const sy = Number(start.y);
+        const ex = Number(end.x);
+        const ey = Number(end.y);
+        if (!Number.isFinite(sx) || !Number.isFinite(sy) || !Number.isFinite(ex) || !Number.isFinite(ey)) {
+            return;
+        }
         const geometry = new THREE.BufferGeometry().setFromPoints([
-            new THREE.Vector3(start.x, start.y, 0),
-            new THREE.Vector3(end.x, end.y, 0)
+            new THREE.Vector3(sx, sy, 0),
+            new THREE.Vector3(ex, ey, 0)
         ]);
         group.add(new THREE.Line(geometry, new THREE.LineBasicMaterial({ color, linewidth: 2 })));
     }
 
     drawPolygon(polygon, color, group, filled = false) {
-        const points = polygon.map(pt => new THREE.Vector2(Array.isArray(pt) ? pt[0] : pt.x, Array.isArray(pt) ? pt[1] : pt.y));
+        if (!Array.isArray(polygon) || polygon.length === 0) return;
+        const points = polygon.map((pt) => {
+            if (!pt) return null;
+            const x = Number(Array.isArray(pt) ? pt[0] : pt.x);
+            const y = Number(Array.isArray(pt) ? pt[1] : pt.y);
+            if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+            return new THREE.Vector2(x, y);
+        }).filter(Boolean);
+        if (points.length < 2) return;
 
         if (filled) {
+            if (points.length < 3) return;
             const shape = new THREE.Shape(points);
             const mesh = new THREE.Mesh(
                 new THREE.ShapeGeometry(shape),
@@ -676,6 +778,7 @@ export class FloorPlanRenderer {
         linePoints.push(linePoints[0]);
 
         if (this.is3DMode) {
+            if (points.length < 3) return;
             // Extrude walls in 3D
             const shape = new THREE.Shape(points);
             const extrudeSettings = { depth: 3.0, bevelEnabled: false }; // 3m wall height
@@ -708,18 +811,7 @@ export class FloorPlanRenderer {
         this.ilotMeshes = [];
         this.selectedIlots = [];
 
-        // Render storage units in architectural reference style (blue outlines, no fill)
-        // Match reference: blue thick outlines, unit size labels
-        const colorMap = {
-            single: 0xffffff,  // White/transparent fill
-            double: 0xffffff,
-            team: 0xffffff,
-            meeting: 0xffffff,
-            S: 0xffffff,
-            M: 0xffffff,
-            L: 0xffffff,
-            XL: 0xffffff
-        };
+        // Render storage units: blue outlines only, NO white fill (per user: remove white layer)
         const outlineColor = 0x0000ff; // Blue outlines like reference "Tôle Grise"
         const showLabels = ilots.length <= 500; // Show labels for more ilots
 
@@ -745,16 +837,14 @@ export class FloorPlanRenderer {
             ]);
 
             let geometry, material;
-            // Use ilot.color for size category distinction if available
-            // COSTO CLEAN: Use white/transparent fill - reference shows only blue outlines
-            const fillColor = 0xffffff; // White fill like reference
+            // NO white fill - only blue outlines visible (user: remove white layer on boxes)
+            const fillColor = 0xffffff;
 
             if (this.is3DMode) {
-                // Variable height based on ilot area (larger ilots = taller)
                 const area = ilot.area || (ilot.width * ilot.height);
-                const baseHeight = 1.5; // Minimum height
-                const heightScale = 0.3; // How much to scale by area
-                const maxHeight = 5.0; // Maximum height cap
+                const baseHeight = 1.5;
+                const heightScale = 0.3;
+                const maxHeight = 5.0;
                 const variableDepth = Math.min(baseHeight + area * heightScale, maxHeight);
                 const extrudeSettings = { depth: variableDepth, bevelEnabled: true, bevelThickness: 0.1, bevelSize: 0.1, bevelSegments: 2 };
                 geometry = new THREE.ExtrudeGeometry(shape, extrudeSettings);
@@ -763,15 +853,14 @@ export class FloorPlanRenderer {
                     metalness: 0.1,
                     roughness: 0.6,
                     transparent: true,
-                    opacity: 0.85
+                    opacity: 0  // No fill - transparent (outlines only)
                 });
             } else {
                 geometry = new THREE.ShapeGeometry(shape);
-                // COSTO CLEAN: Nearly invisible white fill, just blue outlines
                 material = new THREE.MeshBasicMaterial({
-                    color: 0xffffff, // White
+                    color: 0xffffff,
                     transparent: true,
-                    opacity: 0.02, // Nearly invisible
+                    opacity: 0,  // No white layer - transparent
                     side: THREE.DoubleSide
                 });
             }
@@ -843,20 +932,20 @@ export class FloorPlanRenderer {
                 // Store calculated unit size for export consistency
                 ilot.unitSize = closest;
 
-                // COSTO: Add width dimension label at top of box
-                const widthLabel = ilot.width.toFixed(2);
-                const labelSprite = this.createTextSprite(widthLabel, {
+                // COSTO: Add width + area label (matching reference: "1.42 10m²")
+                const labelText = ilot.label || `${ilot.width.toFixed(2)} ${area.toFixed(0)}m²`;
+                const labelSprite = this.createTextSprite(labelText, {
                     fontSize: 10,
-                    fontColor: '#333333',
-                    backgroundColor: 'rgba(255,255,255,0.7)',
-                    padding: 1
+                    fontColor: '#000000',
+                    backgroundColor: 'rgba(255,255,255,0.8)',
+                    padding: 2
                 });
                 labelSprite.position.set(
                     ilot.x + ilot.width / 2,
-                    ilot.y + ilot.height - 0.2,
+                    ilot.y + ilot.height / 2,  // Center of box
                     0.1
                 );
-                labelSprite.scale.set(0.6, 0.3, 1);
+                labelSprite.scale.set(1.0, 0.5, 1);
                 this.ilotsGroup.add(labelSprite);
             }
         });
@@ -867,14 +956,11 @@ export class FloorPlanRenderer {
             this.selectedIlots = [mesh];
             this.outlinePass.selectedObjects = this.selectedIlots;
 
-            // Restore visual state
+            // Restore visual state — highlight selected, keep others at original
             this.ilotMeshes.forEach(m => {
                 if (m === mesh) {
-                    m.material.opacity = 1.0;
-                    if (m.material.emissive) m.material.emissive.set(0x444444);
-                } else {
-                    m.material.opacity = 0.7;
-                    if (m.material.emissive) m.material.emissive.set(0x000000);
+                    m.material.color.set(0xd0e8ff);
+                    m.material.opacity = 0.6;
                 }
             });
         }
@@ -902,187 +988,603 @@ export class FloorPlanRenderer {
             }
         }
 
-        // COSTO CLEAN: Only draw red zigzag circulation lines
-        // Reference style has NO corridor fills, NO hatching - just clean red zigzag
-        const zigzagMaterial = new THREE.LineBasicMaterial({
-            color: 0xff0000, // Red like reference "Ligne circulation"
-            linewidth: 2
+        // Pink fill ONLY for narrow access corridors between box rows
+        const accessFillMaterial = new THREE.MeshBasicMaterial({
+            color: 0xf0a0b8,
+            transparent: true,
+            opacity: 0.3,
+            side: THREE.DoubleSide,
+            depthWrite: false
         });
+
+        // COSTO: Pink dashed circulation centerlines (matching reference "ligne circulation")
+        const circulationMaterial = new THREE.LineDashedMaterial({
+            color: 0xe06090,
+            dashSize: 0.4,
+            gapSize: 0.3
+        });
+
+        // Main corridor outline (no fill, just border)
+        const mainCorridorLineMaterial = new THREE.LineDashedMaterial({
+            color: 0xd05080,
+            dashSize: 0.6,
+            gapSize: 0.3
+        });
+
+        // Arrow materials
+        const arrowMaterial = new THREE.MeshBasicMaterial({
+            color: 0xd05080,
+            side: THREE.DoubleSide
+        });
+
+        const arrowSpacing = 4.0;
+        const arrowSize = 0.35;
+
+        const normalizePath = (rawPoints) => {
+            if (!Array.isArray(rawPoints)) return null;
+            const points = rawPoints.map((pt) => {
+                if (!pt) return null;
+                const x = Number(pt.x !== undefined ? pt.x : pt[0]);
+                const y = Number(pt.y !== undefined ? pt.y : pt[1]);
+                if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+                return { x, y };
+            }).filter(Boolean);
+            return points.length >= 2 ? points : null;
+        };
+
+        const createArrowMesh = (x, y, angle, material = arrowMaterial) => {
+            const arrowGeom = new THREE.BufferGeometry();
+            const half = arrowSize * 0.5;
+            const vertices = new Float32Array([
+                -arrowSize, -half, 0.15,
+                -arrowSize, half, 0.15,
+                arrowSize, 0, 0.15
+            ]);
+            arrowGeom.setAttribute('position', new THREE.BufferAttribute(vertices, 3));
+            const arrow = new THREE.Mesh(arrowGeom, material);
+            arrow.position.set(x, y, 0.15);
+            arrow.rotation.z = angle;
+            return arrow;
+        };
+
+        const drawPath = (points) => {
+            const vectors = points.map(pt => new THREE.Vector3(pt.x, pt.y, 0.1));
+            const geom = new THREE.BufferGeometry().setFromPoints(vectors);
+            const line = new THREE.Line(geom, circulationMaterial);
+            line.computeLineDistances();
+            this.corridorsGroup.add(line);
+        };
 
         corridors.forEach(corridor => {
-            const isHorizontal = corridor.type === 'horizontal' || corridor.width > corridor.height;
+            // Path-based corridors
+            const pathPoints = normalizePath(corridor.path || corridor.corners);
+            if (pathPoints) {
+                drawPath(pathPoints);
+                return;
+            }
+
+            // Rectangle-based corridors (from COSTOLayoutEngine)
+            if (![corridor.x, corridor.y, corridor.width, corridor.height].every(n => Number.isFinite(n))) {
+                return;
+            }
+
+            const corridorType = (corridor.type || '').toUpperCase();
+            const isHorizontal = corridor.direction === 'horizontal' || corridor.width > corridor.height;
             const centerX = corridor.x + corridor.width / 2;
             const centerY = corridor.y + corridor.height / 2;
+            const startX = corridor.x;
+            const endX = corridor.x + corridor.width;
+            const startY = corridor.y;
+            const endY = corridor.y + corridor.height;
 
-            // Draw RED ZIGZAG line through center (matching reference exactly)
-            const zigzagPoints = [];
-            const zigzagAmplitude = 0.3;  // Height of zigzag peaks
-            const zigzagFrequency = 0.5;  // Distance between peaks
+            const isAccess = corridorType === 'ACCESS' || corridorType === 'ENTRANCE';
 
-            if (isHorizontal) {
-                const startX = corridor.x;
-                const endX = corridor.x + corridor.width;
-                let peak = true;
-                for (let x = startX; x <= endX; x += zigzagFrequency) {
-                    const offsetY = peak ? zigzagAmplitude : -zigzagAmplitude;
-                    zigzagPoints.push(new THREE.Vector3(x, centerY + offsetY, 0.1));
-                    peak = !peak;
-                }
-            } else {
-                const startY = corridor.y;
-                const endY = corridor.y + corridor.height;
-                let peak = true;
-                for (let y = startY; y <= endY; y += zigzagFrequency) {
-                    const offsetX = peak ? zigzagAmplitude : -zigzagAmplitude;
-                    zigzagPoints.push(new THREE.Vector3(centerX + offsetX, y, 0.1));
-                    peak = !peak;
-                }
+            // Only draw pink fill on ACCESS corridors (narrow ones between box rows)
+            if (isAccess) {
+                const rectShape = new THREE.Shape();
+                rectShape.moveTo(startX, startY);
+                rectShape.lineTo(endX, startY);
+                rectShape.lineTo(endX, endY);
+                rectShape.lineTo(startX, endY);
+                rectShape.closePath();
+                const rectGeom = new THREE.ShapeGeometry(rectShape);
+                const rectMesh = new THREE.Mesh(rectGeom, accessFillMaterial);
+                rectMesh.position.z = 0.02;
+                this.corridorsGroup.add(rectMesh);
             }
 
-            if (zigzagPoints.length > 1) {
-                const zigzagGeom = new THREE.BufferGeometry().setFromPoints(zigzagPoints);
-                const zigzagLine = new THREE.Line(zigzagGeom, zigzagMaterial);
-                this.corridorsGroup.add(zigzagLine);
-            }
+            // Draw dashed centerline for all corridors
+            const lineMat = isAccess ? circulationMaterial : mainCorridorLineMaterial;
+            const centerPoints = isHorizontal
+                ? [new THREE.Vector3(startX, centerY, 0.1), new THREE.Vector3(endX, centerY, 0.1)]
+                : [new THREE.Vector3(centerX, startY, 0.1), new THREE.Vector3(centerX, endY, 0.1)];
 
-            // Add cyan direction arrows along the corridor
-            const arrowMaterial = new THREE.MeshBasicMaterial({
-                color: 0x00bcd4, // Cyan like reference
-                side: THREE.DoubleSide
-            });
+            const lineGeom = new THREE.BufferGeometry().setFromPoints(centerPoints);
+            const line = new THREE.Line(lineGeom, lineMat);
+            line.computeLineDistances();
+            this.corridorsGroup.add(line);
 
-            const arrowSpacing = 3.0; // Distance between arrows
-            const arrowSize = 0.4;    // Size of arrow triangles
-
-            if (isHorizontal) {
-                const startX = corridor.x + arrowSpacing / 2;
-                const endX = corridor.x + corridor.width - arrowSpacing / 2;
-                for (let x = startX; x < endX; x += arrowSpacing) {
-                    const arrowGeom = new THREE.BufferGeometry();
-                    // Arrow pointing right (positive X direction)
-                    const vertices = new Float32Array([
-                        x - arrowSize, centerY - arrowSize * 0.5, 0.15,
-                        x - arrowSize, centerY + arrowSize * 0.5, 0.15,
-                        x + arrowSize, centerY, 0.15
-                    ]);
-                    arrowGeom.setAttribute('position', new THREE.BufferAttribute(vertices, 3));
-                    const arrow = new THREE.Mesh(arrowGeom, arrowMaterial);
-                    this.corridorsGroup.add(arrow);
-                }
-            } else {
-                const startY = corridor.y + arrowSpacing / 2;
-                const endY = corridor.y + corridor.height - arrowSpacing / 2;
-                for (let y = startY; y < endY; y += arrowSpacing) {
-                    const arrowGeom = new THREE.BufferGeometry();
-                    // Arrow pointing up (positive Y direction)
-                    const vertices = new Float32Array([
-                        centerX - arrowSize * 0.5, y - arrowSize, 0.15,
-                        centerX + arrowSize * 0.5, y - arrowSize, 0.15,
-                        centerX, y + arrowSize, 0.15
-                    ]);
-                    arrowGeom.setAttribute('position', new THREE.BufferAttribute(vertices, 3));
-                    const arrow = new THREE.Mesh(arrowGeom, arrowMaterial);
-                    this.corridorsGroup.add(arrow);
+            // Add arrows only on ACCESS corridors
+            if (isAccess) {
+                const arrowAngle = isHorizontal ? 0 : Math.PI / 2;
+                if (isHorizontal) {
+                    for (let x = startX + arrowSpacing / 2; x < endX; x += arrowSpacing) {
+                        this.corridorsGroup.add(createArrowMesh(x, centerY, arrowAngle, arrowMaterial));
+                    }
+                } else {
+                    for (let y = startY + arrowSpacing / 2; y < endY; y += arrowSpacing) {
+                        this.corridorsGroup.add(createArrowMesh(centerX, y, arrowAngle, arrowMaterial));
+                    }
                 }
             }
         });
 
-        console.log(`Rendered ${corridors.length} corridor zigzag lines with direction arrows (COSTO style)`);
+        console.log(`[Corridors] Rendered ${corridors.length} corridors (pink fill + dashed centerlines)`);
         this.render();
     }
 
     /**
-     * Render circulation lines (red zigzag) and direction arrows (green triangles)
-     * Call this after renderCorridors for professional appearance
+     * Render radiators as RED ZIGZAG polylines along perimeter walls.
+     * Handles both path-based (from COSTOLayoutEngine) and rect-based formats.
+     * @param {Array} radiators - Array of radiator objects
      */
-    renderCirculationLines(corridors) {
-        // Red zigzag material for "Ligne circulation" style
-        const zigzagMaterial = new THREE.LineBasicMaterial({
-            color: 0xff0000,
+    renderRadiators(radiators) {
+        if (!Array.isArray(radiators) || radiators.length === 0) {
+            console.log('[Radiators] No radiators to render');
+            return;
+        }
+
+        // Create or find a group for radiators
+        if (!this.radiatorsGroup) {
+            this.radiatorsGroup = new THREE.Group();
+            this.radiatorsGroup.name = 'radiators';
+            this.scene.add(this.radiatorsGroup);
+        }
+        // Clear existing
+        while (this.radiatorsGroup.children.length > 0) {
+            const child = this.radiatorsGroup.children[0];
+            this.radiatorsGroup.remove(child);
+            if (child.geometry) child.geometry.dispose();
+            if (child.material) child.material.dispose();
+        }
+
+        const radiatorLineMaterial = new THREE.LineBasicMaterial({
+            color: 0xd90014, // Red matching reference
             linewidth: 2
         });
 
-        // Green arrow material for direction indicators
-        const arrowMaterial = new THREE.MeshBasicMaterial({
-            color: 0x00aa00,
-            side: THREE.DoubleSide
-        });
+        let rendered = 0;
+        radiators.forEach((radiator, index) => {
+            // Path-based radiators (zigzag from COSTOLayoutEngine)
+            if (radiator.path && Array.isArray(radiator.path) && radiator.path.length >= 2) {
+                const vectors = radiator.path.map(pt => {
+                    const x = Array.isArray(pt) ? pt[0] : Number(pt.x);
+                    const y = Array.isArray(pt) ? pt[1] : Number(pt.y);
+                    if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+                    return new THREE.Vector3(x, y, 0.15);
+                }).filter(Boolean);
 
-        corridors.forEach(corridor => {
-            const isHorizontal = corridor.type === 'horizontal' || corridor.width > corridor.height;
-            const centerX = corridor.x + corridor.width / 2;
-            const centerY = corridor.y + corridor.height / 2;
-
-            // Draw RED ZIGZAG line through center
-            const zigzagPoints = [];
-            const zigzagAmplitude = 0.25;
-            const zigzagFrequency = 0.4;
-
-            if (isHorizontal) {
-                const startX = corridor.x;
-                const endX = corridor.x + corridor.width;
-                let peak = true;
-                for (let x = startX; x <= endX; x += zigzagFrequency) {
-                    const offsetY = peak ? zigzagAmplitude : -zigzagAmplitude;
-                    zigzagPoints.push(new THREE.Vector3(x, centerY + offsetY, 0.1));
-                    peak = !peak;
+                if (vectors.length >= 2) {
+                    const geom = new THREE.BufferGeometry().setFromPoints(vectors);
+                    const line = new THREE.Line(geom, radiatorLineMaterial);
+                    line.userData = { type: 'radiator', id: radiator.id || `rad_${index}` };
+                    this.radiatorsGroup.add(line);
+                    rendered++;
                 }
-            } else {
-                const startY = corridor.y;
-                const endY = corridor.y + corridor.height;
-                let peak = true;
-                for (let y = startY; y <= endY; y += zigzagFrequency) {
-                    const offsetX = peak ? zigzagAmplitude : -zigzagAmplitude;
-                    zigzagPoints.push(new THREE.Vector3(centerX + offsetX, y, 0.1));
-                    peak = !peak;
-                }
+                return;
             }
 
-            if (zigzagPoints.length > 1) {
-                const zigzagGeom = new THREE.BufferGeometry().setFromPoints(zigzagPoints);
-                const zigzagLine = new THREE.Line(zigzagGeom, zigzagMaterial);
-                this.corridorsGroup.add(zigzagLine);
-            }
-
-            // Draw GREEN DIRECTION ARROWS
-            if (corridor.hasArrows !== false) {
-                const arrowSize = 0.35;
-                const arrowSpacing = 2.5;
-
-                if (isHorizontal) {
-                    for (let x = corridor.x + arrowSpacing; x < corridor.x + corridor.width - arrowSpacing; x += arrowSpacing) {
-                        const dir = corridor.direction === 'right-to-left' ? -1 : 1;
-                        const arrowShape = new THREE.Shape();
-                        arrowShape.moveTo(x - arrowSize * dir, centerY - arrowSize * 0.5);
-                        arrowShape.lineTo(x + arrowSize * dir, centerY);
-                        arrowShape.lineTo(x - arrowSize * dir, centerY + arrowSize * 0.5);
-                        arrowShape.closePath();
-
-                        const arrowGeom = new THREE.ShapeGeometry(arrowShape);
-                        const arrow = new THREE.Mesh(arrowGeom, arrowMaterial);
-                        arrow.position.z = 0.12;
-                        this.corridorsGroup.add(arrow);
-                    }
+            // Rectangle-based radiators (x, y, width, depth)
+            if (Number.isFinite(radiator.x) && Number.isFinite(radiator.y)) {
+                const w = radiator.width || 0.6;
+                const d = radiator.depth || 0.1;
+                const shape = new THREE.Shape();
+                if (radiator.horizontal !== false) {
+                    shape.moveTo(-w / 2, 0);
+                    shape.lineTo(w / 2, 0);
+                    shape.lineTo(w / 2, d);
+                    shape.lineTo(-w / 2, d);
                 } else {
-                    for (let y = corridor.y + arrowSpacing; y < corridor.y + corridor.height - arrowSpacing; y += arrowSpacing) {
-                        const dir = corridor.direction === 'down' ? -1 : 1;
-                        const arrowShape = new THREE.Shape();
-                        arrowShape.moveTo(centerX - arrowSize * 0.5, y - arrowSize * dir);
-                        arrowShape.lineTo(centerX, y + arrowSize * dir);
-                        arrowShape.lineTo(centerX + arrowSize * 0.5, y - arrowSize * dir);
-                        arrowShape.closePath();
+                    shape.moveTo(0, -w / 2);
+                    shape.lineTo(d, -w / 2);
+                    shape.lineTo(d, w / 2);
+                    shape.lineTo(0, w / 2);
+                }
+                shape.closePath();
+                const geometry = new THREE.ShapeGeometry(shape);
+                const mat = new THREE.MeshBasicMaterial({ color: 0xd90014, side: THREE.DoubleSide });
+                const mesh = new THREE.Mesh(geometry, mat);
+                mesh.position.set(radiator.x, radiator.y, 0.15);
+                this.radiatorsGroup.add(mesh);
+                rendered++;
+            }
+        });
 
-                        const arrowGeom = new THREE.ShapeGeometry(arrowShape);
-                        const arrow = new THREE.Mesh(arrowGeom, arrowMaterial);
-                        arrow.position.z = 0.12;
-                        this.corridorsGroup.add(arrow);
+        console.log(`[Radiators] Rendered ${rendered}/${radiators.length} radiator elements (red zigzag)`);
+        this.render();
+    }
+
+    /**
+     * Render circulation center-line paths as light-blue dashed lines.
+     * Reference style: "ligne circulation" dashed lines through corridors.
+     * @param {Array} circulationPaths - Array of {path: [{x,y},...], type, style}
+     */
+    renderCirculationPaths(circulationPaths) {
+        if (!Array.isArray(circulationPaths) || circulationPaths.length === 0) return;
+
+        const material = new THREE.LineDashedMaterial({
+            color: 0x66b3f2, // Light blue
+            linewidth: 2,
+            dashSize: 0.3,
+            gapSize: 0.2
+        });
+
+        circulationPaths.forEach(cp => {
+            const path = cp.path;
+            if (!Array.isArray(path) || path.length < 2) return;
+            const vectors = path
+                .map(pt => {
+                    const x = Number(pt.x), y = Number(pt.y);
+                    return Number.isFinite(x) && Number.isFinite(y)
+                        ? new THREE.Vector3(x, y, 0.08)
+                        : null;
+                })
+                .filter(Boolean);
+            if (vectors.length < 2) return;
+            const geom = new THREE.BufferGeometry().setFromPoints(vectors);
+            const line = new THREE.Line(geom, material);
+            line.computeLineDistances(); // Required for dashed material
+            this.corridorsGroup.add(line);
+        });
+
+        console.log(`Rendered ${circulationPaths.length} circulation paths (light-blue dashed)`);
+        this.render();
+    }
+
+    /**
+     * renderCostoLayout - Draw the COMPLETE COSTO professional plan in one shot.
+     * Clears all existing geometry and redraws everything from computed data.
+     * 
+     * @param {Object} floorPlan - Original floor plan (bounds, walls, entrances, forbiddenZones, envelope)
+     * @param {Object} layoutData - Computed layout: {units, corridors, radiators, circulationPaths}
+     */
+    renderCostoLayout(floorPlan, layoutData) {
+        console.log('[COSTO Layout] Drawing complete professional plan');
+        this.clear();
+
+        if (this.defaultGrid) this.defaultGrid.visible = false;
+
+        const bounds = floorPlan.bounds;
+        const units = layoutData.units || [];
+        const corridors = layoutData.corridors || [];
+        const radiators = layoutData.radiators || [];
+        const circulationPaths = layoutData.circulationPaths || [];
+
+        // ── 1. FLOOR BACKGROUND ──────────────────────────────────────
+        // Light gray floor fill
+        if (bounds) {
+            const floorShape = new THREE.Shape([
+                new THREE.Vector2(bounds.minX, bounds.minY),
+                new THREE.Vector2(bounds.maxX, bounds.minY),
+                new THREE.Vector2(bounds.maxX, bounds.maxY),
+                new THREE.Vector2(bounds.minX, bounds.maxY)
+            ]);
+            const floorMesh = new THREE.Mesh(
+                new THREE.ShapeGeometry(floorShape),
+                new THREE.MeshBasicMaterial({ color: 0xf8f8f8, side: THREE.DoubleSide })
+            );
+            floorMesh.position.z = -0.02;
+            this.wallsGroup.add(floorMesh);
+        }
+
+        // ── 2. CORRIDORS (CAD style: invisible fill, no border) ────────
+        // Corridors are not filled in professional COSTO plans
+        // Their presence is indicated only by centerlines + arrows
+
+        // ── 3. CORRIDOR DASHED CENTERLINES + GREEN ARROWS ────────────
+        const corridorLineMat = new THREE.LineDashedMaterial({
+            color: 0x2563eb, dashSize: 0.3, gapSize: 0.2
+        });
+        const greenArrowMat = new THREE.MeshBasicMaterial({ color: 0x4caf50, side: THREE.DoubleSide });
+
+        corridors.forEach(c => {
+            if (![c.x, c.y, c.width, c.height].every(n => Number.isFinite(n))) return;
+            const isH = c.direction === 'horizontal' || c.width > c.height;
+            const cx = c.x + c.width / 2, cy = c.y + c.height / 2;
+            const pts = isH
+                ? [new THREE.Vector3(c.x, cy, 0.08), new THREE.Vector3(c.x + c.width, cy, 0.08)]
+                : [new THREE.Vector3(cx, c.y, 0.08), new THREE.Vector3(cx, c.y + c.height, 0.08)];
+            const lineGeom = new THREE.BufferGeometry().setFromPoints(pts);
+            const line = new THREE.Line(lineGeom, corridorLineMat);
+            line.computeLineDistances();
+            this.corridorsGroup.add(line);
+
+            // Small green directional arrows (COSTO reference style)
+            const arrowAngle = isH ? 0 : Math.PI / 2;
+            const arrowSize = 0.18;
+            const arrowSpacing = 3.0;
+            const makeGreenArrow = (ax, ay) => {
+                const verts = new Float32Array([
+                    -arrowSize, -arrowSize * 0.5, 0.12,
+                    -arrowSize, arrowSize * 0.5, 0.12,
+                    arrowSize * 0.7, 0, 0.12
+                ]);
+                const g = new THREE.BufferGeometry();
+                g.setAttribute('position', new THREE.BufferAttribute(verts, 3));
+                const m = new THREE.Mesh(g, greenArrowMat);
+                m.position.set(ax, ay, 0);
+                m.rotation.z = arrowAngle;
+                return m;
+            };
+            if (isH) {
+                for (let x = c.x + arrowSpacing / 2; x < c.x + c.width; x += arrowSpacing)
+                    this.corridorsGroup.add(makeGreenArrow(x, cy));
+            } else {
+                for (let y = c.y + arrowSpacing / 2; y < c.y + c.height; y += arrowSpacing)
+                    this.corridorsGroup.add(makeGreenArrow(cx, y));
+            }
+        });
+
+        // ── 4. BOXES (CAD style: white fills, thin gray outlines, width dimensions) ──
+        const boxOutlineMat = new THREE.LineBasicMaterial({ color: 0x374151 });
+        const showLabels = units.length <= 600;
+
+        units.forEach((ilot, index) => {
+            if (![ilot.x, ilot.y, ilot.width, ilot.height].every(n => Number.isFinite(n))) return;
+
+            // Clean white fill (professional CAD style)
+            const shape = new THREE.Shape([
+                new THREE.Vector2(0, 0),
+                new THREE.Vector2(ilot.width, 0),
+                new THREE.Vector2(ilot.width, ilot.height),
+                new THREE.Vector2(0, ilot.height)
+            ]);
+            const fillMesh = new THREE.Mesh(
+                new THREE.ShapeGeometry(shape),
+                new THREE.MeshBasicMaterial({
+                    color: 0xffffff, transparent: true, opacity: 0.85,
+                    side: THREE.DoubleSide, depthWrite: false
+                })
+            );
+            fillMesh.position.set(ilot.x, ilot.y, 0.02);
+            fillMesh.userData = { ilot, index, type: 'ilot', _origColor: 0xffffff, _origOpacity: 0.85 };
+            this.ilotsGroup.add(fillMesh);
+            this.ilotMeshes.push(fillMesh);
+
+            // Thin dark gray outline (uniform for all box types)
+            const linePoints = [
+                new THREE.Vector3(0, 0, 0.05),
+                new THREE.Vector3(ilot.width, 0, 0.05),
+                new THREE.Vector3(ilot.width, ilot.height, 0.05),
+                new THREE.Vector3(0, ilot.height, 0.05),
+                new THREE.Vector3(0, 0, 0.05)
+            ];
+            const outline = new THREE.Line(
+                new THREE.BufferGeometry().setFromPoints(linePoints), boxOutlineMat
+            );
+            outline.position.set(ilot.x, ilot.y, 0);
+            this.ilotsGroup.add(outline);
+
+            // Width dimension label (COSTO reference shows width in meters, e.g. "2.15")
+            if (showLabels) {
+                // Determine the "width" dimension (the shorter side facing the corridor)
+                const isH = ilot.width < ilot.height;
+                const dimValue = isH ? ilot.width : ilot.height;
+                const labelText = dimValue.toFixed(2);
+                const sprite = this.createTextSprite(labelText, {
+                    fontSize: 8, fontColor: '#1f2937',
+                    backgroundColor: 'rgba(255,255,255,0)', padding: 1
+                });
+                sprite.position.set(ilot.x + ilot.width / 2, ilot.y + ilot.height / 2, 0.1);
+                sprite.scale.set(0.8, 0.4, 1);
+                this.ilotsGroup.add(sprite);
+
+                // Area label (smaller, below dimension)
+                const area = ilot.area || (ilot.width * ilot.height);
+                const areaText = `${area.toFixed(1)}m²`;
+                const areaSprite = this.createTextSprite(areaText, {
+                    fontSize: 7, fontColor: '#6b7280',
+                    backgroundColor: 'rgba(255,255,255,0)', padding: 1
+                });
+                areaSprite.position.set(ilot.x + ilot.width / 2, ilot.y + ilot.height * 0.3, 0.1);
+                areaSprite.scale.set(0.7, 0.35, 1);
+                this.ilotsGroup.add(areaSprite);
+            }
+        });
+
+        // ── 5. WALLS (thick filled rectangles, professional CAD style) ────
+        const wallFillColor = 0x4b5563;
+        const wallThickness = 0.15; // 15cm wall thickness
+        const envelopeThickness = 0.20; // 20cm for outer walls
+
+        const drawThickWall = (start, end, thickness) => {
+            const dx = end.x - start.x, dy = end.y - start.y;
+            const len = Math.hypot(dx, dy);
+            if (len < 0.1) return;
+            // Normal perpendicular to wall direction
+            const nx = -dy / len * (thickness / 2);
+            const ny = dx / len * (thickness / 2);
+            const wallShape = new THREE.Shape([
+                new THREE.Vector2(start.x + nx, start.y + ny),
+                new THREE.Vector2(end.x + nx, end.y + ny),
+                new THREE.Vector2(end.x - nx, end.y - ny),
+                new THREE.Vector2(start.x - nx, start.y - ny)
+            ]);
+            const wallMesh = new THREE.Mesh(
+                new THREE.ShapeGeometry(wallShape),
+                new THREE.MeshBasicMaterial({ color: wallFillColor, side: THREE.DoubleSide })
+            );
+            wallMesh.position.z = 0.03;
+            this.wallsGroup.add(wallMesh);
+        };
+
+        // Draw envelope (exterior perimeter) with thicker fills
+        if (floorPlan.envelope && Array.isArray(floorPlan.envelope)) {
+            floorPlan.envelope.forEach(line => {
+                if (line.start && line.end) {
+                    drawThickWall(line.start, line.end, envelopeThickness);
+                }
+            });
+        }
+
+        // Draw internal walls as thick filled rectangles
+        if (floorPlan.walls && Array.isArray(floorPlan.walls)) {
+            floorPlan.walls.forEach(wall => {
+                if (wall.start && wall.end) {
+                    drawThickWall(wall.start, wall.end, wallThickness);
+                } else if (wall.polygon && Array.isArray(wall.polygon)) {
+                    // Polyline walls: draw each segment thick
+                    const pts = wall.polygon.map(pt => ({
+                        x: Array.isArray(pt) ? pt[0] : pt.x,
+                        y: Array.isArray(pt) ? pt[1] : pt.y
+                    }));
+                    for (let i = 0; i < pts.length - 1; i++) {
+                        drawThickWall(pts[i], pts[i + 1], wallThickness);
                     }
+                }
+            });
+        }
+
+        // ── 5b. FLOOR BOUNDARY (thick filled perimeter rectangle) ────
+        if (bounds) {
+            const bt = envelopeThickness;
+            const corners = [
+                { start: { x: bounds.minX, y: bounds.minY }, end: { x: bounds.maxX, y: bounds.minY } },
+                { start: { x: bounds.maxX, y: bounds.minY }, end: { x: bounds.maxX, y: bounds.maxY } },
+                { start: { x: bounds.maxX, y: bounds.maxY }, end: { x: bounds.minX, y: bounds.maxY } },
+                { start: { x: bounds.minX, y: bounds.maxY }, end: { x: bounds.minX, y: bounds.minY } }
+            ];
+            corners.forEach(c => drawThickWall(c.start, c.end, bt));
+        }
+
+        // ── 6. FORBIDDEN ZONES (yellow fill) ────────────────────────
+        if (floorPlan.forbiddenZones && Array.isArray(floorPlan.forbiddenZones)) {
+            floorPlan.forbiddenZones.forEach(fz => {
+                if (fz.polygon) {
+                    const pts2d = fz.polygon.map(pt =>
+                        new THREE.Vector2(Array.isArray(pt) ? pt[0] : pt.x, Array.isArray(pt) ? pt[1] : pt.y)
+                    );
+                    const fzShape = new THREE.Shape(pts2d);
+                    const fzMesh = new THREE.Mesh(
+                        new THREE.ShapeGeometry(fzShape),
+                        new THREE.MeshBasicMaterial({ color: 0xffcc00, transparent: true, opacity: 0.4, side: THREE.DoubleSide })
+                    );
+                    fzMesh.position.z = 0.02;
+                    this.forbiddenGroup.add(fzMesh);
+                }
+            });
+        }
+
+        // ── 7. ENTRANCES (red lines) ────────────────────────────────
+        if (floorPlan.entrances && Array.isArray(floorPlan.entrances)) {
+            const entranceMat = new THREE.LineBasicMaterial({ color: 0xff0000, linewidth: 2 });
+            floorPlan.entrances.forEach(ent => {
+                if (ent.start && ent.end) {
+                    const geom = new THREE.BufferGeometry().setFromPoints([
+                        new THREE.Vector3(ent.start.x, ent.start.y, 0.04),
+                        new THREE.Vector3(ent.end.x, ent.end.y, 0.04)
+                    ]);
+                    this.entrancesGroup.add(new THREE.Line(geom, entranceMat));
+                }
+            });
+        }
+
+        // ── 8. RADIATORS (red zigzag on perimeter) ──────────────────
+        if (!this.radiatorsGroup) {
+            this.radiatorsGroup = new THREE.Group();
+            this.radiatorsGroup.name = 'radiators';
+            this.scene.add(this.radiatorsGroup);
+        }
+        while (this.radiatorsGroup.children.length > 0) {
+            const child = this.radiatorsGroup.children[0];
+            this.radiatorsGroup.remove(child);
+            if (child.geometry) child.geometry.dispose();
+            if (child.material) child.material.dispose();
+        }
+        const radMat = new THREE.LineBasicMaterial({ color: 0xd90014, linewidth: 2 });
+        radiators.forEach((rad, i) => {
+            if (rad.path && Array.isArray(rad.path) && rad.path.length >= 2) {
+                const vecs = rad.path.map(pt => {
+                    const x = Number(pt.x), y = Number(pt.y);
+                    return Number.isFinite(x) && Number.isFinite(y) ? new THREE.Vector3(x, y, 0.15) : null;
+                }).filter(Boolean);
+                if (vecs.length >= 2) {
+                    const geom = new THREE.BufferGeometry().setFromPoints(vecs);
+                    this.radiatorsGroup.add(new THREE.Line(geom, radMat));
                 }
             }
         });
 
-        console.log(`Added circulation lines and arrows to ${corridors.length} corridors`);
+        // ── 9. CIRCULATION PATHS (thin blue dashed + green arrows, CAD style) ──
+        const routeDashedMat = new THREE.LineDashedMaterial({
+            color: 0x2563eb, dashSize: 0.4, gapSize: 0.25
+        });
+        const routeArrowMat = new THREE.MeshBasicMaterial({ color: 0x4caf50, side: THREE.DoubleSide });
+
+        // Helper: build small green directional arrows along a path
+        const buildRouteArrows = (points, zPos) => {
+            const arrowSize = 0.18;
+            for (let i = 0; i < points.length - 1; i++) {
+                const p1 = points[i], p2 = points[i + 1];
+                const dx = p2.x - p1.x, dy = p2.y - p1.y;
+                const segLen = Math.hypot(dx, dy);
+                if (segLen < 2.0) continue;
+                const angle = Math.atan2(dy, dx);
+                const step = 3.0;
+                for (let d = step; d < segLen - 0.5; d += step) {
+                    const ax = p1.x + (dx / segLen) * d;
+                    const ay = p1.y + (dy / segLen) * d;
+                    const verts = new Float32Array([
+                        -arrowSize, -arrowSize * 0.5, 0,
+                        -arrowSize, arrowSize * 0.5, 0,
+                        arrowSize * 0.7, 0, 0
+                    ]);
+                    const g = new THREE.BufferGeometry();
+                    g.setAttribute('position', new THREE.BufferAttribute(verts, 3));
+                    const m = new THREE.Mesh(g, routeArrowMat);
+                    m.position.set(ax, ay, zPos + 0.02);
+                    m.rotation.z = angle;
+                    this.corridorsGroup.add(m);
+                }
+            }
+        };
+
+        circulationPaths.forEach(cp => {
+            if (!Array.isArray(cp.path) || cp.path.length < 2) return;
+            const pts = cp.path.map(pt => {
+                const x = Number(pt.x), y = Number(pt.y);
+                return Number.isFinite(x) && Number.isFinite(y) ? { x, y } : null;
+            }).filter(Boolean);
+            if (pts.length < 2) return;
+
+            // All route types: thin blue dashed lines (professional CAD style)
+            const vecs = pts.map(p => new THREE.Vector3(p.x, p.y, 0.08));
+            const geom = new THREE.BufferGeometry().setFromPoints(vecs);
+            const line = new THREE.Line(geom, routeDashedMat);
+            line.computeLineDistances();
+            this.corridorsGroup.add(line);
+
+            // Green directional arrows on main route segments
+            const isMainRoute = cp.type === 'SPINE' || cp.type === 'BRANCH' || cp.type === 'ENTRANCE_CONNECTION';
+            if (isMainRoute) {
+                buildRouteArrows(pts, 0.08);
+            }
+        });
+
+        // ── FIT & RENDER ────────────────────────────────────────────
+        if (bounds) this.fitToBounds(bounds);
+
+        console.log(`[COSTO Layout] Complete: ${units.length} boxes, ${corridors.length} corridors, ${radiators.length} radiators, ${circulationPaths.length} circulation`);
         this.render();
+    }
+
+    /**
+     * @deprecated renderCorridors() now draws light-blue dashed circulation + arrows
+     */
+    renderCirculationLines(corridors) {
+        if (corridors && corridors.length > 0) {
+            this.renderCorridors(corridors);
+        }
     }
 
     /**
@@ -1204,110 +1706,6 @@ export class FloorPlanRenderer {
         });
 
         console.log(`[COSTO] Rendered perimeter for ${rows.length} row clusters (${ilots.length} ilots)`);
-        this.render();
-    }
-
-    /**
-     * PHASE 4: Render radiators as small black rectangles along walls
-     * Either from DXF data or auto-generated at intervals
-     */
-    renderRadiators(radiators, walls, options = {}) {
-        // Create radiators group if not exists
-        if (!this.radiatorsGroup) {
-            this.radiatorsGroup = new THREE.Group();
-            this.radiatorsGroup.name = 'radiators';
-            this.scene.add(this.radiatorsGroup);
-        }
-
-        // Clear existing radiators
-        while (this.radiatorsGroup.children.length > 0) {
-            const child = this.radiatorsGroup.children[0];
-            this.radiatorsGroup.remove(child);
-            if (child.geometry) child.geometry.dispose();
-            if (child.material) child.material.dispose();
-        }
-
-        const {
-            radiatorWidth = 0.6,    // 60cm width
-            radiatorDepth = 0.1,    // 10cm depth
-            autoSpacing = 3.0,      // Generate every 3m if no DXF data
-            wallOffset = 0.05       // 5cm from wall
-        } = options;
-
-        // BROWN material for radiators per COSTO spec (RGB 136 0 21)
-        const radiatorMaterial = new THREE.MeshBasicMaterial({
-            color: 0x880015, // Dark red/brown per spec
-            side: THREE.DoubleSide
-        });
-
-        let radiatorsToRender = [];
-
-        // Use provided radiators if available
-        if (radiators && radiators.length > 0) {
-            radiatorsToRender = radiators;
-        } else if (walls && walls.length > 0) {
-            // Auto-generate radiators along walls
-            console.log('[Radiators] Auto-generating from walls...');
-
-            walls.forEach(wall => {
-                const start = wall.start || { x: wall.x1, y: wall.y1 };
-                const end = wall.end || { x: wall.x2, y: wall.y2 };
-
-                if (!start || !end) return;
-
-                const wallLength = Math.hypot(end.x - start.x, end.y - start.y);
-                if (wallLength < autoSpacing) return; // Wall too short
-
-                const isHorizontal = Math.abs(end.y - start.y) < 0.1;
-                const isVertical = Math.abs(end.x - start.x) < 0.1;
-
-                if (!isHorizontal && !isVertical) return; // Only process orthogonal walls
-
-                const numRadiators = Math.floor(wallLength / autoSpacing);
-                for (let i = 1; i <= numRadiators; i++) {
-                    const t = i / (numRadiators + 1);
-                    const x = start.x + (end.x - start.x) * t;
-                    const y = start.y + (end.y - start.y) * t;
-
-                    radiatorsToRender.push({
-                        x, y,
-                        horizontal: isHorizontal,
-                        width: radiatorWidth,
-                        depth: radiatorDepth
-                    });
-                }
-            });
-        }
-
-        // Render each radiator
-        radiatorsToRender.forEach(rad => {
-            const w = rad.width || radiatorWidth;
-            const d = rad.depth || radiatorDepth;
-
-            const shape = new THREE.Shape();
-            if (rad.horizontal !== false) {
-                // Radiator along horizontal wall
-                shape.moveTo(-w / 2, 0);
-                shape.lineTo(w / 2, 0);
-                shape.lineTo(w / 2, d);
-                shape.lineTo(-w / 2, d);
-                shape.closePath();
-            } else {
-                // Radiator along vertical wall
-                shape.moveTo(0, -w / 2);
-                shape.lineTo(d, -w / 2);
-                shape.lineTo(d, w / 2);
-                shape.lineTo(0, w / 2);
-                shape.closePath();
-            }
-
-            const geometry = new THREE.ShapeGeometry(shape);
-            const mesh = new THREE.Mesh(geometry, radiatorMaterial.clone());
-            mesh.position.set(rad.x, rad.y, 0.03);
-            this.radiatorsGroup.add(mesh);
-        });
-
-        console.log(`[Radiators] Rendered ${radiatorsToRender.length} radiator symbols`);
         this.render();
     }
 
@@ -1555,8 +1953,8 @@ export class FloorPlanRenderer {
         }
 
         const aspect = this.container.clientWidth / this.container.clientHeight;
-        // Increase padding factor from 1.2 to 1.6 for a "smaller" view (zoomed out)
-        const frustumSize = Math.max(width / aspect, height) * 1.6;
+        // Tight fit with small padding for proper alignment on load
+        const frustumSize = Math.max(width / aspect, height) * 1.12;
 
         this.camera.left = frustumSize * aspect / -2;
         this.camera.right = frustumSize * aspect / 2;
@@ -1642,11 +2040,20 @@ export class FloorPlanRenderer {
 
         this.ilotMeshes.forEach(m => {
             if (m === mesh) {
-                m.material.opacity = 1.0;
-                if (m.material.emissive) m.material.emissive.set(0x444444);
+                // Highlight selected box with light blue fill
+                m.material.color.set(0xd0e8ff);
+                m.material.opacity = 0.6;
             } else {
-                m.material.opacity = 0.7;
-                if (m.material.emissive) m.material.emissive.set(0x000000);
+                // Restore original fill
+                const origColor = m.userData._origColor;
+                const origOpacity = m.userData._origOpacity;
+                if (origColor !== undefined) {
+                    m.material.color.set(origColor);
+                    m.material.opacity = origOpacity;
+                } else {
+                    m.material.color.set(0xffffff);
+                    m.material.opacity = 0;
+                }
             }
         });
 
@@ -1662,8 +2069,17 @@ export class FloorPlanRenderer {
         this.selectedIlots = [];
         this.outlinePass.selectedObjects = [];
         this.ilotMeshes.forEach(m => {
-            m.material.opacity = 0.7;
-            if (m.material.emissive) m.material.emissive.set(0x000000);
+            // Restore original fill color and opacity from userData
+            const origColor = m.userData._origColor;
+            const origOpacity = m.userData._origOpacity;
+            if (origColor !== undefined) {
+                m.material.color.set(origColor);
+                m.material.opacity = origOpacity;
+            } else {
+                // Legacy fallback: transparent raycasting mesh
+                m.material.color.set(0xffffff);
+                m.material.opacity = 0;
+            }
         });
         this.render();
     }

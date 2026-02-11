@@ -19,6 +19,7 @@ describe('ML Validation Systems', () => {
         const validator = new ArchitecturalValidator(mockFloorPlan);
         const report = validator.validate();
         expect(report.isValid).toBe(false);
+        // 4 issues: room-area, room-dimension, corridor-width, egress-single
         expect(report.issues.length).toBe(4);
     });
 
@@ -27,6 +28,7 @@ describe('ML Validation Systems', () => {
         const report = validator.validate();
         const corrector = new AnnotationAndCorrection(mockFloorPlan, report.issues);
         const suggestions = corrector.generateSuggestions();
-        expect(suggestions.length).toBe(3);
+        // One suggestion per issue: resize-room, resize-room, adjust-width, review
+        expect(suggestions.length).toBe(4);
     });
 });

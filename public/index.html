@@ -3,8 +3,9 @@
 
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>FloorPlan Pro - Professional Floor Design System</title>
+    <meta name="viewport"
+        content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>FloorPlan Pro - Spatial Intelligence Studio</title>
 
     <!-- Font Awesome -->
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" rel="stylesheet">
@@ -12,7 +13,8 @@
     <!-- Google Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap"
+    <link
+        href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;600;700;800&family=Space+Grotesk:wght@300;400;500;600;700&display=swap"
         rel="stylesheet">
 
     <!-- Three.js Import Map -->
@@ -36,7 +38,7 @@
             <i class="fas fa-cube"></i>
             <div class="brand-text">
                 <h1>FloorPlan Pro</h1>
-                <span>Professional Design System</span>
+                <span>Spatial Intelligence Studio</span>
             </div>
         </div>
 
@@ -114,10 +116,19 @@
 
         <div class="nav-actions">
             <!-- Quick Action Buttons -->
+            <button class="btn btn-secondary btn-sm" id="analyzeRawPlanBtn"
+                title="Analyze raw plan for gaps and issues">
+                <i class="fas fa-search-plus"></i> Analyze Plan
+            </button>
+            <button class="btn btn-secondary btn-sm" id="completeRawPlanBtn"
+                title="Fill gaps in raw floor plan before generating ilots">
+                <i class="fas fa-magic"></i> Complete Raw Plan
+            </button>
             <button class="btn btn-success btn-sm" id="topGenerateIlotsBtn" title="Generate Storage Units">
                 <i class="fas fa-th"></i> Generate Ilots
             </button>
-            <button class="btn btn-info btn-sm" id="topGenerateCorridorsBtn" title="Generate Circulation">
+            <!-- Hidden: corridors now generated automatically by Gen Îlots -->
+            <button class="btn btn-info btn-sm" id="topGenerateCorridorsBtn" title="Generate Circulation Corridors + Radiators" style="display:none">
                 <i class="fas fa-project-diagram"></i> Corridors
             </button>
 
@@ -158,7 +169,7 @@
 
                         <div id="unitMixPreview" style="display:none; margin-top: 10px;">
                             <h4 style="font-size: 10px; margin-bottom: 5px;">Loaded Mix:</h4>
-                            <div id="unitMixSummary" style="font-size: 9px; color: #10b981;"></div>
+                            <div id="unitMixSummary" style="font-size: 9px; color: var(--accent);"></div>
                         </div>
                     </div>
                 </div>
@@ -214,6 +225,45 @@
                 </div>
             </div>
 
+            <!-- Layer Visibility -->
+            <div class="sidebar-section collapsed">
+                <h3>
+                    <i class="fas fa-layer-group"></i> Layers
+                    <i class="fas fa-chevron-down collapse-icon"></i>
+                </h3>
+                <div class="section-content">
+                    <div class="config-group">
+                        <label class="config-label">Toggle visibility</label>
+                        <div class="layer-toggles">
+                            <label class="checkbox-label">
+                                <input type="checkbox" id="layerWalls" checked>
+                                <span>Walls</span>
+                            </label>
+                            <label class="checkbox-label">
+                                <input type="checkbox" id="layerEntrances" checked>
+                                <span>Entrances</span>
+                            </label>
+                            <label class="checkbox-label">
+                                <input type="checkbox" id="layerForbidden" checked>
+                                <span>Forbidden zones</span>
+                            </label>
+                            <label class="checkbox-label">
+                                <input type="checkbox" id="layerIlots" checked>
+                                <span>Boxes (Îlots)</span>
+                            </label>
+                            <label class="checkbox-label">
+                                <input type="checkbox" id="layerCorridors" checked>
+                                <span>Corridors</span>
+                            </label>
+                            <label class="checkbox-label">
+                                <input type="checkbox" id="layerArrows" checked>
+                                <span>Circulation arrows</span>
+                            </label>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <!-- Corridor Configuration -->
             <div class="sidebar-section collapsed">
                 <h3>
@@ -259,16 +309,35 @@
                 </h3>
                 <div class="section-content">
                     <div style="display: flex; flex-direction: column; gap: 12px;">
-                        <label style="display: flex; align-items: center; gap: 8px; font-size: 12px; color: #ccc;">
-                            <input type="checkbox" id="costoLayoutCheckbox" style="margin: 0;">
+                        <label
+                            style="display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--gray-600);">
+                            <input type="checkbox" id="costoLayoutCheckbox" checked style="margin: 0;">
                             <span>COSTO Style (Organized Rows)</span>
                         </label>
+                        <div class="config-group">
+                            <label class="config-label">Target Îlots</label>
+                            <p class="config-help">Leave empty for auto (floor area / 5). Aim 280–350 for dense plans.
+                            </p>
+                            <input type="number" id="targetIlotsInput" min="1" max="500" placeholder="auto"
+                                style="width: 100%; padding: 6px 8px; font-size: 12px;">
+                        </div>
                         <button class="btn btn-block btn-success" id="generateIlotsBtn">
                             <i class="fas fa-th-large"></i> Generate Îlots
                         </button>
-                        <button class="btn btn-block btn-info" id="generateCorridorsBtn">
+                        <!-- Hidden: corridors now generated automatically by Gen Îlots -->
+                        <button class="btn btn-block btn-info" id="generateCorridorsBtn" style="display:none">
                             <i class="fas fa-route"></i> Generate Corridors
                         </button>
+                        <!-- Compliance Display -->
+                        <div id="complianceDisplay" class="compliance-display">
+                            <div class="compliance-header">
+                                <span><i class="fas fa-shield-alt"></i> Compliance</span>
+                                <span id="complianceRate" class="compliance-value">--</span>
+                            </div>
+                            <div class="compliance-bar-track">
+                                <div class="compliance-bar-fill" id="complianceBarFill" style="width: 0%;"></div>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -292,6 +361,18 @@
                         </button>
                         <button class="btn btn-sm" id="snapGridBtn" title="Snap to Grid">
                             <i class="fas fa-magnet"></i>
+                        </button>
+                        <button class="btn btn-sm" id="splitIlotBtn" title="Split selected unit">
+                            <i class="fas fa-cut"></i>
+                        </button>
+                        <button class="btn btn-sm" id="mergeIlotBtn" title="Merge with adjacent">
+                            <i class="fas fa-object-group"></i>
+                        </button>
+                        <button class="btn btn-sm" id="lockRowBtn" title="Lock row">
+                            <i class="fas fa-lock"></i>
+                        </button>
+                        <button class="btn btn-sm" id="unlockRowBtn" title="Unlock row">
+                            <i class="fas fa-lock-open"></i>
                         </button>
                     </div>
                 </div>
@@ -379,7 +460,7 @@
                 <div class="legend-title" style="display: flex; justify-content: space-between; align-items: center;">
                     <span>LÉGENDE</span>
                     <button class="legend-collapse-btn" id="legendCollapseBtn" title="Minimize Legend"
-                        style="background: none; border: none; cursor: pointer; font-size: 16px; padding: 4px 8px; color: #666;">
+                        style="background: none; border: none; cursor: pointer; font-size: 16px; padding: 4px 8px; color: var(--gray-600);">
                         <i class="fas fa-minus"></i>
                     </button>
                 </div>
@@ -399,42 +480,44 @@
                 <!-- Line Style Legend -->
                 <div class="legend-section">
                     <div class="legend-item">
-                        <div class="legend-line" style="background-color: #000000; height: 1px;"></div>
-                        <span>Tôle Blanche</span>
+                        <div class="legend-color" style="background-color: #dbeafe; border: 1px solid #3b82f6;"></div>
+                        <span class="legend-label">S — Small</span>
                     </div>
                     <div class="legend-item">
-                        <div class="legend-line" style="background-color: #0000ff; height: 2px;"></div>
-                        <span>Tôle Grise</span>
+                        <div class="legend-color" style="background-color: #d1fae5; border: 1px solid #10b981;"></div>
+                        <span class="legend-label">M — Medium</span>
                     </div>
                     <div class="legend-item">
-                        <div class="legend-line legend-dashed" style="border-top: 2px dashed #ff0000;"></div>
-                        <span>Ligne circulation</span>
+                        <div class="legend-color" style="background-color: #fef3c7; border: 1px solid #f59e0b;"></div>
+                        <span class="legend-label">L — Large</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-color" style="background-color: #fce7f3; border: 1px solid #ec4899;"></div>
+                        <span class="legend-label">XL — Extra Large</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-line legend-dashed" style="border-top: 2px dashed #e06090;"></div>
+                        <span class="legend-label">Circulation</span>
                     </div>
                 </div>
 
                 <!-- Color Legend -->
                 <div class="legend-section">
                     <div class="legend-item">
-                        <div class="legend-color" style="background-color: #000000;"></div>
-                        <span>Walls</span>
+                        <div class="legend-color" style="background-color: #374151;"></div>
+                        <span class="legend-label">Murs</span>
                     </div>
                     <div class="legend-item">
                         <div class="legend-color" style="background-color: #ff0000;"></div>
-                        <span>Entrances</span>
+                        <span class="legend-label">Entrées</span>
                     </div>
                     <div class="legend-item">
                         <div class="legend-color" style="background-color: #ffcc00;"></div>
-                        <span>Forbidden Zones</span>
+                        <span class="legend-label">Zones interdites</span>
                     </div>
                     <div class="legend-item">
-                        <div class="legend-color"
-                            style="background-color: #0000ff; border: 2px solid #0000ff; background: transparent;">
-                        </div>
-                        <span>Boxes (Ilots)</span>
-                    </div>
-                    <div class="legend-item">
-                        <div class="legend-line legend-dashed" style="border-top: 2px dashed #ff0000;"></div>
-                        <span>Corridors</span>
+                        <div class="legend-color" style="background-color: #fce4ec; border: 1px solid #e06090;"></div>
+                        <span class="legend-label">Corridors (1.2m)</span>
                     </div>
                 </div>
             </div>
@@ -509,7 +592,7 @@
                 </h3>
                 <div class="section-content">
                     <div id="varianceReport" style="font-size: 10px;">
-                        <div style="text-align: center; color: #9ca3af; padding: 20px;">
+                        <div style="text-align: center; color: var(--gray-500); padding: 20px;">
                             Import unit mix + generate ilots to see variance
                         </div>
                     </div>
@@ -537,7 +620,7 @@
                         <button class="btn btn-success btn-sm btn-block" id="exportVarianceBtn">
                             <i class="fas fa-chart-bar"></i> Variance Report
                         </button>
-                        <hr style="margin: 5px 0; border-color: #e5e7eb;">
+                        <hr style="margin: 5px 0; border-color: var(--gray-200);">
                         <button class="btn btn-info btn-sm btn-block" id="exportAllReportsBtn">
                             <i class="fas fa-download"></i> Download All Reports
                         </button>

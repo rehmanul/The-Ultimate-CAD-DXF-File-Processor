@@ -65,6 +65,10 @@ export class RendererManager {
             // Render current state
             if (this.floorPlan) {
                 this.threeRenderer.renderFloorPlan(this.floorPlan, this.ilots, this.corridors);
+                // Render green arrows at entrances
+                if (this.floorPlan.entrances && this.floorPlan.bounds) {
+                    this.threeRenderer.renderEntranceArrows(this.floorPlan.entrances, this.floorPlan.bounds);
+                }
             }
 
             return this.threeRenderer;
@@ -128,6 +132,10 @@ export class RendererManager {
     render() {
         if (this.rendererType === 'three' && this.threeRenderer) {
             this.threeRenderer.renderFloorPlan(this.floorPlan, this.ilots, this.corridors);
+            // Render green arrows at entrances
+            if (this.floorPlan && this.floorPlan.entrances && this.floorPlan.bounds) {
+                this.threeRenderer.renderEntranceArrows(this.floorPlan.entrances, this.floorPlan.bounds);
+            }
         } else if (this.rendererType === 'viewer' && this.viewerHandle) {
             // Import overlayShapes dynamically
             import('./autodeskViewer.js').then(({ overlayShapes }) => {

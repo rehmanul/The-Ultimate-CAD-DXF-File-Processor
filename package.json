@@ -10,9 +10,12 @@
     "vite-dev": "vite",
     "build": "npm run vite-build",
     "vite-build": "vite build",
-    "vite-preview": "vite preview"
+    "vite-preview": "vite preview",
+    "process-test2": "node scripts/processTest2Dwg.js",
+    "test-reference": "node scripts/testReferenceOutput.js"
   },
   "dependencies": {
+    "@google/genai": "^1.40.0",
     "@mlightcad/libredwg-web": "^0.3.0",
     "@tensorflow/tfjs": "^4.22.0",
     "@tensorflow/tfjs-vis": "^1.5.1",
