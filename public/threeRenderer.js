@@ -1124,8 +1124,8 @@ export class FloorPlanRenderer {
     }
 
     /**
-     * Render radiators as RED ZIGZAG polylines along perimeter walls.
-     * Handles both path-based (from COSTOLayoutEngine) and rect-based formats.
+     * Render radiators as small discrete red rectangle symbols along walls.
+     * NO ZIGZAG — matches COSTO reference with individual angled symbols.
      * @param {Array} radiators - Array of radiator objects
      */
     renderRadiators(radiators) {
@@ -1148,60 +1148,80 @@ export class FloorPlanRenderer {
             if (child.material) child.material.dispose();
         }
 
-        const radiatorLineMaterial = new THREE.LineBasicMaterial({
-            color: 0xd90014, // Red matching reference
-            linewidth: 2
+        const symbolMaterial = new THREE.LineBasicMaterial({
+            color: 0xd90014,
+            linewidth: 1
         });
 
         let rendered = 0;
         radiators.forEach((radiator, index) => {
-            // Path-based radiators (zigzag from COSTOLayoutEngine)
-            if (radiator.path && Array.isArray(radiator.path) && radiator.path.length >= 2) {
-                const vectors = radiator.path.map(pt => {
-                    const x = Array.isArray(pt) ? pt[0] : Number(pt.x);
-                    const y = Array.isArray(pt) ? pt[1] : Number(pt.y);
-                    if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
-                    return new THREE.Vector3(x, y, 0.15);
-                }).filter(Boolean);
+            // New format: position-based discrete symbols
+            if (radiator.positions && radiator.positions.length > 0) {
+                radiator.positions.forEach(pos => {
+                    this._drawRadiatorSymbol(pos.x, pos.y, radiator.wallAngle || 0, symbolMaterial);
+                    rendered++;
+                });
+                return;
+            }
 
-                if (vectors.length >= 2) {
-                    const geom = new THREE.BufferGeometry().setFromPoints(vectors);
-                    const line = new THREE.Line(geom, radiatorLineMaterial);
-                    line.userData = { type: 'radiator', id: radiator.id || `rad_${index}` };
-                    this.radiatorsGroup.add(line);
+            // Path-based: use ONLY start and end points, place symbols along the line
+            if (radiator.path && Array.isArray(radiator.path) && radiator.path.length >= 2) {
+                const p0 = radiator.path[0];
+                const pN = radiator.path[radiator.path.length - 1];
+                const sx = Array.isArray(p0) ? p0[0] : Number(p0.x);
+                const sy = Array.isArray(p0) ? p0[1] : Number(p0.y);
+                const ex = Array.isArray(pN) ? pN[0] : Number(pN.x);
+                const ey = Array.isArray(pN) ? pN[1] : Number(pN.y);
+                if (!Number.isFinite(sx) || !Number.isFinite(sy)) return;
+                const wallLen = Math.hypot(ex - sx, ey - sy);
+                if (wallLen < 1) return;
+                const angle = Math.atan2(ey - sy, ex - sx);
+                const n = Math.max(1, Math.floor(wallLen / 3));
+                for (let i = 0; i < n; i++) {
+                    const t = (i + 0.5) / n;
+                    this._drawRadiatorSymbol(sx + (ex - sx) * t, sy + (ey - sy) * t, angle, symbolMaterial);
                     rendered++;
                 }
                 return;
             }
 
-            // Rectangle-based radiators (x, y, width, depth)
+            // Rectangle-based: draw a single symbol
             if (Number.isFinite(radiator.x) && Number.isFinite(radiator.y)) {
-                const w = radiator.width || 0.6;
-                const d = radiator.depth || 0.1;
-                const shape = new THREE.Shape();
-                if (radiator.horizontal !== false) {
-                    shape.moveTo(-w / 2, 0);
-                    shape.lineTo(w / 2, 0);
-                    shape.lineTo(w / 2, d);
-                    shape.lineTo(-w / 2, d);
-                } else {
-                    shape.moveTo(0, -w / 2);
-                    shape.lineTo(d, -w / 2);
-                    shape.lineTo(d, w / 2);
-                    shape.lineTo(0, w / 2);
-                }
-                shape.closePath();
-                const geometry = new THREE.ShapeGeometry(shape);
-                const mat = new THREE.MeshBasicMaterial({ color: 0xd90014, side: THREE.DoubleSide });
-                const mesh = new THREE.Mesh(geometry, mat);
-                mesh.position.set(radiator.x, radiator.y, 0.15);
-                this.radiatorsGroup.add(mesh);
+                this._drawRadiatorSymbol(radiator.x, radiator.y, 0, symbolMaterial);
                 rendered++;
             }
         });
 
-        console.log(`[Radiators] Rendered ${rendered}/${radiators.length} radiator elements (red zigzag)`);
+        console.log(`[Radiators] Rendered ${rendered} radiator symbols (discrete, no zigzag)`);
         this.render();
+    }
+
+    /**
+     * Draw a single radiator symbol (small angled rectangle with X)
+     */
+    _drawRadiatorSymbol(cx, cy, angle, material) {
+        const symW = 0.4, symH = 0.2;
+        const cos = Math.cos(angle + Math.PI / 4);
+        const sin = Math.sin(angle + Math.PI / 4);
+        const hw = symW / 2, hh = symH / 2;
+        const corners = [
+            new THREE.Vector3(cx + cos * (-hw) - sin * (-hh), cy + sin * (-hw) + cos * (-hh), 0.15),
+            new THREE.Vector3(cx + cos * (hw) - sin * (-hh), cy + sin * (hw) + cos * (-hh), 0.15),
+            new THREE.Vector3(cx + cos * (hw) - sin * (hh), cy + sin * (hw) + cos * (hh), 0.15),
+            new THREE.Vector3(cx + cos * (-hw) - sin * (hh), cy + sin * (-hw) + cos * (hh), 0.15),
+            new THREE.Vector3(cx + cos * (-hw) - sin * (-hh), cy + sin * (-hw) + cos * (-hh), 0.15) // close
+        ];
+        const outlineGeom = new THREE.BufferGeometry().setFromPoints(corners);
+        const outlineLine = new THREE.Line(outlineGeom, material);
+        this.radiatorsGroup.add(outlineLine);
+
+        // X inside the symbol
+        const xGeom1 = new THREE.BufferGeometry().setFromPoints([corners[0], corners[2]]);
+        const xLine1 = new THREE.Line(xGeom1, material);
+        this.radiatorsGroup.add(xLine1);
+        const xGeom2 = new THREE.BufferGeometry().setFromPoints([corners[1], corners[3]]);
+        const xLine2 = new THREE.Line(xGeom2, material);
+        this.radiatorsGroup.add(xLine2);
     }
 
     /**
@@ -1588,13 +1608,13 @@ export class FloorPlanRenderer {
     }
 
     /**
-     * COSTO-style perimeter circulation: red zigzag around row clusters
-     * Detects horizontal row groups and draws zigzag around each cluster's contour
+     * COSTO-style perimeter circulation: clean dashed outlines around row clusters
+     * NO ZIGZAG — matches reference style with clean lines
      */
     renderPerimeterCirculation(ilots, bounds) {
         if (!ilots || ilots.length === 0) return;
 
-        // Clear existing perimeter circulation
+        // Clear existing
         while (this.perimeterGroup.children.length > 0) {
             const child = this.perimeterGroup.children[0];
             this.perimeterGroup.remove(child);
@@ -1602,20 +1622,22 @@ export class FloorPlanRenderer {
             if (child.material) child.material.dispose();
         }
 
-        // Red zigzag material
-        const zigzagMaterial = new THREE.LineBasicMaterial({
-            color: 0xff0000,
-            linewidth: 2
+        // Blue dashed line material (NO zigzag)
+        const corridorMaterial = new THREE.LineDashedMaterial({
+            color: 0x4488cc,
+            linewidth: 1,
+            dashSize: 0.3,
+            gapSize: 0.15
         });
 
-        // Cyan arrow material for flow direction
+        // Cyan arrow material
         const arrowMaterial = new THREE.MeshBasicMaterial({
             color: 0x00ccff,
             side: THREE.DoubleSide
         });
 
-        // Group ilots by Y position to detect horizontal rows
-        const rowTolerance = 0.5; // Y positions within this tolerance are same row
+        // Group ilots by Y position
+        const rowTolerance = 0.5;
         const rows = [];
 
         ilots.forEach(ilot => {
@@ -1639,41 +1661,9 @@ export class FloorPlanRenderer {
             }
         });
 
-        // Sort rows by Y position
         rows.sort((a, b) => a.minY - b.minY);
 
-        // Zigzag helper function
-        const amplitude = 0.2;
-        const frequency = 0.3;
-
-        const drawZigzag = (startX, startY, endX, endY, isHorizontal) => {
-            const points = [];
-            let peak = true;
-
-            if (isHorizontal) {
-                const dx = endX > startX ? frequency : -frequency;
-                for (let x = startX; (endX > startX ? x <= endX : x >= endX); x += dx) {
-                    const offsetY = peak ? amplitude : -amplitude;
-                    points.push(new THREE.Vector3(x, startY + offsetY, 0.15));
-                    peak = !peak;
-                }
-            } else {
-                const dy = endY > startY ? frequency : -frequency;
-                for (let y = startY; (endY > startY ? y <= endY : y >= endY); y += dy) {
-                    const offsetX = peak ? amplitude : -amplitude;
-                    points.push(new THREE.Vector3(startX + offsetX, y, 0.15));
-                    peak = !peak;
-                }
-            }
-
-            if (points.length > 1) {
-                const geom = new THREE.BufferGeometry().setFromPoints(points);
-                const line = new THREE.Line(geom, zigzagMaterial);
-                this.perimeterGroup.add(line);
-            }
-        };
-
-        // Draw zigzag around each row cluster
+        // Draw clean dashed outlines (NO zigzag)
         const margin = 0.3;
         rows.forEach((row, idx) => {
             const x1 = row.minX - margin;
@@ -1681,11 +1671,18 @@ export class FloorPlanRenderer {
             const y1 = row.minY - margin;
             const y2 = row.maxY + margin;
 
-            // Draw zigzag on all 4 sides of this row
-            drawZigzag(x1, y1, x2, y1, true);  // Bottom
-            drawZigzag(x2, y1, x2, y2, false); // Right
-            drawZigzag(x2, y2, x1, y2, true);  // Top
-            drawZigzag(x1, y2, x1, y1, false); // Left
+            // Clean dashed rectangle outline
+            const outlinePoints = [
+                new THREE.Vector3(x1, y1, 0.15),
+                new THREE.Vector3(x2, y1, 0.15),
+                new THREE.Vector3(x2, y2, 0.15),
+                new THREE.Vector3(x1, y2, 0.15),
+                new THREE.Vector3(x1, y1, 0.15)
+            ];
+            const outlineGeom = new THREE.BufferGeometry().setFromPoints(outlinePoints);
+            const outlineLine = new THREE.Line(outlineGeom, corridorMaterial);
+            outlineLine.computeLineDistances();
+            this.perimeterGroup.add(outlineLine);
 
             // Add flow arrow in middle of row
             if (row.ilots.length > 2) {
