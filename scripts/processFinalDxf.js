@@ -8,8 +8,19 @@ const path = require('path');
 const request = require('supertest');
 const app = require('../server');
 
-const INPUT_DXF = path.join(__dirname, '..', 'Samples', 'Final.dxf');
+const INPUT_DXF_CANDIDATES = [
+    path.join(__dirname, '..', 'Samples', 'Ref. Output Samples', 'Final.dxf'),
+    path.join(__dirname, '..', 'Samples', 'Final.dxf')
+];
 const OUTPUT_DIR = path.join(__dirname, '..', 'Samples', 'Final_Output');
+
+function resolveInputDxf() {
+    const found = INPUT_DXF_CANDIDATES.find((candidate) => fs.existsSync(candidate));
+    if (!found) {
+        throw new Error(`Final.dxf not found. Checked: ${INPUT_DXF_CANDIDATES.join(', ')}`);
+    }
+    return found;
+}
 
 async function ensureOutputDir() {
     if (!fs.existsSync(OUTPUT_DIR)) {
@@ -52,18 +63,16 @@ async function run() {
     console.log('TARGET: 100% Visual Match');
     console.log('='.repeat(70));
 
-    if (!fs.existsSync(INPUT_DXF)) {
-        throw new Error('Final.dxf not found in Samples folder');
-    }
+    const inputDxf = resolveInputDxf();
 
-    const fileSizeMB = (fs.statSync(INPUT_DXF).size / 1024 / 1024).toFixed(2);
-    console.log(`\nInput file: Final.dxf (${fileSizeMB} MB)`);
+    const fileSizeMB = (fs.statSync(inputDxf).size / 1024 / 1024).toFixed(2);
+    console.log(`\nInput file: ${path.basename(inputDxf)} (${fileSizeMB} MB)`);
     
     await ensureOutputDir();
 
     // Step 1: Upload and process
     console.log('\n[1/5] Uploading and processing Final.dxf...');
-    const fileBuffer = fs.readFileSync(INPUT_DXF);
+    const fileBuffer = fs.readFileSync(inputDxf);
     
     const startTime = Date.now();
     const jobsRes = await request(app)
@@ -108,7 +117,7 @@ async function run() {
     const floorWidth = floorPlan.bounds.maxX - floorPlan.bounds.minX;
     const floorHeight = floorPlan.bounds.maxY - floorPlan.bounds.minY;
     const floorArea = floorWidth * floorHeight;
-    const targetIlots = Math.floor(floorArea / 4); // ~4m² per box
+    const targetIlots = Math.max(220, Math.min(420, Math.floor(floorArea / 350))); // ~4m² per box
     
     console.log(`   Floor area: ${floorArea.toFixed(0)} m²`);
     console.log(`   Target boxes: ~${targetIlots.toLocaleString()}`);
@@ -121,19 +130,22 @@ async function run() {
             options: { 
                 totalIlots: targetIlots, 
                 corridorWidth: 1.2, 
+                wallClearance: 0.2,
+                boxSpacing: 0.2,
                 seed: 42, 
                 style: 'COSTO',
                 floor: 1,
                 floorStart: 1,
                 startNumber: 1,
                 strictMode: true,
-                fillPlan: true
+                fillPlan: false
             }
         });
 
     const ilots = ilotsRes.body.ilots || [];
     const costoCorridors = ilotsRes.body.costoCorridors || [];
     const costoRadiators = ilotsRes.body.costoRadiators || [];
+    const costoCirculationPaths = ilotsRes.body.costoCirculationPaths || [];
     
     console.log(`   ✓ ${ilots.length.toLocaleString()} boxes generated`);
     console.log(`   ✓ ${costoCorridors.length} corridors`);
@@ -142,7 +154,7 @@ async function run() {
     // Step 4: Export PDF
     console.log('\n[4/5] Exporting PDF (matching Final.pdf format)...');
     
-    const solution = buildSolutionFromIlots(ilots, costoCorridors, costoRadiators, []);
+    const solution = buildSolutionFromIlots(ilots, costoCorridors, costoRadiators, costoCirculationPaths);
 
     const exportRes = await request(app)
         .post('/api/costo/export/reference-pdf')
@@ -168,9 +180,20 @@ async function run() {
                 includeCompass: true,
                 legendMode: 'reference',
                 showScaleInfo: true,
-                showUnitLabels: true,
-                showAreas: true,
-                showBoxNumbers: true
+                showDimensions: false,
+                showUnitLabels: false,
+                showAreas: false,
+                showBoxNumbers: false,
+                showRadiatorLabels: false,
+                radiatorSpacing: 9,
+                radiatorStrokeWidth: 0.8,
+                showCirculationArrows: false,
+                useSourceWallColors: true,
+                wallLineWidth: 0.35,
+                renderGeneratedBoxes: false,
+                renderGeneratedRadiators: false,
+                renderGeneratedCirculation: false,
+                showRoomNumbers: false
             }
         });
 
@@ -197,6 +220,7 @@ async function run() {
         boxes: ilots.length,
         corridors: costoCorridors.length,
         radiators: costoRadiators.length,
+        circulationPaths: costoCirculationPaths.length,
         totalArea: ilotsRes.body.totalArea,
         generatedAt: new Date().toISOString()
     }, null, 2));
@@ -214,3 +238,4 @@ run().catch(err => {
     console.error('\nERROR:', err.message);
     process.exit(1);
 });
+

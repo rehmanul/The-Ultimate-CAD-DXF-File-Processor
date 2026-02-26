@@ -1,6 +1,6 @@
 /**
  * Process Test2.dwg - COSTO reference-style output
- * Full pipeline: CAD → raw plan complete → ilots (COSTO) → reference PDF export
+ * Full pipeline: CAD → ilots (COSTO) → reference PDF export
  * Output matches expected format: Tôle Blanche, Tôle Grise, circulation lines, radiators, box labels
  */
 
@@ -105,23 +105,8 @@ async function run() {
 
     console.log(`   ✓ ${floorPlan.walls.length} walls, ${floorPlan.forbiddenZones?.length || 0} forbidden, ${floorPlan.entrances?.length || 0} entrances`);
 
-    // Step 2: Raw plan complete
-    console.log('\n[2/5] Completing raw plan...');
-    const completeRes = await request(app)
-        .post('/api/raw-plan/complete')
-        .send({ floorPlan, options: { validate: true } })
-        .expect(200);
-
-    if (completeRes.body.completedPlan) {
-        floorPlan = completeRes.body.completedPlan;
-        const filled = (completeRes.body.syntheticSegments || []).length;
-        console.log(`   ✓ Filled ${filled} gap(s)`);
-    } else {
-        console.log('   ✓ No gaps to fill');
-    }
-
-    // Step 3: Generate ilots (COSTO style - returns corridors, radiators, circulation paths)
-    console.log('\n[3/5] Generating ilots (COSTO layout)...');
+    // Step 2: Generate ilots (COSTO style - returns corridors, radiators, circulation paths)
+    console.log('\n[2/4] Generating ilots (COSTO layout)...');
 
     // Calculate target ilots from floor area: (usableArea × 0.65) / avgBoxArea for higher coverage
     const floorWidth = floorPlan.bounds.maxX - floorPlan.bounds.minX;
@@ -147,8 +132,8 @@ async function run() {
 
     console.log(`   ✓ ${ilots.length} ilots, ${costoCorridors.length} corridors, ${costoRadiators.length} radiators`);
 
-    // Step 4: Export COSTO reference PDF
-    console.log('\n[4/5] Exporting reference-style PDF...');
+    // Step 3: Export COSTO reference PDF
+    console.log('\n[3/4] Exporting reference-style PDF...');
     const solution = buildSolutionFromIlots(ilots, costoCorridors, costoRadiators, costoCirculationPaths);
 
     const exportRes = await request(app)
@@ -164,17 +149,30 @@ async function run() {
             },
             options: {
                 pageSize: 'A1',
-                title: 'COSTO V1 - Plan Étage 01',
+                title: 'PLAN ETAGE 01 1-200',
                 scale: '1:200',
                 showLegend: true,
                 showTitleBlock: true,
+                drawingNumber: '[01]',
+                sheetNumber: '3',
+                documentId: '[01]',
                 companyName: 'COSTO',
                 companyAddress: '5 chemin de la dime 95700 Roissy FRANCE',
                 includeCompass: true,
                 legendMode: 'reference',
                 showScaleInfo: true,
-                showUnitLabels: true,
-                showAreas: true
+                showDimensions: false,
+                showUnitLabels: false,
+                showAreas: false,
+                showBoxNumbers: true,
+                showRoomNumbers: false,
+                showRadiatorLabels: false,
+                showCirculationArrows: false,
+                renderGeneratedBoxes: true,
+                renderGeneratedRadiators: true,
+                renderGeneratedCirculation: true,
+                useSourceWallColors: true,
+                wallLineWidth: 0.35
             }
         })
         .expect(200);
@@ -190,8 +188,8 @@ async function run() {
     }
     console.log(`   ✓ Saved: ${path.basename(pdfOutputPath)}`);
 
-    // Step 5: Save JSON files
-    console.log('\n[5/5] Saving JSON...');
+    // Step 4: Save JSON files
+    console.log('\n[4/4] Saving JSON...');
     fs.writeFileSync(path.join(OUTPUT_DIR, 'floor_plan.json'), JSON.stringify({ walls: floorPlan.walls?.length, bounds: floorPlan.bounds, rooms: floorPlan.rooms?.length }, null, 2), 'utf8');
     fs.writeFileSync(path.join(OUTPUT_DIR, 'ilots.json'), JSON.stringify(ilots, null, 2), 'utf8');
     fs.writeFileSync(path.join(OUTPUT_DIR, 'solution.json'), JSON.stringify({
@@ -214,3 +212,4 @@ run().catch(err => {
     console.error('Error:', err.message || err);
     process.exit(1);
 });
+

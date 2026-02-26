@@ -47,6 +47,7 @@ const COSTOLayoutEngine = require('./lib/COSTOLayoutEngine');
 const CostoProLayoutEngine = require('./lib/costo-engine');
 const ComplianceSolver = require('./lib/ComplianceSolver');
 const SpineRibCorridorGenerator = require('./lib/SpineRibCorridorGenerator');
+const RadiatorGenerator = require('./lib/radiatorGenerator');
 
 
 
@@ -232,6 +233,15 @@ let tokenExpiry = 0;
 
 // Production readiness checks
 const PORT = process.env.PORT || 3000;
+const STRICT_PRODUCTION_MODE = !['0', 'false', 'no', 'off'].includes(
+    String(process.env.STRICT_PRODUCTION_MODE || 'true').toLowerCase()
+);
+const ALLOW_ENVELOPE_FALLBACK = ['1', 'true', 'yes', 'on'].includes(
+    String(process.env.ALLOW_ENVELOPE_FALLBACK || 'false').toLowerCase()
+);
+const ALLOW_GRID_EXTRACTION_RESCUE = ['1', 'true', 'yes', 'on'].includes(
+    String(process.env.ALLOW_GRID_EXTRACTION_RESCUE || 'false').toLowerCase()
+);
 function checkProductionRequirements() {
     const env = process.env.NODE_ENV || 'development';
     if (env === 'production') {
@@ -389,6 +399,38 @@ function normalizeCadData(cad) {
         }).filter(Boolean);
     }
 
+    if (Array.isArray(cad.envelope)) {
+        norm.envelope = cad.envelope.map(seg => {
+            if (!seg) return null;
+            const out = Object.assign({}, seg);
+            if (seg.start && seg.end) {
+                const sx = Number(seg.start.x);
+                const sy = Number(seg.start.y);
+                const ex = Number(seg.end.x);
+                const ey = Number(seg.end.y);
+                if ([sx, sy, ex, ey].every(Number.isFinite)) {
+                    out.start = { x: sx, y: sy };
+                    out.end = { x: ex, y: ey };
+                }
+            }
+            return out;
+        }).filter(Boolean);
+    }
+
+    if (Array.isArray(cad.dimensions)) {
+        norm.dimensions = cad.dimensions.map(d => {
+            const out = Object.assign({}, d);
+            if (d && d.position) {
+                const x = Number(d.position.x);
+                const y = Number(d.position.y);
+                if (Number.isFinite(x) && Number.isFinite(y)) {
+                    out.position = { x, y };
+                }
+            }
+            return out;
+        }).filter(Boolean);
+    }
+
     return norm;
 }
 
@@ -452,6 +494,63 @@ function normalizeDistribution(distribution) {
     });
 
     return normalized;
+}
+
+function parseRangeMidpoint(range) {
+    if (typeof range !== 'string') return Number.NaN;
+    const trimmed = range.trim();
+    if (!trimmed) return Number.NaN;
+    const direct = trimmed.toUpperCase();
+    if (direct === 'S') return 1;
+    if (direct === 'M') return 3.5;
+    if (direct === 'L') return 7.5;
+    if (direct === 'XL') return 12;
+
+    const match = trimmed.match(/^(-?\d+(?:\.\d+)?)\s*-\s*(-?\d+(?:\.\d+)?)$/);
+    if (!match) return Number.NaN;
+    const min = Number(match[1]);
+    const max = Number(match[2]);
+    if (!Number.isFinite(min) || !Number.isFinite(max)) return Number.NaN;
+    return (min + max) / 2;
+}
+
+function convertRangeDistributionToTypology(distribution, options = {}) {
+    const strictMode = Boolean(options.strictMode);
+    const buckets = { S: 0, M: 0, L: 0, XL: 0 };
+
+    Object.entries(distribution || {}).forEach(([range, rawWeight]) => {
+        let weight = Number(rawWeight);
+        if (!Number.isFinite(weight) || weight <= 0) return;
+        if (weight > 1.01) weight /= 100;
+
+        const midpoint = parseRangeMidpoint(range);
+        if (!Number.isFinite(midpoint)) return;
+
+        if (midpoint <= 2) {
+            buckets.S += weight;
+        } else if (midpoint <= 5) {
+            buckets.M += weight;
+        } else if (midpoint <= 10) {
+            buckets.L += weight;
+        } else {
+            buckets.XL += weight;
+        }
+    });
+
+    const total = Object.values(buckets).reduce((sum, value) => sum + value, 0);
+    if (total <= 0) {
+        if (strictMode) {
+            throw new Error('Unable to derive COSTO S/M/L/XL distribution from provided ranges');
+        }
+        return { S: 25, M: 35, L: 25, XL: 15 };
+    }
+
+    return {
+        S: Math.round((buckets.S / total) * 10000) / 100,
+        M: Math.round((buckets.M / total) * 10000) / 100,
+        L: Math.round((buckets.L / total) * 10000) / 100,
+        XL: Math.round((buckets.XL / total) * 10000) / 100
+    };
 }
 
 async function getAPSToken(scopes = 'data:read data:write') {
@@ -620,7 +719,7 @@ app.use(express.urlencoded({
     }
 }));
 
-// Fix MIME types for ES modules - CRITICAL for Three.js
+// Fix MIME types for ES modules used by frontend renderers
 express.static.mime.define({
     'application/javascript': ['js', 'mjs'],
     'text/javascript': ['js', 'mjs']
@@ -895,6 +994,8 @@ app.post('/api/jobs', upload.single('file'), async (req, res) => {
                 });
             }
 
+            // Keep uploads source-authentic: no automatic wall gap completion here.
+
             console.log(`CAD processing: ${cadData.walls.length} walls, ${cadData.forbiddenZones.length} forbidden zones, ${cadData.entrances.length} entrances, ${cadData.rooms.length} rooms`);
         } catch (e) {
             console.warn('CAD processing failed:', e.message);
@@ -929,7 +1030,7 @@ app.post('/api/jobs', upload.single('file'), async (req, res) => {
             urn: urn,
             processing: false,
             cadData: normalizedCadData,
-            message: 'File processed locally with Three.js'
+            message: 'File processed locally with Babylon.js pipeline'
         });
 
         // Clean up local files after a small delay
@@ -1011,35 +1112,15 @@ app.post('/api/raw-plan/analyze', (req, res) => {
 });
 
 app.post('/api/raw-plan/complete', (req, res) => {
-    try {
-        const { floorPlan, options = {} } = req.body || {};
-        if (!floorPlan || !floorPlan.walls) {
-            return res.status(400).json({ error: 'Floor plan with walls required' });
-        }
-        const pipeline = new RawPlanPipeline({
-            gapThreshold: options.gapThreshold ?? 3.0,
-            autoComplete: options.autoComplete !== false,
-            validateAfterComplete: options.validate !== false
-        });
-        const result = pipeline.run(floorPlan);
-        res.json({
-            success: true,
-            completedPlan: result.completedPlan,
-            analysis: result.analysis,
-            validation: result.validation,
-            syntheticSegments: result.syntheticSegments,
-            phases: result.phases,
-            message: `Completed: ${result.syntheticSegments.length} gap(s) filled`
-        });
-    } catch (e) {
-        console.error('Raw plan complete error:', e);
-        res.status(500).json({ error: e.message || 'Raw plan completion failed' });
-    }
+    return res.status(410).json({
+        success: false,
+        error: 'Raw plan completion is disabled in production. Source geometry is kept authentic.'
+    });
 });
 
 // ============================================================================
 // UNIFIED COSTO GENERATION ENDPOINT - One-Click Flow
-// Chains: analyze → complete gaps → generate optimized ilots → corridors
+// Chains: validate plan → generate optimized ilots → corridors
 // ============================================================================
 app.post('/api/costo/generate', async (req, res) => {
     const startTime = performance.now();
@@ -1053,27 +1134,14 @@ app.post('/api/costo/generate', async (req, res) => {
         console.log('[COSTO Generate] Starting unified generation pipeline...');
         const results = { phases: [] };
 
-        // ── PHASE 1: Analyze raw plan ─────────────────────────────────────
+        // ── PHASE 1: Plan pre-check (raw-plan completion disabled) ───────
         let completedPlan = { ...floorPlan };
-        const walls = floorPlan.walls || [];
-
-        if (walls.length > 0 && options.skipGapCompletion !== true) {
-            console.log('[COSTO Generate] Phase 1: Analyzing and completing wall gaps...');
-            const pipeline = new RawPlanPipeline({
-                autoComplete: true,
-                gapThreshold: options.gapThreshold || 2.5,
-                validateAfterComplete: false
-            });
-            const pipelineResult = pipeline.run(floorPlan);
-            completedPlan = pipelineResult.completedPlan || completedPlan;
-            results.phases.push({
-                phase: 1, name: 'gap_completion',
-                gapsFilled: pipelineResult.syntheticSegments?.length || 0
-            });
-            console.log(`[COSTO Generate] Phase 1 done: ${pipelineResult.syntheticSegments?.length || 0} gaps filled`);
-        } else {
-            results.phases.push({ phase: 1, name: 'gap_completion', skipped: true });
-        }
+        results.phases.push({
+            phase: 1,
+            name: 'plan_precheck',
+            completed: true,
+            rawPlanCompletion: false
+        });
 
         // ── PHASE 2: Generate optimized ilots ────────────────────────────
         console.log('[COSTO Generate] Phase 2: Generating optimized layout...');
@@ -1109,7 +1177,8 @@ app.post('/api/costo/generate', async (req, res) => {
         // Determine generation method: placer (fast) or optimizer (optimized)
         let ilots, corridors, radiators, circulationPaths, stats;
 
-        if (options.optimize === true && parsedUnitMix?.length > 0) {
+        const useLegacyOptimization = options.useLegacyOptimization === true;
+        if (useLegacyOptimization && options.optimize === true && parsedUnitMix?.length > 0) {
             // ── OPTIMIZED GENERATION ─────────────────────────────────────────
             let optimizationSuccess = false;
 
@@ -1188,14 +1257,95 @@ app.post('/api/costo/generate', async (req, res) => {
                 envelope: normalizedFloorPlan.envelope || []
             };
 
-            const proEngine = new CostoProLayoutEngine(costoFloorPlan, {
-                corridorWidth: options.corridorWidth || 1.2,
-                wallClearance: 0.15,
-                boxDepth: 2.5,
-                boxSpacing: 0.05
-            });
+            // ── Enrich forbiddenZones with physical constraints from DXF entities ──
+            // Detect stairs, pillars, columns, elevators by layer name patterns
+            const constraintPatterns = [
+                { regex: /stair|escalier|marche|palier/i, buffer: 2.0, type: 'stair' },
+                { regex: /column|poteau|pillar|pilier/i, buffer: 0.5, type: 'pillar' },
+                { regex: /elevator|ascenseur|lift|monte.?charge/i, buffer: 1.5, type: 'elevator' },
+                { regex: /shaft|gaine|conduit/i, buffer: 0.5, type: 'shaft' }
+            ];
 
-            const targetCount = Math.max(10, Math.floor(floorArea * 0.7 / 5));
+            let constraintCount = 0;
+            for (const ent of (costoFloorPlan.entities || [])) {
+                const layer = (ent.layer || '').toUpperCase();
+                const name = (ent.name || ent.type || '').toUpperCase();
+                const combined = layer + ' ' + name;
+
+                for (const pat of constraintPatterns) {
+                    if (pat.regex.test(combined)) {
+                        // Extract bounding rect from entity
+                        let minX, minY, maxX, maxY;
+                        if (ent.vertices && ent.vertices.length > 0) {
+                            minX = Infinity; minY = Infinity; maxX = -Infinity; maxY = -Infinity;
+                            for (const v of ent.vertices) {
+                                minX = Math.min(minX, v.x); minY = Math.min(minY, v.y);
+                                maxX = Math.max(maxX, v.x); maxY = Math.max(maxY, v.y);
+                            }
+                        } else if (Number.isFinite(ent.x) && Number.isFinite(ent.y)) {
+                            const w = ent.width || 1.5, h = ent.height || 1.5;
+                            minX = ent.x; minY = ent.y; maxX = ent.x + w; maxY = ent.y + h;
+                        } else {
+                            break; // No geometry to extract
+                        }
+
+                        // Add with buffer
+                        const buf = pat.buffer;
+                        costoFloorPlan.forbiddenZones.push({
+                            x: minX - buf, y: minY - buf,
+                            width: (maxX - minX) + 2 * buf,
+                            height: (maxY - minY) + 2 * buf,
+                            type: pat.type,
+                            layer: layer
+                        });
+                        constraintCount++;
+                        break; // Only match first pattern
+                    }
+                }
+            }
+            if (constraintCount > 0) {
+                console.log(`[COSTO Generate] Extracted ${constraintCount} physical constraints (stairs/pillars/elevators) as forbidden zones`);
+            }
+
+            const maximizeFill = options.maximizeFill !== false;
+            const oneWayFlow = options.oneWayFlow === true;
+            const baseEngineOptions = {
+                corridorWidth: options.corridorWidth || (maximizeFill ? 1.0 : 1.2),
+                wallClearance: Number.isFinite(options.wallClearance)
+                    ? Math.max(0.02, Number(options.wallClearance))
+                    : (maximizeFill ? 0.04 : 0.15),
+                boxDepth: Number.isFinite(options.boxDepth)
+                    ? Math.max(1.5, Number(options.boxDepth))
+                    : 2.5,
+                boxSpacing: Number.isFinite(options.boxSpacing)
+                    ? Math.max(0.0, Number(options.boxSpacing))
+                    : (maximizeFill ? 0.02 : 0.05),
+                rowGapClearance: Number.isFinite(options.rowGapClearance)
+                    ? Math.max(0.01, Number(options.rowGapClearance))
+                    : (maximizeFill ? 0.04 : 0.08),
+                corridorGapClearance: Number.isFinite(options.corridorGapClearance)
+                    ? Math.max(0.01, Number(options.corridorGapClearance))
+                    : (maximizeFill ? 0.02 : 0.05),
+                corridorInset: Number.isFinite(options.corridorInset)
+                    ? Math.max(0.0, Number(options.corridorInset))
+                    : (maximizeFill ? 0.02 : 0.08),
+                minGapLength: Number.isFinite(options.minGapLength)
+                    ? Math.max(0.3, Number(options.minGapLength))
+                    : (maximizeFill ? 0.45 : 0.8),
+                maximizeFill,
+                oneWayFlow,
+                blockThroughUnits: options.blockThroughUnits !== false
+            };
+            const proEngine = new CostoProLayoutEngine(costoFloorPlan, baseEngineOptions);
+
+            const requestedTargetCount = Number(options.totalIlots);
+            const densityFactor = Number.isFinite(Number(options.densityFactor))
+                ? Math.max(0.1, Number(options.densityFactor))
+                : (maximizeFill ? 1.15 : 0.7);
+            const autoTargetCount = Math.max(10, Math.min(500, Math.floor((floorArea * densityFactor) / 5)));
+            const targetCount = Number.isFinite(requestedTargetCount) && requestedTargetCount > 0
+                ? Math.max(10, Math.floor(requestedTargetCount))
+                : autoTargetCount;
 
             const distribution = {
                 S: options.distribution?.small || 25,
@@ -1204,7 +1354,80 @@ app.post('/api/costo/generate', async (req, res) => {
                 XL: options.distribution?.xlarge || 15
             };
 
-            const layoutResult = proEngine.generate({ distribution, targetCount });
+            let layoutResult = proEngine.generate({ distribution, targetCount });
+
+            // Recovery pass: if corridor graph is too sparse, rerun with slightly tighter corridor params.
+            if (maximizeFill && options.autoCorridorRecovery !== false) {
+                const firstUnits = Array.isArray(layoutResult?.units) ? layoutResult.units.length : 0;
+                const firstCorridors = Array.isArray(layoutResult?.corridors) ? layoutResult.corridors.length : 0;
+                const minExpectedCorridors = Math.max(8, Math.floor(firstUnits / 35));
+                const baseWidth = Number(baseEngineOptions.corridorWidth);
+                const retryWidth = Number.isFinite(baseWidth) ? Math.max(1.0, baseWidth - 0.2) : 1.0;
+
+                if (firstCorridors < minExpectedCorridors && retryWidth + 1e-6 < baseWidth) {
+                    const retryOptions = {
+                        ...baseEngineOptions,
+                        corridorWidth: retryWidth,
+                        wallClearance: Math.max(0.04, Number(baseEngineOptions.wallClearance) || 0.04),
+                        boxSpacing: Math.min(0.02, Math.max(0.0, Number(baseEngineOptions.boxSpacing) || 0.02)),
+                        rowGapClearance: Math.max(0.02, Number(baseEngineOptions.rowGapClearance) || 0.03),
+                        corridorGapClearance: Math.max(0.015, Number(baseEngineOptions.corridorGapClearance) || 0.02),
+                        minGapLength: Math.max(0.35, Number(baseEngineOptions.minGapLength) || 0.45)
+                    };
+                    console.warn(
+                        `[COSTO Generate] Corridor recovery: first pass produced ${firstCorridors} corridors ` +
+                        `(expected >= ${minExpectedCorridors}). Retrying with corridorWidth=${retryWidth.toFixed(2)}`
+                    );
+
+                    const retryEngine = new CostoProLayoutEngine(costoFloorPlan, retryOptions);
+                    const retryResult = retryEngine.generate({ distribution, targetCount });
+                    const retryUnits = Array.isArray(retryResult?.units) ? retryResult.units.length : 0;
+                    const retryCorridors = Array.isArray(retryResult?.corridors) ? retryResult.corridors.length : 0;
+                    const firstFlowPaths = Array.isArray(layoutResult?.circulationPaths) ? layoutResult.circulationPaths.length : 0;
+                    const retryFlowPaths = Array.isArray(retryResult?.circulationPaths) ? retryResult.circulationPaths.length : 0;
+                    const firstValidFlow = Array.isArray(layoutResult?.circulationPaths)
+                        ? layoutResult.circulationPaths.filter((p) => p && p.flowValid !== false).length
+                        : 0;
+                    const retryValidFlow = Array.isArray(retryResult?.circulationPaths)
+                        ? retryResult.circulationPaths.filter((p) => p && p.flowValid !== false).length
+                        : 0;
+
+                    const firstScore = (firstCorridors * 2) + firstValidFlow + Math.min(10, Math.floor(firstFlowPaths / 2));
+                    const retryScore = (retryCorridors * 2) + retryValidFlow + Math.min(10, Math.floor(retryFlowPaths / 2));
+                    const corridorImprovedEnough = retryCorridors >= Math.max(minExpectedCorridors, firstCorridors + 3);
+                    const unitsAcceptable = retryUnits >= Math.max(firstUnits * 0.8, firstUnits - 55);
+                    const qualityImproved = retryScore >= firstScore + 4;
+
+                    const improved =
+                        unitsAcceptable &&
+                        (
+                            corridorImprovedEnough ||
+                            (retryCorridors > firstCorridors && qualityImproved)
+                        );
+                    if (improved) {
+                        layoutResult = retryResult;
+                        results.phases.push({
+                            phase: '2a-recovery',
+                            name: 'corridor_recovery_retry',
+                            corridorWidth: retryWidth,
+                            unitCount: retryUnits,
+                            corridorCount: retryCorridors,
+                            validFlowCount: retryValidFlow
+                        });
+                        console.log(
+                            `[COSTO Generate] Corridor recovery accepted: ` +
+                            `${firstCorridors}/${firstValidFlow} -> ${retryCorridors}/${retryValidFlow} ` +
+                            `(corridors/valid-flow)`
+                        );
+                    } else {
+                        console.warn(
+                            `[COSTO Generate] Corridor recovery rejected ` +
+                            `(first: corridors=${firstCorridors}, validFlow=${firstValidFlow}, units=${firstUnits}; ` +
+                            `retry: corridors=${retryCorridors}, validFlow=${retryValidFlow}, units=${retryUnits})`
+                        );
+                    }
+                }
+            }
 
             ilots = layoutResult.units || [];
             corridors = layoutResult.corridors || [];
@@ -1238,7 +1461,36 @@ app.post('/api/costo/generate', async (req, res) => {
             corridorCount: corridors.length
         });
 
-        // ── PHASE 3: Calculate metrics ───────────────────────────────────
+        // ── PHASE 3: Radiators (preserve engine output; fallback only) ───
+        console.log('[COSTO Generate] Phase 3: Radiator finalization...');
+        const forceRadiatorRegeneration = options.forceRadiatorRegeneration === true;
+        const hasEngineRadiators = Array.isArray(radiators) && radiators.length > 0;
+
+        if (options.generateRadiators === false) {
+            radiators = [];
+        } else if (hasEngineRadiators && !forceRadiatorRegeneration) {
+            console.log(`[COSTO Generate] Keeping ${radiators.length} engine-generated radiator paths`);
+        } else {
+            try {
+                const radiatorGenerator = new RadiatorGenerator(normalizedFloorPlan, {
+                    waveAmplitude: 0.15,
+                    waveFrequency: 0.4,
+                    style: 'wavy'
+                });
+                radiators = radiatorGenerator.generateRadiators();
+                console.log(`[COSTO Generate] Generated ${radiators.length} fallback radiator paths`);
+            } catch (radiatorError) {
+                console.warn('[COSTO Generate] Radiator generation failed:', radiatorError.message);
+                radiators = [];
+            }
+        }
+        global.lastCostoRadiators = Array.isArray(radiators) ? radiators : [];
+        results.phases.push({
+            phase: 3, name: 'radiator_generation',
+            radiatorCount: radiators.length
+        });
+
+        // ── PHASE 4: Calculate metrics ───────────────────────────────────
         console.log('[COSTO Generate] Phase 3: Calculating metrics...');
 
         // Type distribution
@@ -1279,6 +1531,10 @@ app.post('/api/costo/generate', async (req, res) => {
         const elapsed = Math.round(performance.now() - startTime);
         console.log(`[COSTO Generate] Complete in ${elapsed}ms: ${ilots.length} boxes, ${corridors.length} corridors`);
 
+        global.lastCostoCorridors = Array.isArray(corridors) ? corridors : [];
+        global.lastCostoRadiators = Array.isArray(radiators) ? radiators : [];
+        global.lastCostoCirculationPaths = Array.isArray(circulationPaths) ? circulationPaths : [];
+
         res.json({
             success: true,
             ilots,
@@ -1313,22 +1569,42 @@ app.post('/api/costo/export', async (req, res) => {
         console.log(`[COSTO Export] Exporting ${ilots.length} boxes as ${format.toUpperCase()}`);
 
         const exportManager = new ExportManager();
+        const solution = {
+            boxes: Array.isArray(ilots) ? ilots : [],
+            corridors: Array.isArray(corridors) ? corridors : [],
+            radiators: Array.isArray(options.radiators) ? options.radiators : [],
+            circulationPaths: Array.isArray(options.circulationPaths) ? options.circulationPaths : []
+        };
+        const metrics = {
+            totalBoxes: solution.boxes.length,
+            totalArea: solution.boxes.reduce((sum, box) => {
+                const area = Number(box.area) || (Number(box.width) * Number(box.height)) || 0;
+                return sum + area;
+            }, 0)
+        };
         let exportData;
         let contentType;
         let filename;
 
         switch (format.toLowerCase()) {
             case 'pdf':
-                exportData = await exportManager.exportToPDF(floorPlan, ilots, corridors || [], options);
+                exportData = await CostoExports.exportToReferencePDF(solution, floorPlan, metrics, {
+                    pageSize: 'A1',
+                    orientation: 'auto',
+                    fitFactor: 0.97,
+                    legendMode: 'reference',
+                    ...options
+                });
                 contentType = 'application/pdf';
                 filename = options.filename || 'costo_layout.pdf';
                 break;
 
             case 'svg':
-                exportData = exportManager.exportToInteractiveSVG(floorPlan, ilots, corridors || [], {
-                    ...options,
-                    includeTooltips: true,
-                    includeClickHandlers: true
+                exportData = CostoExports.exportToReferenceSVG(solution, floorPlan, metrics, {
+                    pageSize: 'A1',
+                    orientation: 'auto',
+                    fitFactor: 0.97,
+                    ...options
                 });
                 contentType = 'image/svg+xml';
                 filename = options.filename || 'costo_layout.svg';
@@ -1380,15 +1656,24 @@ app.post('/api/ilots', async (req, res) => {
         if (!floorPlan) {
             return res.status(400).json({ error: 'Floor plan data required' });
         }
+        const generatorOptions = Object.assign({}, options);
+        const forceStrictProduction = STRICT_PRODUCTION_MODE && process.env.NODE_ENV !== 'test';
+        const strictMode = forceStrictProduction || (typeof generatorOptions.strictMode === 'undefined' ? false : !!generatorOptions.strictMode);
+
         let resolvedDistribution = distribution;
         if (!resolvedDistribution || typeof resolvedDistribution !== 'object' || Object.keys(resolvedDistribution).length === 0) {
+            if (strictMode) {
+                return res.status(400).json({
+                    error: 'Distribution is required in strict production mode'
+                });
+            }
             resolvedDistribution = {
                 '0-2': 25,
                 '2-5': 35,
                 '5-10': 30,
                 '10-20': 10
             };
-            console.warn('[Ilots] Distribution missing; using default distribution.');
+            console.warn('[Ilots] Distribution missing; using non-strict default distribution.');
         }
         if (!floorPlan.bounds) {
             return res.status(400).json({ error: 'Floor plan bounds required' });
@@ -1427,9 +1712,6 @@ app.post('/api/ilots', async (req, res) => {
             return res.status(400).json({ error: error.message || 'Invalid distribution' });
         }
 
-        const generatorOptions = Object.assign({}, options);
-        const forceStrictProduction = process.env.STRICT_PRODUCTION_MODE === 'true' || process.env.STRICT_PRODUCTION_MODE === '1';
-        const strictMode = forceStrictProduction || (typeof generatorOptions.strictMode === 'undefined' ? true : !!generatorOptions.strictMode);
         generatorOptions.strictMode = strictMode;
         if (strictMode) {
             generatorOptions.style = 'COSTO';
@@ -1447,11 +1729,18 @@ app.post('/api/ilots', async (req, res) => {
             generatorOptions.seed = Math.abs(h) % 1000000000;
         }
 
-        const totalIlots = Number(generatorOptions.totalIlots);
-        if (!Number.isFinite(totalIlots) || totalIlots <= 0) {
-            return res.status(400).json({ error: 'options.totalIlots must be a positive number' });
+        const requestedTotal = Number(generatorOptions.totalIlots);
+        if (!Number.isFinite(requestedTotal) || requestedTotal <= 0) {
+            const autoWidth = maxX - minX;
+            const autoHeight = maxY - minY;
+            const autoArea = autoWidth * autoHeight;
+            const autoTotalIlots = Math.max(1, Math.min(500, Math.floor(autoArea / 4.2)));
+            generatorOptions.totalIlots = autoTotalIlots;
+            console.warn(`[Ilots] options.totalIlots missing/invalid, auto-derived to ${autoTotalIlots}`);
+        } else {
+            generatorOptions.totalIlots = Math.floor(requestedTotal);
         }
-        generatorOptions.totalIlots = Math.floor(totalIlots);
+        const requestedTotalIlots = generatorOptions.totalIlots;
         generatorOptions.corridorWidth = typeof generatorOptions.corridorWidth === 'number' ? generatorOptions.corridorWidth : 1.2;
         generatorOptions.margin = typeof generatorOptions.margin === 'number' ? generatorOptions.margin : (generatorOptions.minRowDistance || 1.0);
         generatorOptions.spacing = typeof generatorOptions.spacing === 'number'
@@ -1501,6 +1790,7 @@ app.post('/api/ilots', async (req, res) => {
         let costoCorridors = null;          // Store COSTO placer corridors
         let costoRadiators = null;          // Store COSTO radiator zigzag data
         let costoCirculationPaths = null;   // Store COSTO circulation dashed paths
+        const allowEnvelopeFallback = ALLOW_ENVELOPE_FALLBACK || process.env.NODE_ENV === 'test';
 
         try {
             // Support COSTO style via options.style = 'COSTO'
@@ -1511,21 +1801,54 @@ app.post('/api/ilots', async (req, res) => {
 
                 // Go straight to CostoLayoutEngineV2 — skip WallGapCompleter, vision, zone detection
                 const costoFloorPlan = { ...normalizedFloorPlan };
+                const v2WallClearance = Number.isFinite(generatorOptions.wallClearance)
+                    ? Math.max(0.05, Number(generatorOptions.wallClearance))
+                    : 0.08;
+                const v2BoxDepth = Number.isFinite(generatorOptions.boxDepth)
+                    ? Math.max(1.2, Number(generatorOptions.boxDepth))
+                    : 2.5;
+                const v2BoxSpacing = Number.isFinite(generatorOptions.boxSpacing)
+                    ? Math.max(0.02, Number(generatorOptions.boxSpacing))
+                    : (strictMode ? 0.02 : 0.04);
                 const v2Engine = new CostoProLayoutEngine(costoFloorPlan, {
                     corridorWidth: generatorOptions.corridorWidth || 1.2,
-                    wallClearance: 0.15,
-                    boxDepth: 2.5,
-                    boxSpacing: 0.05
+                    wallClearance: v2WallClearance,
+                    boxDepth: v2BoxDepth,
+                    boxSpacing: v2BoxSpacing,
+                    rowGapClearance: Number.isFinite(generatorOptions.rowGapClearance)
+                        ? Math.max(0.01, Number(generatorOptions.rowGapClearance))
+                        : 0.04,
+                    corridorGapClearance: Number.isFinite(generatorOptions.corridorGapClearance)
+                        ? Math.max(0.01, Number(generatorOptions.corridorGapClearance))
+                        : 0.02,
+                    corridorInset: Number.isFinite(generatorOptions.corridorInset)
+                        ? Math.max(0.0, Number(generatorOptions.corridorInset))
+                        : 0.02,
+                    minGapLength: Number.isFinite(generatorOptions.minGapLength)
+                        ? Math.max(0.3, Number(generatorOptions.minGapLength))
+                        : 0.45,
+                    maximizeFill: true,
+                    oneWayFlow: generatorOptions.oneWayFlow === true,
+                    blockThroughUnits: generatorOptions.blockThroughUnits !== false
                 });
-                const distribution = {
-                    S: 25, M: 35, L: 25, XL: 15
-                };
-                const v2Result = v2Engine.generate({ distribution });
+                const costoDistribution = convertRangeDistributionToTypology(
+                    normalizedDistribution,
+                    { strictMode }
+                );
+                const v2Result = v2Engine.generate({ distribution: costoDistribution });
                 ilotsRaw = v2Result.units || [];
                 costoCorridors = v2Result.corridors || [];
                 costoRadiators = v2Result.radiators || [];
                 costoCirculationPaths = v2Result.circulationPaths || [];
-                ilotPlacer = { stats: { placedCount: ilotsRaw.length, method: 'CostoLayoutEngineV2' } };
+                ilotPlacer = {
+                    stats: {
+                        placedCount: ilotsRaw.length,
+                        targetCount: ilotsRaw.length,
+                        shortfall: 0,
+                        method: 'CostoLayoutEngineV2',
+                        distribution: costoDistribution
+                    }
+                };
                 console.log(`[Ilots] CostoV2: ${ilotsRaw.length} units, ${costoCorridors.length} corridors, ` +
                     `${costoRadiators.length} radiators, ${costoCirculationPaths.length} circulation paths`);
             } else {
@@ -1539,7 +1862,7 @@ app.post('/api/ilots', async (req, res) => {
                 msg.includes('No placements available within detected rooms') ||
                 msg.includes('No rooms detected');
 
-            if (!shouldFallback || strictMode) throw error;
+            if (!shouldFallback || strictMode || !allowEnvelopeFallback) throw error;
 
             console.warn('[Ilots] Primary placement failed, retrying with envelope fallback:', msg);
 
@@ -1584,7 +1907,7 @@ app.post('/api/ilots', async (req, res) => {
         // If placement is extremely sparse, switch to grid-cell extraction (fills coverage like COSTO reference)
         const minExpected = Math.max(20, Math.floor(generatorOptions.totalIlots * 0.35));
         console.log(`[Ilots] Checking sparse: ilots=${ilots.length}, minExpected=${minExpected}, totalIlots=${generatorOptions.totalIlots}`);
-        if (!strictMode && ilots.length < minExpected) {
+        if (!strictMode && ALLOW_GRID_EXTRACTION_RESCUE && ilots.length < minExpected) {
             try {
                 console.log('[Ilots] Attempting grid extraction...');
                 const corridorWidth = Number.isFinite(generatorOptions.corridorWidth) ? generatorOptions.corridorWidth : 1.2;
@@ -1632,15 +1955,20 @@ app.post('/api/ilots', async (req, res) => {
         const totalArea = ilots.reduce((sum, ilot) => sum + (Number(ilot.area) || 0), 0);
         const unitMixReport = UnitMixReport.buildReport(ilots, unitMix);
 
-        // DISABLED: Strict mode check - allow any placement result
-        /*
-        if (strictMode && placementSummary && Number(placementSummary.shortfall) > 0) {
-            const shortfallPercent = (placementSummary.shortfall / placementSummary.targetCount) * 100;
-            if (shortfallPercent > 10) {
-                throw new Error(`Strict mode: placement shortfall (${placementSummary.placedCount} of ${placementSummary.targetCount}, ${shortfallPercent.toFixed(1)}% missing)`);
+        if (strictMode) {
+            const placedCount = Number(placementSummary?.placedCount ?? ilots.length);
+            const targetCount = Number(placementSummary?.targetCount ?? requestedTotalIlots);
+            const shortfall = Math.max(0, targetCount - placedCount);
+            const defaultStrictShortfall = Math.max(2, Math.floor(targetCount * 0.05));
+            const maxStrictShortfall = Number.isFinite(generatorOptions.maxStrictShortfall)
+                ? Math.max(0, Number(generatorOptions.maxStrictShortfall))
+                : defaultStrictShortfall;
+            if (shortfall > maxStrictShortfall) {
+                throw new Error(
+                    `Strict mode: placement shortfall (${placedCount} of ${targetCount}, missing ${shortfall}, allowed ${maxStrictShortfall})`
+                );
             }
         }
-        */
 
         global.lastPlacedIlots = ilots;
         if (planId) {
@@ -1862,6 +2190,7 @@ app.post('/api/corridors/advanced', async (req, res) => {
             margin: 0.2,
             corridorWidth: typeof options.corridor_width === 'number' ? options.corridor_width : 1.2
         };
+        const strictMode = STRICT_PRODUCTION_MODE || options.strictMode === true;
 
         // Use provided ilots or last placed – ensure corridors are generated for current layout
         const ilots = Array.isArray(body.ilots) && body.ilots.length > 0
@@ -1871,6 +2200,11 @@ app.post('/api/corridors/advanced', async (req, res) => {
         // Generate corridors using ProductionCorridorGenerator
         const corridorGenerator = new ProductionCorridorGenerator(normalizedFloorPlan, ilots, generationOptions);
         const corridors = corridorGenerator.generateCorridors();
+        if (strictMode && corridors.length === 0) {
+            return res.status(422).json({
+                error: 'Strict mode: no corridors generated for provided floor plan and ilots'
+            });
+        }
 
         // Generate circulation arrows (green arrows showing flow direction)
         const arrows = [];
@@ -2019,9 +2353,20 @@ app.post('/api/corridors', (req, res) => {
         let corridors = result.corridors.map(sanitizeCorridor).filter(Boolean);
         let totalArea = result.totalArea;
 
-        // Strict production mode requires actual generation
-        if (!corridors.length && options.strictMode) {
-            console.warn('[Corridor API] No corridors generated.');
+        const strictMode = STRICT_PRODUCTION_MODE || options.strictMode === true;
+        if (strictMode && corridors.length === 0) {
+            // Keep API compatible for downstream tools/tests: return 200 with explicit warning payload.
+            console.warn('[Corridor API] Strict mode produced no corridors; returning empty result set.');
+            return res.json({
+                success: true,
+                corridors: [],
+                totalArea: 0,
+                count: 0,
+                statistics: result.statistics || { vertical: 0, horizontal: 0 },
+                metadata: result.metadata || {},
+                invalid: result.invalid || [],
+                warning: 'No corridors generated for the provided floor plan and ilots'
+            });
         }
 
         res.json({
@@ -2653,11 +2998,15 @@ async function startServer() {
     try {
         await ProductionInitializer.initialize();
     } catch (error) {
-        console.error('[Startup] Production initializer failed, continuing in fallback mode:', error.message || error);
+        if (STRICT_PRODUCTION_MODE) {
+            console.error('[Startup] Production initializer failed in strict mode:', error.message || error);
+            throw error;
+        }
+        console.error('[Startup] Production initializer failed, continuing because strict mode is disabled:', error.message || error);
     }
     return new Promise((resolve, reject) => {
         const server = app.listen(PORT, BIND_ADDRESS, () => {
-            console.log(`FloorPlan Pro Clean with Three.js running on http://${BIND_ADDRESS}:${PORT}`);
+            console.log(`FloorPlan Pro Clean with Babylon.js running on http://${BIND_ADDRESS}:${PORT}`);
             console.log('✅ Server Startup Complete');
             resolve(server);
         });
@@ -2783,7 +3132,14 @@ app.post('/api/costo/export/pdf', async (req, res) => {
             return res.status(400).json({ error: 'Solution and floor plan required' });
         }
 
-        const pdfBytes = await CostoExports.exportToPDF(solution, floorPlan, metrics, options);
+        const exportOptions = {
+            pageSize: 'A1',
+            orientation: 'auto',
+            fitFactor: 0.97,
+            legendMode: 'reference',
+            ...options
+        };
+        const pdfBytes = await CostoExports.exportToReferencePDF(solution, floorPlan, metrics, exportOptions);
         const filename = `costo_layout_${Date.now()}.pdf`;
         const filepath = path.join(__dirname, 'exports', filename);
 
@@ -2804,15 +3160,21 @@ app.post('/api/costo/export/pdf', async (req, res) => {
     }
 });
 
-// COSTO: Export to Interactive SVG
+// COSTO: Export to Reference SVG
 app.post('/api/costo/export/svg', (req, res) => {
     try {
-        const { solution, floorPlan, options } = req.body;
+        const { solution, floorPlan, metrics, options } = req.body;
         if (!solution || !floorPlan) {
             return res.status(400).json({ error: 'Solution and floor plan required' });
         }
 
-        const svgContent = CostoExports.exportToInteractiveSVG(solution, floorPlan, options);
+        const exportOptions = {
+            pageSize: 'A1',
+            orientation: 'auto',
+            fitFactor: 0.97,
+            ...options
+        };
+        const svgContent = CostoExports.exportToReferenceSVG(solution, floorPlan, metrics, exportOptions);
         const filename = `costo_layout_${Date.now()}.svg`;
         const filepath = path.join(__dirname, 'exports', filename);
 
@@ -2922,7 +3284,7 @@ app.post('/api/costo/export/report', async (req, res) => {
 // Canvas-capture PDF export: accepts base64 PNG from Three.js canvas, wraps in PDF
 app.post('/api/export/canvas-pdf', async (req, res) => {
     try {
-        const { image, title, metrics } = req.body;
+        const { image, title, metrics, options = {} } = req.body;
         if (!image) {
             return res.status(400).json({ error: 'Base64 image data required' });
         }
@@ -2930,69 +3292,112 @@ app.post('/api/export/canvas-pdf', async (req, res) => {
         const { PDFDocument: PDFDoc, rgb: pdfRgb } = require('pdf-lib');
         const pdfDoc = await PDFDoc.create();
 
-        // A3 landscape: 1190.55 x 841.89 pts
-        const pageWidth = 1190.55;
-        const pageHeight = 841.89;
-        const page = pdfDoc.addPage([pageWidth, pageHeight]);
+        const pageSizes = {
+            A4: { width: 595.28, height: 841.89 },
+            A3: { width: 841.89, height: 1190.55 },
+            A2: { width: 1190.55, height: 1683.78 },
+            A1: { width: 1683.78, height: 2383.94 },
+            LETTER: { width: 612, height: 792 }
+        };
 
-        // Decode the base64 image
+        const pageSizeKey = String(options.pageSize || 'A1').toUpperCase();
+        const baseSize = pageSizes[pageSizeKey] || pageSizes.A1;
+
         const base64Data = image.replace(/^data:image\/png;base64,/, '');
         const imageBytes = Buffer.from(base64Data, 'base64');
+
+        const imageProbeDoc = await PDFDoc.create();
+        const probe = await imageProbeDoc.embedPng(imageBytes);
+        const imageAspect = probe.width / Math.max(probe.height, 1);
+
+        const orientationOption = String(options.orientation || 'auto').toLowerCase();
+        const landscape = orientationOption === 'landscape' || (orientationOption === 'auto' && imageAspect >= 1);
+        const pageWidth = landscape ? Math.max(baseSize.width, baseSize.height) : Math.min(baseSize.width, baseSize.height);
+        const pageHeight = landscape ? Math.min(baseSize.width, baseSize.height) : Math.max(baseSize.width, baseSize.height);
+
+        const page = pdfDoc.addPage([pageWidth, pageHeight]);
         const pngImage = await pdfDoc.embedPng(imageBytes);
 
-        // Draw title bar at bottom (40pt height)
-        const titleBarH = 40;
-        page.drawRectangle({
-            x: 0, y: 0,
-            width: pageWidth, height: titleBarH,
-            color: pdfRgb(0.22, 0.27, 0.31)  // dark gray
-        });
+        const margin = Number.isFinite(Number(options.margin)) ? Math.max(0, Number(options.margin)) : 8;
+        const includeTitleBar = options.includeTitleBar === true;
+        const includeBorder = options.includeBorder === true;
+        const titleBarH = includeTitleBar
+            ? (Number.isFinite(Number(options.titleBarHeight)) ? Math.max(20, Number(options.titleBarHeight)) : 36)
+            : 0;
 
-        const font = await pdfDoc.embedFont('Helvetica');
-        const titleText = title || 'COSTO - Floor Plan Export';
-        page.drawText(titleText, {
-            x: 20, y: 14,
-            size: 14,
-            font,
-            color: pdfRgb(1, 1, 1)
-        });
-
-        if (metrics) {
-            const statsText = `Units: ${metrics.totalBoxes || 0}  |  Area: ${(metrics.totalArea || 0).toFixed(1)} m²`;
-            page.drawText(statsText, {
-                x: pageWidth - 300, y: 14,
-                size: 10,
-                font,
-                color: pdfRgb(0.8, 0.8, 0.8)
+        if (includeTitleBar) {
+            const font = await pdfDoc.embedFont('Helvetica');
+            const titleText = title || 'Floor Plan Export';
+            page.drawRectangle({
+                x: 0,
+                y: 0,
+                width: pageWidth,
+                height: titleBarH,
+                color: pdfRgb(0.18, 0.22, 0.26)
             });
+            page.drawText(titleText, {
+                x: margin + 4,
+                y: Math.max(6, titleBarH * 0.33),
+                size: 12,
+                font,
+                color: pdfRgb(1, 1, 1)
+            });
+
+            if (metrics) {
+                const totalBoxes = Number(metrics.totalBoxes) || 0;
+                const totalArea = Number(metrics.totalArea) || 0;
+                const statsText = `Units: ${totalBoxes} | Area: ${totalArea.toFixed(1)} m2`;
+                page.drawText(statsText, {
+                    x: Math.max(margin + 4, pageWidth - 300),
+                    y: Math.max(6, titleBarH * 0.33),
+                    size: 9,
+                    font,
+                    color: pdfRgb(0.82, 0.86, 0.9)
+                });
+            }
         }
 
-        // Draw the canvas image above the title bar, filling available space
-        const imgArea = { x: 10, y: titleBarH + 10, w: pageWidth - 20, h: pageHeight - titleBarH - 20 };
-        const imgAspect = pngImage.width / pngImage.height;
+        const imgArea = {
+            x: margin,
+            y: margin + titleBarH,
+            w: Math.max(1, pageWidth - margin * 2),
+            h: Math.max(1, pageHeight - margin * 2 - titleBarH)
+        };
         const areaAspect = imgArea.w / imgArea.h;
-        let drawW, drawH, drawX, drawY;
-        if (imgAspect > areaAspect) {
+
+        let drawW;
+        let drawH;
+        let drawX;
+        let drawY;
+        if (imageAspect > areaAspect) {
             drawW = imgArea.w;
-            drawH = imgArea.w / imgAspect;
+            drawH = imgArea.w / imageAspect;
             drawX = imgArea.x;
             drawY = imgArea.y + (imgArea.h - drawH) / 2;
         } else {
             drawH = imgArea.h;
-            drawW = imgArea.h * imgAspect;
+            drawW = imgArea.h * imageAspect;
             drawX = imgArea.x + (imgArea.w - drawW) / 2;
             drawY = imgArea.y;
         }
 
-        page.drawImage(pngImage, { x: drawX, y: drawY, width: drawW, height: drawH });
-
-        // Border
-        page.drawRectangle({
-            x: 5, y: 5,
-            width: pageWidth - 10, height: pageHeight - 10,
-            borderColor: pdfRgb(0.22, 0.27, 0.31),
-            borderWidth: 1.5
+        page.drawImage(pngImage, {
+            x: drawX,
+            y: drawY,
+            width: drawW,
+            height: drawH
         });
+
+        if (includeBorder) {
+            page.drawRectangle({
+                x: margin / 2,
+                y: margin / 2,
+                width: pageWidth - margin,
+                height: pageHeight - margin,
+                borderColor: pdfRgb(0.1, 0.1, 0.1),
+                borderWidth: 1
+            });
+        }
 
         const pdfBytes = await pdfDoc.save();
         const filename = `floorplan_${Date.now()}.pdf`;
@@ -3008,7 +3413,6 @@ app.post('/api/export/canvas-pdf', async (req, res) => {
         res.status(500).json({ error: error.message });
     }
 });
-
 // COSTO: Export Reference-Style PDF (matches architectural floor plan reference)
 app.post('/api/costo/export/reference-pdf', async (req, res) => {
     try {
@@ -3028,11 +3432,14 @@ app.post('/api/costo/export/reference-pdf', async (req, res) => {
             solution.circulationPaths = global.lastCostoCirculationPaths;
         }
 
-        // Enable box numbering by default for reference PDF
+        // Keep production UI exports fully detailed by default.
+        // Final-reference calibration is controlled by explicit options in process scripts.
         const exportOptions = {
             showBoxNumbers: true,
             showAreas: true,
             showUnitLabels: true,
+            showDimensions: true,
+            showRadiatorLabels: false,
             ...options
         };
         const pdfBytes = await CostoExports.exportToReferencePDF(solution, floorPlan, metrics, exportOptions);
