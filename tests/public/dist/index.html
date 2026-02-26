@@ -1,0 +1,748 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport"
+        content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>FloorPlan Pro - Spatial Intelligence Studio</title>
+
+    <!-- Font Awesome -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" rel="stylesheet">
+
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;600;700;800&family=Space+Grotesk:wght@300;400;500;600;700&display=swap"
+        rel="stylesheet">
+
+    <!-- Babylon.js Engine -->
+    <script src="./libs/babylon/earcut.min.js"></script>
+    <script src="./libs/babylon/babylon.js"></script>
+    <script src="./libs/babylon/babylonjs.serializers.min.js"></script>
+
+    <!-- Main Stylesheet -->
+  <script type="module" crossorigin src="./assets/index-DAaMjZEb.js"></script>
+  <link rel="stylesheet" crossorigin href="./assets/index-w4kAmmfk.css">
+</head>
+
+<body>
+    <!-- Top Navigation Bar -->
+    <nav class="top-nav pinned">
+        <div class="nav-brand">
+            <i class="fas fa-cube"></i>
+            <div class="brand-text">
+                <h1>FloorPlan Pro</h1>
+                <span>Spatial Intelligence Studio</span>
+            </div>
+        </div>
+
+        <div class="nav-center">
+            <!-- Visual Controls -->
+            <div class="nav-control-group">
+                <span class="group-label">Visual:</span>
+                <button class="nav-icon-btn" id="gridToggleBtn" title="Toggle Grid">
+                    <i class="fas fa-th"></i>
+                </button>
+                <button class="nav-icon-btn" id="toggleShadowsBtn" title="Shadows">
+                    <i class="fas fa-adjust"></i>
+                </button>
+                <button class="nav-icon-btn" id="bloomBtn" title="Bloom Effect">
+                    <i class="fas fa-star"></i>
+                </button>
+            </div>
+
+            <!-- View Controls -->
+            <div class="nav-control-group">
+                <span class="group-label">View:</span>
+                <button class="nav-icon-btn" id="toggle3DBtn" title="3D View">
+                    <i class="fas fa-cube"></i>
+                </button>
+                <button class="nav-icon-btn" id="resetCameraBtn" title="Reset Camera">
+                    <i class="fas fa-crosshairs"></i>
+                </button>
+                <button class="nav-icon-btn" id="fitViewBtn" title="Fit to View">
+                    <i class="fas fa-expand-arrows-alt"></i>
+                </button>
+            </div>
+
+            <!-- Measure Tools -->
+            <div class="nav-control-group">
+                <span class="group-label">Measure:</span>
+                <button class="nav-icon-btn" id="measureBtn" title="Distance">
+                    <i class="fas fa-ruler"></i>
+                </button>
+                <button class="nav-icon-btn" id="areaMeasureBtn" title="Area">
+                    <i class="fas fa-vector-square"></i>
+                </button>
+                <button class="nav-icon-btn" id="angleMeasureBtn" title="Angle">
+                    <i class="fas fa-drafting-compass"></i>
+                </button>
+                <button class="nav-icon-btn" id="clearMeasureBtn" title="Clear">
+                    <i class="fas fa-eraser"></i>
+                </button>
+            </div>
+
+            <!-- Door Placement Tools -->
+            <div class="nav-control-group">
+                <span class="group-label">Doors:</span>
+                <button class="nav-icon-btn" id="door075Btn" title="Add 0.75m Door">
+                    <i class="fas fa-door-open"></i>
+                </button>
+                <button class="nav-icon-btn" id="door1mBtn" title="Add 1m Door">
+                    <i class="fas fa-door-open"></i>
+                </button>
+                <button class="nav-icon-btn" id="cancelDoorBtn" title="Cancel Door Placement">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+        </div>
+
+        <div class="nav-actions">
+            <button class="nav-pin-btn active" id="navPinBtn" title="Pin/Unpin Navigation">
+                <i class="fas fa-thumbtack"></i>
+            </button>
+            <input type="file" id="fileInput" accept=".dxf,.dwg" style="display: none;" aria-label="Select CAD file">
+            <button class="btn btn-primary" id="uploadBtn" type="button" title="Upload CAD File">
+                <i class="fas fa-upload"></i> Upload CAD File
+            </button>
+        </div>
+    </nav>
+
+    <!-- Main Application Container -->
+    <div class="app-container">
+        <!-- Left Sidebar -->
+        <aside class="sidebar sidebar-left">
+            <button class="sidebar-toggle" id="leftSidebarToggle" title="Pin/Unpin Sidebar">
+                <i class="fas fa-thumbtack"></i>
+            </button>
+
+            <!-- Unit Mix Import -->
+            <div class="sidebar-section">
+                <h3>
+                    <i class="fas fa-file-excel"></i> Unit Mix
+                    <i class="fas fa-chevron-down collapse-icon"></i>
+                </h3>
+
+                <div class="section-content">
+                    <div class="config-group">
+                        <label class="config-label">Import Configuration</label>
+                        <p class="config-help">Load Excel/CSV with target surfaces</p>
+
+                        <input type="file" id="unitMixFileInput" accept=".csv,.xlsx,.xls" style="display:none">
+                        <button class="btn btn-block btn-info btn-sm" id="importUnitMixBtn">
+                            <i class="fas fa-upload"></i> Import Unit Mix
+                        </button>
+
+                        <div id="unitMixPreview" style="display:none; margin-top: 10px;">
+                            <h4 style="font-size: 10px; margin-bottom: 5px;">Loaded Mix:</h4>
+                            <div id="unitMixSummary" style="font-size: 9px; color: var(--accent);"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Distribution Configuration -->
+            <div class="sidebar-section collapsed">
+                <h3>
+                    <i class="fas fa-sliders-h"></i> Distribution
+                    <i class="fas fa-chevron-down collapse-icon"></i>
+                </h3>
+
+                <div class="section-content">
+                    <div class="config-group">
+                        <label class="config-label">Îlot Size Distribution</label>
+                        <p class="config-help">Total must equal 100%</p>
+                        <div id="presetSelectorContainer" style="margin-bottom: 8px;"></div>
+
+                        <div class="distribution-inputs">
+                            <div class="dist-row">
+                                <label>0-1 m²</label>
+                                <input type="number" class="distribution-input" data-range="0-1" data-index="0" min="0"
+                                    max="100">
+                                <span class="unit">%</span>
+                            </div>
+                            <div class="dist-row">
+                                <label>1-3 m²</label>
+                                <input type="number" class="distribution-input" data-range="1-3" data-index="1" min="0"
+                                    max="100">
+                                <span class="unit">%</span>
+                            </div>
+                            <div class="dist-row">
+                                <label>3-5 m²</label>
+                                <input type="number" class="distribution-input" data-range="3-5" data-index="2" min="0"
+                                    max="100">
+                                <span class="unit">%</span>
+                            </div>
+                            <div class="dist-row">
+                                <label>5-10 m²</label>
+                                <input type="number" class="distribution-input" data-range="5-10" data-index="3" min="0"
+                                    max="100">
+                                <span class="unit">%</span>
+                            </div>
+                        </div>
+
+                        <div class="dist-total">
+                            Total: <strong id="distributionTotal">0%</strong>
+                        </div>
+                        <div id="distributionError" class="hidden" style="margin-top: 6px; color: #d64545; font-size: 10px;">
+                            Distribution must sum to exactly 100%.
+                        </div>
+
+                        <button class="btn btn-block btn-sm" id="applyDistributionBtn">
+                            <i class="fas fa-check"></i> Apply Distribution
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Layer Visibility -->
+            <div class="sidebar-section collapsed">
+                <h3>
+                    <i class="fas fa-layer-group"></i> Layers
+                    <i class="fas fa-chevron-down collapse-icon"></i>
+                </h3>
+                <div class="section-content">
+                    <div class="config-group">
+                        <label class="config-label">Toggle visibility</label>
+                        <div class="layer-toggles">
+                            <label class="checkbox-label">
+                                <input type="checkbox" id="layerWalls" checked>
+                                <span>Walls</span>
+                            </label>
+                            <label class="checkbox-label">
+                                <input type="checkbox" id="layerEntrances" checked>
+                                <span>Entrances</span>
+                            </label>
+                            <label class="checkbox-label">
+                                <input type="checkbox" id="layerForbidden" checked>
+                                <span>Forbidden zones</span>
+                            </label>
+                            <label class="checkbox-label">
+                                <input type="checkbox" id="layerIlots" checked>
+                                <span>Boxes (Îlots)</span>
+                            </label>
+                            <label class="checkbox-label">
+                                <input type="checkbox" id="layerCorridors" checked>
+                                <span>Corridors</span>
+                            </label>
+                            <label class="checkbox-label">
+                                <input type="checkbox" id="layerArrows" checked>
+                                <span>Circulation arrows</span>
+                            </label>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Corridor Configuration -->
+            <div class="sidebar-section collapsed">
+                <h3>
+                    <i class="fas fa-route"></i> Corridor Settings
+                    <i class="fas fa-chevron-down collapse-icon"></i>
+                </h3>
+
+                <div class="section-content">
+                    <div class="config-group">
+                        <label class="config-label">Corridor Width</label>
+                        <div class="slider-group">
+                            <input type="range" id="corridorWidthSlider" min="1" max="3" step="0.1" value="1.2">
+                            <span id="corridorWidthValue">1.2m</span>
+                        </div>
+
+                        <div class="checkbox-group">
+                            <label class="checkbox-label">
+                                <input type="checkbox" id="generate-arrows" checked>
+                                <span>Generate circulation arrows</span>
+                            </label>
+                            <label class="checkbox-label">
+                                <input type="checkbox" id="show-main-corridors" checked>
+                                <span>Show main corridors</span>
+                            </label>
+                            <label class="checkbox-label">
+                                <input type="checkbox" id="show-access-corridors" checked>
+                                <span>Show access corridors</span>
+                            </label>
+                        </div>
+
+                        <button class="btn btn-block btn-sm" id="toggleArrowsBtn">
+                            <i class="fas fa-arrows-alt"></i> Toggle Arrows
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Generation Actions -->
+            <div class="sidebar-section">
+                <h3>
+                    <i class="fas fa-magic"></i> Actions
+                    <i class="fas fa-chevron-down collapse-icon"></i>
+                </h3>
+                <div class="section-content">
+                    <div style="display: flex; flex-direction: column; gap: 12px;">
+                        <label
+                            style="display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--gray-600);">
+                            <input type="checkbox" id="costoLayoutCheckbox" checked style="margin: 0;">
+                            <span>COSTO Style (Organized Rows)</span>
+                        </label>
+                        <div class="config-group">
+                            <label class="config-label">Target Îlots</label>
+                            <p class="config-help">Leave empty for auto (floor area / 5). Aim 280–350 for dense plans.
+                            </p>
+                            <input type="number" id="targetIlotsInput" min="1" max="500" placeholder="auto"
+                                style="width: 100%; padding: 6px 8px; font-size: 12px;">
+                        </div>
+                        <button class="btn btn-block btn-success" id="generateIlotsBtn">
+                            <i class="fas fa-th-large"></i> Generate Îlots
+                        </button>
+                        <button class="btn btn-block btn-sm" id="optimizeLayoutBtn">
+                            <i class="fas fa-object-group"></i> Optimize Layout
+                        </button>
+                        <button class="btn btn-block btn-sm" id="optimizePathsBtn">
+                            <i class="fas fa-project-diagram"></i> Optimize Paths
+                        </button>
+                        <!-- Hidden: corridors now generated automatically by Gen Îlots -->
+                        <button class="btn btn-block btn-info" id="generateCorridorsBtn" style="display:none">
+                            <i class="fas fa-route"></i> Generate Corridors
+                        </button>
+                        <!-- Compliance Display -->
+                        <div id="complianceDisplay" class="compliance-display">
+                            <div class="compliance-header">
+                                <span><i class="fas fa-shield-alt"></i> Compliance</span>
+                                <span id="complianceRate" class="compliance-value">--</span>
+                            </div>
+                            <div class="compliance-bar-track">
+                                <div class="compliance-bar-fill" id="complianceBarFill" style="width: 0%;"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Edit & Undo Controls -->
+            <div class="sidebar-section collapsed">
+                <h3>
+                    <i class="fas fa-edit"></i> Edit Tools
+                    <i class="fas fa-chevron-down collapse-icon"></i>
+                </h3>
+                <div class="section-content">
+                    <div class="button-grid">
+                        <button class="btn btn-sm" id="undoBtn" title="Undo (Ctrl+Z)">
+                            <i class="fas fa-undo"></i>
+                        </button>
+                        <button class="btn btn-sm" id="redoBtn" title="Redo (Ctrl+Y)">
+                            <i class="fas fa-redo"></i>
+                        </button>
+                        <button class="btn btn-sm" id="editModeBtn" title="Edit Mode (G)">
+                            <i class="fas fa-edit"></i>
+                        </button>
+                        <button class="btn btn-sm" id="snapGridBtn" title="Snap to Grid">
+                            <i class="fas fa-magnet"></i>
+                        </button>
+                        <button class="btn btn-sm" id="splitIlotBtn" title="Split selected unit">
+                            <i class="fas fa-cut"></i>
+                        </button>
+                        <button class="btn btn-sm" id="mergeIlotBtn" title="Merge with adjacent">
+                            <i class="fas fa-object-group"></i>
+                        </button>
+                        <button class="btn btn-sm" id="lockRowBtn" title="Lock row">
+                            <i class="fas fa-lock"></i>
+                        </button>
+                        <button class="btn btn-sm" id="unlockRowBtn" title="Unlock row">
+                            <i class="fas fa-lock-open"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Multi-Floor Management -->
+            <div class="sidebar-section collapsed">
+                <h3>
+                    <i class="fas fa-building"></i> Multi-Floor
+                    <i class="fas fa-chevron-down collapse-icon"></i>
+                </h3>
+
+                <div class="section-content">
+                    <div class="config-group">
+                        <div class="input-row">
+                            <label>Floor Name</label>
+                            <input type="text" id="floorNameInput" placeholder="e.g. Level 1">
+                        </div>
+                        <div class="input-row">
+                            <label>Level Index</label>
+                            <input type="number" id="floorLevelInput" value="0">
+                        </div>
+
+                        <div class="button-row">
+                            <button class="btn btn-sm btn-success" id="addFloorToStackBtn">
+                                <i class="fas fa-plus"></i> Add to Stack
+                            </button>
+                            <button class="btn btn-sm btn-secondary" id="clearMultiFloorBtn">
+                                <i class="fas fa-trash"></i> Clear
+                            </button>
+                        </div>
+
+                        <div class="input-row">
+                            <label>Floor Height (m)</label>
+                            <input type="number" id="floorHeightInput" step="0.1" value="3.2">
+                        </div>
+
+                        <button class="btn btn-block btn-sm" id="computeMultiFloorBtn">
+                            <i class="fas fa-layer-group"></i> Compute Stack
+                        </button>
+                        <button class="btn btn-block btn-sm btn-secondary" id="previewStackBtn" disabled>
+                            <i class="fas fa-vr-cardboard"></i> Preview Stack
+                        </button>
+                        <div class="button-row" style="margin-top: 8px;">
+                            <button class="btn btn-sm btn-info" id="profileStackBtn">
+                                <i class="fas fa-stopwatch"></i> Profile
+                            </button>
+                            <button class="btn btn-sm btn-info" id="reportStackBtn">
+                                <i class="fas fa-file-lines"></i> Report
+                            </button>
+                        </div>
+                    </div>
+
+                    <div id="multiFloorStatus" class="status-text">No floors added</div>
+                    <div id="multiFloorList" class="floor-list"></div>
+                    <div id="multiFloorWarnings" class="list-content" style="margin-top: 8px;"></div>
+                    <div id="multiFloorConnectorList" class="list-content" style="margin-top: 8px;"></div>
+                    <div id="multiFloorRoutes" class="list-content" style="margin-top: 8px;"></div>
+                    <div id="multiFloorProfile" class="list-content" style="margin-top: 8px;"></div>
+                    <div id="multiFloorReport" class="list-content" style="margin-top: 8px;"></div>
+                    <div id="multiFloorCompliance" class="list-content" style="margin-top: 8px;"></div>
+                </div>
+            </div>
+
+            <!-- Export Options -->
+            <div class="sidebar-section collapsed">
+                <h3>
+                    <i class="fas fa-download"></i> Export
+                    <i class="fas fa-chevron-down collapse-icon"></i>
+                </h3>
+                <div class="section-content">
+                    <div style="display: flex; flex-direction: column; gap: 6px;">
+                        <button class="btn btn-sm btn-block" id="exportPdfBtn">
+                            <i class="fas fa-file-pdf"></i> PDF
+                        </button>
+                        <button class="btn btn-sm btn-block" id="exportImageBtn">
+                            <i class="fas fa-image"></i> PNG
+                        </button>
+                        <button class="btn btn-sm btn-block" id="exportSvgBtn">
+                            <i class="fas fa-vector-square"></i> SVG
+                        </button>
+                        <button class="btn btn-sm btn-block" id="exportDxfBtn">
+                            <i class="fas fa-file-code"></i> DXF
+                        </button>
+                        <button class="btn btn-sm btn-block" id="export4kBtn">
+                            <i class="fas fa-image"></i> PNG 4K
+                        </button>
+                        <button class="btn btn-sm btn-block" id="exportGltfBtn">
+                            <i class="fas fa-cubes"></i> GLTF
+                        </button>
+                        <button class="btn btn-sm btn-success btn-block" id="exportReferencePdfBtn">
+                            <i class="fas fa-file-pdf"></i> Reference PDF
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Main Canvas Area -->
+        <main class="main-content">
+            <div id="threeContainer" class="canvas-container"></div>
+
+            <!-- Floor Plan Legends -->
+            <div class="floor-legend" id="floorLegend" style="display: none;">
+                <div class="legend-title" style="display: flex; justify-content: space-between; align-items: center;">
+                    <span>LÉGENDE</span>
+                    <button class="legend-collapse-btn" id="legendCollapseBtn" title="Minimize Legend"
+                        style="background: none; border: none; cursor: pointer; font-size: 16px; padding: 4px 8px; color: var(--gray-600);">
+                        <i class="fas fa-minus"></i>
+                    </button>
+                </div>
+
+                <!-- RM No./DESCRIPTION/AREA Table (matching reference exactly) -->
+                <div class="legend-table" id="legendUnitTable" style="display: none;">
+                    <div class="legend-table-header">
+                        <div class="legend-table-cell">RM No.</div>
+                        <div class="legend-table-cell">DESCRIPTION</div>
+                        <div class="legend-table-cell">AREA (SQ.FT.)</div>
+                    </div>
+                    <div class="legend-table-body" id="legendTableBody">
+                        <!-- Dynamically populated -->
+                    </div>
+                </div>
+
+                <!-- Line Style Legend -->
+                <div class="legend-section">
+                    <div class="legend-item">
+                        <div class="legend-color" style="background-color: #dbeafe; border: 1px solid #3b82f6;"></div>
+                        <span class="legend-label">S — Small</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-color" style="background-color: #d1fae5; border: 1px solid #10b981;"></div>
+                        <span class="legend-label">M — Medium</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-color" style="background-color: #fef3c7; border: 1px solid #f59e0b;"></div>
+                        <span class="legend-label">L — Large</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-color" style="background-color: #fce7f3; border: 1px solid #ec4899;"></div>
+                        <span class="legend-label">XL — Extra Large</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-line legend-dashed" style="border-top: 2px dashed #e06090;"></div>
+                        <span class="legend-label">Circulation</span>
+                    </div>
+                </div>
+
+                <!-- Color Legend -->
+                <div class="legend-section">
+                    <div class="legend-item">
+                        <div class="legend-color" style="background-color: #374151;"></div>
+                        <span class="legend-label">Murs</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-color" style="background-color: #ff0000;"></div>
+                        <span class="legend-label">Entrées</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-color" style="background-color: #ffcc00;"></div>
+                        <span class="legend-label">Zones interdites</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-color" style="background-color: #fce4ec; border: 1px solid #e06090;"></div>
+                        <span class="legend-label">Corridors (1.2m)</span>
+                    </div>
+                </div>
+            </div>
+        </main>
+
+        <!-- Right Sidebar -->
+        <aside class="sidebar sidebar-right">
+            <button class="sidebar-toggle" id="rightSidebarToggle" title="Pin/Unpin Sidebar">
+                <i class="fas fa-thumbtack"></i>
+            </button>
+            <div id="processingStatus" class="sidebar-section hidden">
+                <h3>
+                    <i class="fas fa-spinner"></i> Processing
+                    <i class="fas fa-chevron-down collapse-icon"></i>
+                </h3>
+                <div class="section-content">
+                    <div style="display:flex; align-items:center; gap:10px;">
+                        <svg width="28" height="28" viewBox="0 0 64 64" aria-hidden="true">
+                            <circle cx="32" cy="32" r="27" stroke="#d9e2ec" stroke-width="6" fill="none"></circle>
+                            <circle id="progressCircleSmall" cx="32" cy="32" r="27" stroke="#2f7ea6" stroke-width="6" fill="none" stroke-linecap="round" stroke-dasharray="169.646" stroke-dashoffset="169.646" transform="rotate(-90 32 32)"></circle>
+                        </svg>
+                        <div style="display:flex; flex-direction:column; gap:2px;">
+                            <strong id="progressMessageSmall">Idle</strong>
+                            <span id="progressPercentSmall">0%</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <!-- Statistics -->
+            <div class="sidebar-section collapsed">
+                <h3>
+                    <i class="fas fa-chart-bar"></i> Statistics
+                    <i class="fas fa-chevron-down collapse-icon"></i>
+                </h3>
+                <div class="section-content">
+                    <div class="stats-grid">
+                        <div class="stat-card stat-card-1">
+                            <div class="stat-value" id="roomCount">0</div>
+                            <div class="stat-label">Rooms</div>
+                        </div>
+                        <div class="stat-card stat-card-2">
+                            <div class="stat-value" id="ilotCount">0</div>
+                            <div class="stat-label">Îlots</div>
+                        </div>
+                        <div class="stat-card stat-card-3">
+                            <div class="stat-value" id="corridorCount">0</div>
+                            <div class="stat-label">Corridors</div>
+                        </div>
+                        <div class="stat-card stat-card-4">
+                            <div class="stat-value" id="totalArea">0 m²</div>
+                            <div class="stat-label">Total Area</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Corridor Statistics -->
+            <div class="sidebar-section collapsed">
+                <h3>
+                    <i class="fas fa-arrow-right"></i> Circulation
+                    <i class="fas fa-chevron-down collapse-icon"></i>
+                </h3>
+                <div class="section-content">
+                    <div class="corridor-stats">
+                        <div class="stat-row">
+                            <span>Main Corridors</span>
+                            <strong id="statsMainCorridors">0</strong>
+                        </div>
+                        <div class="stat-row">
+                            <span>Connecting</span>
+                            <strong id="statsConnectingCorridors">0</strong>
+                        </div>
+                        <div class="stat-row">
+                            <span>Access</span>
+                            <strong id="statsAccessCorridors">0</strong>
+                        </div>
+                        <div class="stat-row">
+                            <span>Total Arrows</span>
+                            <strong id="statsArrowCount">0</strong>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Variance Report (Unit Mix Conformity) -->
+            <div class="sidebar-section collapsed">
+                <h3>
+                    <i class="fas fa-chart-line"></i> Conformity
+                    <i class="fas fa-chevron-down collapse-icon"></i>
+                </h3>
+                <div class="section-content">
+                    <div id="varianceReport" style="font-size: 10px;">
+                        <div style="text-align: center; color: var(--gray-500); padding: 20px;">
+                            Import unit mix + generate ilots to see variance
+                        </div>
+                    </div>
+                    <button class="btn btn-block btn-sm btn-info" id="refreshVarianceBtn"
+                        style="margin-top: 10px; display: none;">
+                        <i class="fas fa-sync"></i> Refresh Report
+                    </button>
+                </div>
+            </div>
+
+            <!-- Excel/CSV Exports -->
+            <div class="sidebar-section collapsed">
+                <h3>
+                    <i class="fas fa-file-excel"></i> Excel Exports
+                    <i class="fas fa-chevron-down collapse-icon"></i>
+                </h3>
+                <div class="section-content">
+                    <div style="display: flex; flex-direction: column; gap: 8px;">
+                        <button class="btn btn-success btn-sm btn-block" id="exportBoxListBtn">
+                            <i class="fas fa-list"></i> Box List
+                        </button>
+                        <button class="btn btn-success btn-sm btn-block" id="exportTypologyBtn">
+                            <i class="fas fa-chart-pie"></i> Typologie Summary
+                        </button>
+                        <button class="btn btn-success btn-sm btn-block" id="exportVarianceBtn">
+                            <i class="fas fa-chart-bar"></i> Variance Report
+                        </button>
+                        <hr style="margin: 5px 0; border-color: var(--gray-200);">
+                        <button class="btn btn-info btn-sm btn-block" id="exportAllReportsBtn">
+                            <i class="fas fa-download"></i> Download All Reports
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Element Lists -->
+            <div class="sidebar-section collapsed">
+                <h3>
+                    <i class="fas fa-list"></i> Elements
+                    <i class="fas fa-chevron-down collapse-icon"></i>
+                </h3>
+
+                <div class="section-content">
+                    <div class="element-list">
+                        <h4>Rooms</h4>
+                        <div id="roomList" class="list-content">
+                            <div class="list-item empty">No rooms detected</div>
+                        </div>
+                    </div>
+
+                    <div class="element-list">
+                        <h4>Îlots</h4>
+                        <div id="ilotsList" class="list-content">
+                            <div class="list-item empty">No îlots generated</div>
+                        </div>
+                    </div>
+
+                    <div class="element-list">
+                        <h4>Corridors</h4>
+                        <div id="corridorList" class="list-content">
+                            <div class="list-item empty">No corridors generated</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </aside>
+    </div>
+
+    <!-- Notification Container -->
+    <div id="notifications" class="notifications"></div>
+
+    <!-- Loading Overlay -->
+    <div id="loadingOverlay" class="loading-overlay hidden">
+        <div class="loader">
+            <div id="globalLoader" style="display:flex; flex-direction:column; align-items:center; gap:10px;">
+                <svg width="120" height="120" viewBox="0 0 140 140" aria-hidden="true">
+                    <circle cx="70" cy="70" r="54" stroke="#d9e2ec" stroke-width="10" fill="none"></circle>
+                    <circle id="progressCircle" cx="70" cy="70" r="54" stroke="#2f7ea6" stroke-width="10" fill="none" stroke-linecap="round" stroke-dasharray="339.292" stroke-dashoffset="339.292" transform="rotate(-90 70 70)"></circle>
+                </svg>
+                <div class="spinner"></div>
+                <p id="loadingMessage">Processing...</p>
+                <p id="loaderMessage" style="font-size:12px; color: var(--gray-600);">Processing...</p>
+                <p id="loaderPercentage" style="font-size:14px; font-weight:700;">0%</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Hidden inputs for compatibility -->
+    <textarea id="distributionEditor" style="display: none;"></textarea>
+    <input type="hidden" id="connectorToleranceInput" value="1.25">
+    <input type="hidden" id="egressLimitInput" value="45">
+    <input type="hidden" id="accessibleEntrancesInput" value="1">
+    <input type="checkbox" id="requireElevatorToggle" checked style="display: none;">
+
+    <!-- DevmanAi Branding (Hidden Type - Subtle Watermark) -->
+    <div class="devmanai-watermark">
+        <span class="watermark-text">Powered by</span>
+        <span class="watermark-brand">DevmanAi</span>
+    </div>
+
+    <!-- Scripts -->
+    <script>
+        // Set API base URL
+        window.__API_BASE__ = window.location.origin;
+
+        // Legend collapse functionality
+        document.addEventListener('DOMContentLoaded', function () {
+            const legendCollapseBtn = document.getElementById('legendCollapseBtn');
+            const floorLegend = document.getElementById('floorLegend');
+            let legendMinimized = false;
+
+            if (legendCollapseBtn && floorLegend) {
+                legendCollapseBtn.addEventListener('click', function () {
+                    legendMinimized = !legendMinimized;
+                    if (legendMinimized) {
+                        // Minimize - show only title bar
+                        floorLegend.style.height = '40px';
+                        floorLegend.style.overflow = 'hidden';
+                        legendCollapseBtn.innerHTML = '<i class="fas fa-plus"></i>';
+                        legendCollapseBtn.title = 'Expand Legend';
+                    } else {
+                        // Expand - show full legend
+                        floorLegend.style.height = 'auto';
+                        floorLegend.style.overflow = 'visible';
+                        legendCollapseBtn.innerHTML = '<i class="fas fa-minus"></i>';
+                        legendCollapseBtn.title = 'Minimize Legend';
+                    }
+                });
+            }
+        });
+    </script>
+    <script src="presetSelector.js"></script>
+</body>
+
+</html>
+
+

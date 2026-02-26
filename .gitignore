@@ -43,7 +43,7 @@ coverage/
 .DS_Store
 
 # Build outputs
-dist/
+
 build/
 public/dist/
 
