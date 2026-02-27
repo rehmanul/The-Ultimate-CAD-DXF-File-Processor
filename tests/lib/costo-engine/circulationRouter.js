@@ -21,7 +21,11 @@ class CirculationRouter {
         this.oneWayFlow = this.options.oneWayFlow === true;
         // Disabled by default to avoid non-architectural synthetic connector strokes.
         this.allowSyntheticConnectors = this.options.allowSyntheticConnectors === true;
-        this.blockThroughUnits = this.options.blockThroughUnits !== false;
+        this.enforceRouteContinuity = this.options.enforceRouteContinuity !== false;
+        this.enforceReachableFlow = this.options.enforceReachableFlow !== false;
+        this.corridorWidth = Math.max(0.8, Number(this.options.corridorWidth) || 1.2);
+        // Off by default: corridor centerlines are already constrained to corridor geometry.
+        this.blockThroughUnits = this.options.blockThroughUnits === true;
 
         this.allWalls = [];
         const wallSources = [
@@ -248,6 +252,10 @@ class CirculationRouter {
 
         const connections = [];
         const entrancePoints = this._getEntrancePoints();
+        const spanX = Math.abs((this.bounds?.maxX ?? 0) - (this.bounds?.minX ?? 0));
+        const spanY = Math.abs((this.bounds?.maxY ?? 0) - (this.bounds?.minY ?? 0));
+        const planSpan = Math.max(spanX, spanY, 1);
+        const maxLinkDistance = Math.max(25, planSpan * 0.75);
 
         for (const ent of entrancePoints) {
             let nearest = null;
@@ -260,7 +268,7 @@ class CirculationRouter {
                 }
             }
 
-            if (!nearest || nearestDist < 0.5 || nearestDist > 25) continue;
+            if (!nearest || nearestDist < 0.5 || nearestDist > maxLinkDistance) continue;
 
             // Keep entrance links axis-aligned only (no diagonal connectors).
             const aligned = Math.abs(ent.x - nearest.x) <= 1e-6 || Math.abs(ent.y - nearest.y) <= 1e-6;
@@ -363,7 +371,8 @@ class CirculationRouter {
         let exitNode = this._findNearestNode(graph.nodes, defaultExit);
         let routeKeys = null;
         let bridged = false;
-        const enforceRouteContinuity = this.oneWayFlow && this.allowSyntheticConnectors;
+        const enforceRouteContinuity = this.enforceRouteContinuity;
+        const canBridge = enforceRouteContinuity && this.allowSyntheticConnectors;
 
         const connectedAnchors = this._selectConnectedFlowAnchors(
             graph.nodes,
@@ -381,7 +390,7 @@ class CirculationRouter {
 
         if (!routeKeys && entryNode && exitNode) {
             routeKeys = this._shortestPath(graph.nodes, entryNode.key, exitNode.key);
-            if (!routeKeys && enforceRouteContinuity) {
+            if (!routeKeys && canBridge) {
                 bridged = this._bridgeDisconnectedGraph(segments, graph, entryNode.key, exitNode.key);
                 if (bridged) {
                     graph = this._buildSegmentGraph(segments);
@@ -407,7 +416,7 @@ class CirculationRouter {
 
         let routeConnected = Array.isArray(routeKeys) && routeKeys.length >= 2;
         let bridgedComponents = 0;
-        if (enforceRouteContinuity && entryNode) {
+        if (canBridge && entryNode) {
             bridgedComponents = this._bridgeDetachedComponents(segments, graph, entryNode.key);
             if (bridgedComponents > 0) {
                 graph = this._buildSegmentGraph(segments);
@@ -420,8 +429,22 @@ class CirculationRouter {
             }
         }
 
+        let distances = entryNode ? this._dijkstra(graph.nodes, entryNode.key) : new Map();
+        if ((!routeConnected || !exitNode || !Number.isFinite(distances.get(exitNode.key))) && entryNode) {
+            const fallbackExit = this._findFarthestReachableNode(graph.nodes, distances, entryNode.key);
+            if (fallbackExit && fallbackExit.key !== entryNode.key) {
+                const fallbackRoute = this._shortestPath(graph.nodes, entryNode.key, fallbackExit.key);
+                if (Array.isArray(fallbackRoute) && fallbackRoute.length >= 2) {
+                    routeKeys = fallbackRoute;
+                    routeConnected = true;
+                    flowExit = { x: fallbackExit.x, y: fallbackExit.y };
+                    exitNode = { key: fallbackExit.key, x: fallbackExit.x, y: fallbackExit.y, distance: fallbackExit.distance };
+                    distances = this._dijkstra(graph.nodes, entryNode.key);
+                }
+            }
+        }
+
         const routeEdges = routeConnected ? this._buildRouteEdgeSet(routeKeys) : new Set();
-        const distances = entryNode ? this._dijkstra(graph.nodes, entryNode.key) : new Map();
         const routeLength = routeConnected ? routeKeys.length : 0;
 
         if (routeConnected) {
@@ -457,11 +480,15 @@ class CirculationRouter {
                 Number.isFinite(distances.get(this._pointKey(path[path.length - 1])));
 
             seg.path = path;
-            seg.direction = 'entry_to_exit';
+            seg.direction = this.oneWayFlow ? 'entry_to_exit' : 'two_way';
             seg.flowEntry = { x: flowEntry.x, y: flowEntry.y };
             seg.flowExit = { x: flowExit.x, y: flowExit.y };
             seg.onMainRoute = onMainRoute;
-            seg.flowValid = this.oneWayFlow ? (pathConnected || onMainRoute) : true;
+            const reachable = pathConnected || onMainRoute;
+            // Keep reachability gating strict in both one-way and two-way modes:
+            // arrows/flow only on entry-reachable navigable network segments.
+            seg.flowValid = this.enforceReachableFlow ? reachable : true;
+            seg.bidirectional = !this.oneWayFlow;
 
             const arrows = [];
             if (!seg.flowValid) {
@@ -479,12 +506,14 @@ class CirculationRouter {
 
                 const angle = Math.atan2(dy, dx);
                 const baseStep = onMainRoute
-                    ? 1.45
-                    : (seg.type === 'SPINE' ? 1.65 : 1.85);
-                const numArrows = Math.max(1, Math.floor((len + 0.2) / baseStep));
+                    ? 1.15
+                    : (seg.type === 'SPINE' ? 1.35 : 1.55);
+                const numArrows = Math.max(1, Math.floor((len + baseStep * 0.35) / baseStep));
                 const nx = -dy / len;
                 const ny = dx / len;
-                const laneOffset = this.oneWayFlow ? 0 : 0.045;
+                const laneOffset = this.oneWayFlow
+                    ? 0
+                    : Math.max(0.08, Math.min(0.16, this.corridorWidth * 0.14));
                 for (let a = 0; a < numArrows; a++) {
                     const t = (a + 0.5) / numArrows;
                     const cx = p1.x + dx * t;
@@ -951,6 +980,21 @@ class CirculationRouter {
 
     _edgeKey(a, b) {
         return a < b ? `${a}|${b}` : `${b}|${a}`;
+    }
+
+    _findFarthestReachableNode(nodes, distances, anchorKey) {
+        if (!nodes || !(nodes instanceof Map) || !distances || !(distances instanceof Map)) return null;
+        if (!anchorKey || !nodes.has(anchorKey)) return null;
+
+        let best = null;
+        for (const node of nodes.values()) {
+            const d = distances.get(node.key);
+            if (!Number.isFinite(d)) continue;
+            if (!best || d > best.distance) {
+                best = { key: node.key, x: node.x, y: node.y, distance: d };
+            }
+        }
+        return best;
     }
 
     _resolveFlowAnchors(entrancePoints, center) {

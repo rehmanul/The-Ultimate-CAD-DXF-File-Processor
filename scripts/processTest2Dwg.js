@@ -121,7 +121,14 @@ async function run() {
         .send({
             floorPlan,
             distribution: { '0-2': 25, '2-5': 35, '5-10': 30, '10-20': 10 },
-            options: { totalIlots: targetIlots, corridorWidth: 1.0, seed: 42, style: 'COSTO' }
+            options: {
+                totalIlots: targetIlots,
+                corridorWidth: 1.2,
+                seed: 42,
+                style: 'COSTO',
+                oneWayFlow: false,
+                blockThroughUnits: false
+            }
         })
         .expect(200);
 

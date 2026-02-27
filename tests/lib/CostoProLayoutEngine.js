@@ -45,7 +45,14 @@ class CostoProLayoutEngine {
         this.minGapLength = Math.max(0.30, Number(options.minGapLength) || 0.60);
         this.maximizeFill = options.maximizeFill !== false;
         this.oneWayFlow = options.oneWayFlow === true;
-        this.blockThroughUnits = options.blockThroughUnits !== false;
+        // Keep false by default: corridor geometry already encodes no-box regions,
+        // and treating every unit edge as a wall can fragment circulation graphs.
+        this.blockThroughUnits = options.blockThroughUnits === true;
+        this.retainDisconnectedCorridors = options.retainDisconnectedCorridors !== false;
+        this.corridorComponentMinLength = Math.max(
+            this.corridorWidth * 1.5,
+            Number(options.corridorComponentMinLength) || 1.8
+        );
 
         // Radiator parameters (tight like reference)
         this.radiatorAmplitude = 0.12;
@@ -84,8 +91,10 @@ class CostoProLayoutEngine {
         const addEntranceRect = (x, y, w, h) => {
             if (![x, y, w, h].every(Number.isFinite)) return;
             if (w <= 0 || h <= 0) return;
-            const minSize = Math.max(0.6, this.corridorWidth * 0.65);
-            const inflate = Math.max(0.25, this.corridorWidth * 0.25);
+            // Keep a stronger no-place buffer near entrances so units cannot
+            // visually sit on top of access points.
+            const minSize = Math.max(0.85, this.corridorWidth * 0.85);
+            const inflate = Math.max(0.35, this.corridorWidth * 0.32);
             const rw = Math.max(minSize, w);
             const rh = Math.max(minSize, h);
             const rx = Math.max(this.bounds.minX, x - inflate);
@@ -421,8 +430,14 @@ class CostoProLayoutEngine {
         for (const r of this.forbiddenRects)
             if (bx < r.x + r.w && bx + bw > r.x && by < r.y + r.h && by + bh > r.y) return true;
         if (!ignoreEntrances) {
+            const entrancePad = Math.max(0.24, this.corridorWidth * 0.26);
             for (const r of this.entranceRects)
-                if (bx < r.x + r.w && bx + bw > r.x && by < r.y + r.h && by + bh > r.y) return true;
+                if (
+                    bx < (r.x + r.w + entrancePad) &&
+                    (bx + bw) > (r.x - entrancePad) &&
+                    by < (r.y + r.h + entrancePad) &&
+                    (by + bh) > (r.y - entrancePad)
+                ) return true;
         }
         return false;
     }
@@ -528,30 +543,334 @@ class CostoProLayoutEngine {
         return overlap >= Math.min(a.height, b.height) * 0.45;
     }
 
-    _sanitizeFinalLayout(units, corridors) {
-        const safeUnits = [];
-        const safeCorridors = [];
+    _normalizeCorridorRect(corridor) {
+        if (!corridor) return null;
+        const x = Number(corridor.x);
+        const y = Number(corridor.y);
+        const w = Number(corridor.width);
+        const h = Number(corridor.height);
+        if (![x, y, w, h].every(Number.isFinite)) return null;
+        if (w <= 0 || h <= 0) return null;
+        return {
+            ...corridor,
+            x,
+            y,
+            width: w,
+            height: h,
+            direction: corridor.direction || (w >= h ? 'horizontal' : 'vertical')
+        };
+    }
 
+    _splitCorridorByStructuralWalls(corridor) {
+        const c = this._normalizeCorridorRect(corridor);
+        if (!c) return [];
+
+        const horizontal = c.direction === 'horizontal' || c.width >= c.height;
+        const lineCoord = horizontal ? (c.y + c.height / 2) : (c.x + c.width / 2);
+        const axisStart = horizontal ? c.x : c.y;
+        const axisEnd = horizontal ? (c.x + c.width) : (c.y + c.height);
+        const tol = Math.max(0.02, this.wallClearance * 0.45);
+        const minSeg = Math.max(this.minGapLength, this.corridorWidth * 0.75);
+
+        const blockers = [];
+        for (const seg of this.wallSegments) {
+            if (!seg) continue;
+            const x1 = Number(seg.x1);
+            const y1 = Number(seg.y1);
+            const x2 = Number(seg.x2);
+            const y2 = Number(seg.y2);
+            if (![x1, y1, x2, y2].every(Number.isFinite)) continue;
+
+            if (horizontal) {
+                const sMinY = Math.min(y1, y2) - tol;
+                const sMaxY = Math.max(y1, y2) + tol;
+                if (lineCoord < sMinY || lineCoord > sMaxY) continue;
+
+                if (Math.abs(y2 - y1) < 1e-8) {
+                    if (Math.abs(y1 - lineCoord) > tol) continue;
+                    blockers.push({ start: Math.min(x1, x2) - tol, end: Math.max(x1, x2) + tol });
+                    continue;
+                }
+
+                const t = (lineCoord - y1) / (y2 - y1);
+                if (t < -1e-6 || t > 1 + 1e-6) continue;
+                const xHit = x1 + (x2 - x1) * t;
+                blockers.push({ start: xHit - tol, end: xHit + tol });
+                continue;
+            }
+
+            const sMinX = Math.min(x1, x2) - tol;
+            const sMaxX = Math.max(x1, x2) + tol;
+            if (lineCoord < sMinX || lineCoord > sMaxX) continue;
+
+            if (Math.abs(x2 - x1) < 1e-8) {
+                if (Math.abs(x1 - lineCoord) > tol) continue;
+                blockers.push({ start: Math.min(y1, y2) - tol, end: Math.max(y1, y2) + tol });
+                continue;
+            }
+
+            const t = (lineCoord - x1) / (x2 - x1);
+            if (t < -1e-6 || t > 1 + 1e-6) continue;
+            const yHit = y1 + (y2 - y1) * t;
+            blockers.push({ start: yHit - tol, end: yHit + tol });
+        }
+
+        if (blockers.length === 0) {
+            return [c];
+        }
+
+        blockers.sort((a, b) => a.start - b.start);
+        const merged = [];
+        for (const blk of blockers) {
+            const s = Math.max(axisStart, Math.min(axisEnd, blk.start));
+            const e = Math.max(axisStart, Math.min(axisEnd, blk.end));
+            if (e <= s) continue;
+            if (!merged.length || s > merged[merged.length - 1].end + 1e-6) {
+                merged.push({ start: s, end: e });
+            } else {
+                merged[merged.length - 1].end = Math.max(merged[merged.length - 1].end, e);
+            }
+        }
+
+        if (merged.length === 0) {
+            return [c];
+        }
+
+        const segments = [];
+        let cursor = axisStart;
+        for (const blk of merged) {
+            if (blk.start - cursor >= minSeg) {
+                if (horizontal) {
+                    segments.push({
+                        ...c,
+                        x: cursor,
+                        y: c.y,
+                        width: blk.start - cursor,
+                        height: c.height,
+                        direction: 'horizontal'
+                    });
+                } else {
+                    segments.push({
+                        ...c,
+                        x: c.x,
+                        y: cursor,
+                        width: c.width,
+                        height: blk.start - cursor,
+                        direction: 'vertical'
+                    });
+                }
+            }
+            cursor = Math.max(cursor, blk.end);
+        }
+
+        if (axisEnd - cursor >= minSeg) {
+            if (horizontal) {
+                segments.push({
+                    ...c,
+                    x: cursor,
+                    y: c.y,
+                    width: axisEnd - cursor,
+                    height: c.height,
+                    direction: 'horizontal'
+                });
+            } else {
+                segments.push({
+                    ...c,
+                    x: c.x,
+                    y: cursor,
+                    width: c.width,
+                    height: axisEnd - cursor,
+                    direction: 'vertical'
+                });
+            }
+        }
+
+        return segments;
+    }
+
+    _corridorLength(corridor) {
+        if (!corridor) return 0;
+        const w = Number(corridor.width) || 0;
+        const h = Number(corridor.height) || 0;
+        return Math.max(w, h);
+    }
+
+    _corridorCenterline(corridor) {
+        if (!corridor || ![corridor.x, corridor.y, corridor.width, corridor.height].every(Number.isFinite)) return null;
+        const x = Number(corridor.x);
+        const y = Number(corridor.y);
+        const w = Number(corridor.width);
+        const h = Number(corridor.height);
+        if (w <= 0 || h <= 0) return null;
+        const horizontal = corridor.direction === 'horizontal' || w >= h;
+        if (horizontal) {
+            const cy = y + h / 2;
+            return { a: { x, y: cy }, b: { x: x + w, y: cy } };
+        }
+        const cx = x + w / 2;
+        return { a: { x: cx, y }, b: { x: cx, y: y + h } };
+    }
+
+    _corridorTouchesEntrance(corridor) {
+        if (!corridor || !this.entranceRects || this.entranceRects.length === 0) return false;
+        const seg = this._corridorCenterline(corridor);
+        if (!seg) return false;
+
+        for (const r of this.entranceRects) {
+            if (!r) continue;
+            const rectOverlap =
+                corridor.x < r.x + r.w &&
+                corridor.x + corridor.width > r.x &&
+                corridor.y < r.y + r.h &&
+                corridor.y + corridor.height > r.y;
+            if (rectOverlap) return true;
+
+            if (this._segIntersectsRect(seg.a.x, seg.a.y, seg.b.x, seg.b.y, r.x, r.y, r.x + r.w, r.y + r.h)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    _corridorSegmentsConnected(a, b) {
+        const segA = this._corridorCenterline(a);
+        const segB = this._corridorCenterline(b);
+        if (!segA || !segB) return false;
+
+        // Fast path: clearly overlapping corridor rectangles.
+        const rectOverlap =
+            a.x < b.x + b.width &&
+            a.x + a.width > b.x &&
+            a.y < b.y + b.height &&
+            a.y + a.height > b.y;
+        if (rectOverlap) return true;
+
+        const tol = Math.max(0.08, this.corridorWidth * 0.10);
+        const near = (p, seg) =>
+            this._pointToSegDist(p.x, p.y, seg.a.x, seg.a.y, seg.b.x, seg.b.y) <= tol;
+
+        return (
+            near(segA.a, segB) ||
+            near(segA.b, segB) ||
+            near(segB.a, segA) ||
+            near(segB.b, segA)
+        );
+    }
+
+    _filterCorridorsByReachability(corridors) {
+        if (!Array.isArray(corridors) || corridors.length <= 1) {
+            return Array.isArray(corridors) ? corridors : [];
+        }
+
+        if (this.retainDisconnectedCorridors) {
+            return corridors.slice();
+        }
+
+        const n = corridors.length;
+        const adj = Array.from({ length: n }, () => []);
+        for (let i = 0; i < n; i++) {
+            for (let j = i + 1; j < n; j++) {
+                if (this._corridorSegmentsConnected(corridors[i], corridors[j])) {
+                    adj[i].push(j);
+                    adj[j].push(i);
+                }
+            }
+        }
+
+        const seeds = new Set();
+        for (let i = 0; i < n; i++) {
+            if (this._corridorTouchesEntrance(corridors[i])) seeds.add(i);
+        }
+        const components = [];
+        const seen = new Set();
+        for (let i = 0; i < n; i++) {
+            if (seen.has(i)) continue;
+            const queue = [i];
+            seen.add(i);
+            const indices = [];
+            while (queue.length > 0) {
+                const cur = queue.shift();
+                indices.push(cur);
+                for (const nxt of adj[cur]) {
+                    if (seen.has(nxt)) continue;
+                    seen.add(nxt);
+                    queue.push(nxt);
+                }
+            }
+            const totalLength = indices.reduce((sum, idx) => sum + this._corridorLength(corridors[idx]), 0);
+            const hasSeed = indices.some((idx) => seeds.has(idx));
+            components.push({ indices, totalLength, hasSeed });
+        }
+
+        components.sort((a, b) => b.totalLength - a.totalLength);
+        const keep = new Set();
+        const minLen = this.corridorComponentMinLength;
+        const seededExists = components.some((c) => c.hasSeed);
+
+        if (seededExists) {
+            for (const comp of components) {
+                if (comp.hasSeed || comp.totalLength >= minLen) {
+                    for (const idx of comp.indices) keep.add(idx);
+                }
+            }
+        } else {
+            for (const comp of components) {
+                if (comp.totalLength >= minLen || comp.indices.length > 1) {
+                    for (const idx of comp.indices) keep.add(idx);
+                }
+            }
+            if (keep.size === 0 && components.length > 0) {
+                for (const idx of components[0].indices) keep.add(idx);
+            }
+        }
+
+        return corridors.filter((_, idx) => keep.has(idx));
+    }
+
+    _sanitizeFinalLayout(units, corridors) {
+        const candidateCorridors = [];
+        for (const corridor of (corridors || [])) {
+            const split = this._splitCorridorByStructuralWalls(corridor);
+            for (const part of split) {
+                if (!part || ![part.x, part.y, part.width, part.height].every(Number.isFinite)) continue;
+                if (part.width < 0.05 || part.height < 0.05) continue;
+                if (part.x < this.bounds.minX || part.y < this.bounds.minY) continue;
+                if (part.x + part.width > this.bounds.maxX || part.y + part.height > this.bounds.maxY) continue;
+                if (this._corridorCrossesStructuralWall(part)) continue;
+                if (this._boxHitsObstacle(part.x, part.y, part.width, part.height, { ignoreEntrances: true })) continue;
+                const overlapsCorridor = candidateCorridors.some((c) => this._corridorsConflict(part, c));
+                if (overlapsCorridor) continue;
+                candidateCorridors.push(part);
+            }
+        }
+
+        const safeCorridors = this._filterCorridorsByReachability(candidateCorridors);
+        const corridorGuard = Math.max(0.03, Math.min(0.22, this.corridorWidth * 0.18));
+
+        const safeUnits = [];
         for (const unit of (units || [])) {
             if (!unit || ![unit.x, unit.y, unit.width, unit.height].every(Number.isFinite)) continue;
             if (!this._isBoxValid(unit.x, unit.y, unit.width, unit.height)) continue;
             const overlapsExisting = safeUnits.some((u) => this._rectsOverlap(unit, u, 0.01));
             if (overlapsExisting) continue;
-            safeUnits.push(unit);
-        }
 
-        for (const corridor of (corridors || [])) {
-            if (!corridor || ![corridor.x, corridor.y, corridor.width, corridor.height].every(Number.isFinite)) continue;
-            if (corridor.width < 0.05 || corridor.height < 0.05) continue;
-            if (corridor.x < this.bounds.minX || corridor.y < this.bounds.minY) continue;
-            if (corridor.x + corridor.width > this.bounds.maxX || corridor.y + corridor.height > this.bounds.maxY) continue;
-            if (this._corridorCrossesStructuralWall(corridor)) continue;
-            if (this._boxHitsObstacle(corridor.x, corridor.y, corridor.width, corridor.height, { ignoreEntrances: true })) continue;
-            const overlapsUnit = safeUnits.some((u) => this._rectsOverlap(corridor, u, 0.002));
-            if (overlapsUnit) continue;
-            const overlapsCorridor = safeCorridors.some((c) => this._corridorsConflict(corridor, c));
+            const overlapsCorridor = safeCorridors.some((c) => {
+                const innerX = c.x + corridorGuard;
+                const innerY = c.y + corridorGuard;
+                const innerW = Math.max(0, c.width - corridorGuard * 2);
+                const innerH = Math.max(0, c.height - corridorGuard * 2);
+                if (innerW <= 0 || innerH <= 0) {
+                    return this._rectsOverlap(unit, c, 0.002);
+                }
+                return this._rectsOverlap(
+                    unit,
+                    { x: innerX, y: innerY, width: innerW, height: innerH },
+                    0.002
+                );
+            });
             if (overlapsCorridor) continue;
-            safeCorridors.push(corridor);
+
+            safeUnits.push(unit);
         }
 
         return {
@@ -884,104 +1203,189 @@ class CostoProLayoutEngine {
         const boxes = units.map(u => ({ x: u.x, y: u.y, w: u.width, h: u.height }));
         if (boxes.length === 0) return hallways;
 
-        // === Strategy: find free-space gaps between unit clusters ===
-        // Scan horizontal bands and vertical bands for continuous gaps
-        // wider than corridorWidth → those are real hallways
+        // === Strategy: segmented free-space scan ===
+        // Build clear runs between blocked intervals (boxes + structural walls),
+        // then keep only runs that actually connect existing corridor spines.
 
-        const spanX = b.maxX - b.minX;
-        const spanY = b.maxY - b.minY;
-        const step = cw * 0.5; // scan resolution
+        const minX = b.minX + cw * 0.2;
+        const maxX = b.maxX - cw * 0.2;
+        const minY = b.minY + cw * 0.2;
+        const maxY = b.maxY - cw * 0.2;
+        const step = Math.max(0.55, cw * 0.7);
+        const boxPad = Math.max(0.01, (this.boxSpacing || 0.02) * 0.5);
+        const wallPad = Math.max(0.06, cw * 0.24);
+        const minRun = cw * 2.2;
 
-        // --- Horizontal hallways (scan Y bands) ---
-        for (let y = b.minY + cw; y < b.maxY - cw; y += step) {
-            // Check if a horizontal strip at this Y is free of boxes
-            const stripY0 = y, stripY1 = y + cw;
-            let blocked = false;
+        const isVertical = (c) => c && Number.isFinite(c.width) && Number.isFinite(c.height) && (c.direction === 'vertical' || c.height > c.width);
+        const isHorizontal = (c) => c && Number.isFinite(c.width) && Number.isFinite(c.height) && (c.direction === 'horizontal' || c.width >= c.height);
+        const baseVertical = (existingCorridors || []).filter(isVertical);
+        const baseHorizontal = (existingCorridors || []).filter(isHorizontal);
+        const dominantVertical = baseVertical.length >= Math.max(3, Math.round(baseHorizontal.length * 1.4));
+        const dominantHorizontal = baseHorizontal.length >= Math.max(3, Math.round(baseVertical.length * 1.4));
+        const shouldScanHorizontal = !dominantHorizontal;
+        const shouldScanVertical = !dominantVertical;
+        const minRunHorizontal = dominantVertical ? cw * 1.4 : minRun;
+        const minRunVertical = dominantHorizontal ? cw * 1.4 : minRun;
+
+        const mergeIntervals = (intervals, lo, hi) => {
+            const clipped = intervals
+                .map(([s, e]) => [Math.max(lo, Math.min(hi, s)), Math.max(lo, Math.min(hi, e))])
+                .filter(([s, e]) => Number.isFinite(s) && Number.isFinite(e) && e - s > 0.01)
+                .sort((a, b) => a[0] - b[0]);
+            if (!clipped.length) return [];
+            const merged = [clipped[0].slice()];
+            for (let i = 1; i < clipped.length; i++) {
+                const cur = clipped[i];
+                const prev = merged[merged.length - 1];
+                if (cur[0] <= prev[1] + 0.04) {
+                    prev[1] = Math.max(prev[1], cur[1]);
+                } else {
+                    merged.push(cur.slice());
+                }
+            }
+            return merged;
+        };
+
+        const clearRuns = (blocked, lo, hi) => {
+            const runs = [];
+            let cursor = lo;
+            for (const [s, e] of blocked) {
+                if (s > cursor + minRun) runs.push([cursor, s]);
+                cursor = Math.max(cursor, e);
+            }
+            if (hi > cursor + minRun) runs.push([cursor, hi]);
+            return runs;
+        };
+
+        const touchesCorridorSpine = (dir, start, end, fixed0, fixed1) => {
+            if (dir === 'horizontal') {
+                let hits = 0;
+                for (const c of baseVertical) {
+                    const cy0 = c.y;
+                    const cy1 = c.y + c.height;
+                    if (cy1 < fixed0 - 0.02 || cy0 > fixed1 + 0.02) continue;
+                    const cx = c.x + c.width / 2;
+                    if (cx >= start - 0.05 && cx <= end + 0.05) hits += 1;
+                }
+                return hits >= 2;
+            }
+            let hits = 0;
+            for (const c of baseHorizontal) {
+                const cx0 = c.x;
+                const cx1 = c.x + c.width;
+                if (cx1 < fixed0 - 0.02 || cx0 > fixed1 + 0.02) continue;
+                const cy = c.y + c.height / 2;
+                if (cy >= start - 0.05 && cy <= end + 0.05) hits += 1;
+            }
+            return hits >= 2;
+        };
+
+        const candidateHallways = [];
+
+        // --- Horizontal connectors ---
+        if (shouldScanHorizontal) for (let y = minY; y < maxY - cw; y += step) {
+            const stripY0 = y;
+            const stripY1 = y + cw;
+            const blocked = [];
+
             for (const box of boxes) {
                 if (box.y < stripY1 && box.y + box.h > stripY0) {
-                    // Box overlaps this Y band — find clear X segments
-                    blocked = true;
-                    break;
+                    blocked.push([box.x - boxPad, box.x + box.w + boxPad]);
                 }
             }
-            if (blocked) continue;
-
-            // This Y band is clear of all boxes → find longest clear X runs
-            // Split by walls
-            const wallCrossings = [];
             for (const seg of this.wallSegments) {
-                // Horizontal wall check: does this wall cross our strip?
-                const wMinY = Math.min(seg.y1, seg.y2), wMaxY = Math.max(seg.y1, seg.y2);
-                const wMinX = Math.min(seg.x1, seg.x2), wMaxX = Math.max(seg.x1, seg.x2);
-                // Vertical wall crossing our horizontal strip
-                if (wMaxX - wMinX < cw && wMaxY - wMinY > cw * 0.5) {
-                    if (wMinY < stripY1 && wMaxY > stripY0) {
-                        wallCrossings.push((wMinX + wMaxX) / 2);
-                    }
+                const wMinY = Math.min(seg.y1, seg.y2);
+                const wMaxY = Math.max(seg.y1, seg.y2);
+                const wMinX = Math.min(seg.x1, seg.x2);
+                const wMaxX = Math.max(seg.x1, seg.x2);
+                const isMostlyVerticalWall = (wMaxX - wMinX) <= (wMaxY - wMinY);
+                if (!isMostlyVerticalWall) continue;
+                if (wMinY < stripY1 && wMaxY > stripY0) {
+                    const cx = (wMinX + wMaxX) * 0.5;
+                    blocked.push([cx - wallPad, cx + wallPad]);
                 }
             }
-            wallCrossings.sort((a, c) => a - c);
 
-            // Build segments between wall crossings
-            const points = [b.minX + cw, ...wallCrossings, b.maxX - cw];
-            for (let i = 0; i < points.length - 1; i++) {
-                const sx = points[i] + cw * 0.3;
-                const ex = points[i + 1] - cw * 0.3;
+            const merged = mergeIntervals(blocked, minX, maxX);
+            const runs = clearRuns(merged, minX, maxX);
+            for (const [sx, ex] of runs) {
                 const len = ex - sx;
-                if (len > cw * 3) { // Only corridors longer than 3x corridor width
-                    hallways.push({
-                        type: 'ACCESS', direction: 'horizontal', isMainHallway: true,
-                        x: sx, y: stripY0, width: len, height: cw
-                    });
-                }
+                if (len < minRunHorizontal) continue;
+                const linked = touchesCorridorSpine('horizontal', sx, ex, stripY0, stripY1);
+                if (!linked && len < cw * 2.2) continue;
+                candidateHallways.push({
+                    type: 'ACCESS',
+                    direction: 'horizontal',
+                    isMainHallway: true,
+                    x: sx,
+                    y: stripY0,
+                    width: len,
+                    height: cw
+                });
             }
-            y += cw; // Skip ahead to avoid duplicate hallways
         }
 
-        // --- Vertical hallways (scan X bands) ---
-        for (let x = b.minX + cw; x < b.maxX - cw; x += step) {
-            const stripX0 = x, stripX1 = x + cw;
-            let blocked = false;
+        // --- Vertical connectors ---
+        if (shouldScanVertical) for (let x = minX; x < maxX - cw; x += step) {
+            const stripX0 = x;
+            const stripX1 = x + cw;
+            const blocked = [];
+
             for (const box of boxes) {
                 if (box.x < stripX1 && box.x + box.w > stripX0) {
-                    blocked = true;
-                    break;
+                    blocked.push([box.y - boxPad, box.y + box.h + boxPad]);
                 }
             }
-            if (blocked) continue;
-
-            // This X band is clear of all boxes → find longest clear Y runs
-            const wallCrossings = [];
             for (const seg of this.wallSegments) {
-                const wMinX = Math.min(seg.x1, seg.x2), wMaxX = Math.max(seg.x1, seg.x2);
-                const wMinY = Math.min(seg.y1, seg.y2), wMaxY = Math.max(seg.y1, seg.y2);
-                // Horizontal wall crossing our vertical strip
-                if (wMaxY - wMinY < cw && wMaxX - wMinX > cw * 0.5) {
-                    if (wMinX < stripX1 && wMaxX > stripX0) {
-                        wallCrossings.push((wMinY + wMaxY) / 2);
-                    }
+                const wMinX = Math.min(seg.x1, seg.x2);
+                const wMaxX = Math.max(seg.x1, seg.x2);
+                const wMinY = Math.min(seg.y1, seg.y2);
+                const wMaxY = Math.max(seg.y1, seg.y2);
+                const isMostlyHorizontalWall = (wMaxY - wMinY) <= (wMaxX - wMinX);
+                if (!isMostlyHorizontalWall) continue;
+                if (wMinX < stripX1 && wMaxX > stripX0) {
+                    const cy = (wMinY + wMaxY) * 0.5;
+                    blocked.push([cy - wallPad, cy + wallPad]);
                 }
             }
-            wallCrossings.sort((a, c) => a - c);
 
-            const points = [b.minY + cw, ...wallCrossings, b.maxY - cw];
-            for (let i = 0; i < points.length - 1; i++) {
-                const sy = points[i] + cw * 0.3;
-                const ey = points[i + 1] - cw * 0.3;
+            const merged = mergeIntervals(blocked, minY, maxY);
+            const runs = clearRuns(merged, minY, maxY);
+            for (const [sy, ey] of runs) {
                 const len = ey - sy;
-                if (len > cw * 3) {
-                    hallways.push({
-                        type: 'ACCESS', direction: 'vertical', isMainHallway: true,
-                        x: stripX0, y: sy, width: cw, height: len
-                    });
-                }
+                if (len < minRunVertical) continue;
+                const linked = touchesCorridorSpine('vertical', sy, ey, stripX0, stripX1);
+                if (!linked && len < cw * 2.2) continue;
+                candidateHallways.push({
+                    type: 'ACCESS',
+                    direction: 'vertical',
+                    isMainHallway: true,
+                    x: stripX0,
+                    y: sy,
+                    width: cw,
+                    height: len
+                });
             }
-            x += cw; // Skip ahead
         }
 
-        console.log(`[CostoProLayout v4] Main hallway scan: ${hallways.length} segments (before wall filter)`);
-        // Filter out segments that clip structural walls
-        return hallways.filter(h => !this._boxHitsWall(h.x, h.y, h.width, h.height));
+        const dedupe = new Set();
+        for (const h of candidateHallways) {
+            if (this._boxHitsWall(h.x, h.y, h.width, h.height)) continue;
+            if (this._boxHitsObstacle(h.x, h.y, h.width, h.height, { ignoreEntrances: true })) continue;
+            const key = [
+                h.direction,
+                Math.round((h.x + h.width / 2) / (cw * 0.5)),
+                Math.round((h.y + h.height / 2) / (cw * 0.5)),
+                Math.round(h.width / (cw * 0.5)),
+                Math.round(h.height / (cw * 0.5))
+            ].join('|');
+            if (dedupe.has(key)) continue;
+            dedupe.add(key);
+            hallways.push(h);
+        }
+
+        console.log(`[CostoProLayout v4] Main hallway scan: ${candidateHallways.length} segments (before dedupe/filter)`);
+        return hallways;
     }
 
     // ─────────────────────────────────────────────────────────────────

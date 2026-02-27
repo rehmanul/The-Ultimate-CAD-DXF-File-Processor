@@ -194,6 +194,7 @@ export class FloorPlanRenderer {
         this.currentFloorPlan = null;
         this.currentCostoLayout = null;
         this.currentCirculationPaths = [];
+        this._flowStats = { paths: 0, segments: 0, arrows: 0 };
 
         this.scene.add(
             this.wallsGroup,
@@ -727,6 +728,40 @@ export class FloorPlanRenderer {
         return { a: { x: cx, y: c.y }, b: { x: cx, y: c.y + c.height }, len: c.height };
     }
 
+    _extractCorridorRect(corridor) {
+        if ([corridor?.x, corridor?.y, corridor?.width, corridor?.height].every(Number.isFinite)) {
+            return {
+                x: Number(corridor.x),
+                y: Number(corridor.y),
+                width: Number(corridor.width),
+                height: Number(corridor.height)
+            };
+        }
+        const points = Array.isArray(corridor?.corners) ? corridor.corners : corridor?.polygon;
+        if (!Array.isArray(points) || points.length < 2) return null;
+        const xs = [];
+        const ys = [];
+        for (const pt of points) {
+            const x = Number(Array.isArray(pt) ? pt[0] : pt?.x);
+            const y = Number(Array.isArray(pt) ? pt[1] : pt?.y);
+            if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
+            xs.push(x);
+            ys.push(y);
+        }
+        if (!xs.length || !ys.length) return null;
+        const minX = Math.min(...xs);
+        const maxX = Math.max(...xs);
+        const minY = Math.min(...ys);
+        const maxY = Math.max(...ys);
+        if (maxX - minX <= 0 || maxY - minY <= 0) return null;
+        return {
+            x: minX,
+            y: minY,
+            width: maxX - minX,
+            height: maxY - minY
+        };
+    }
+
     _buildCorridorGraph(corridors, snap = 0.6, preferAccess = true) {
         const eps = 1e-6;
         const key = (p) => `${Math.round(p.x / snap)}|${Math.round(p.y / snap)}`;
@@ -938,16 +973,43 @@ export class FloorPlanRenderer {
         const { nodeList, adj, edges } = this._buildCorridorGraph(list, 0.45, false);
         if (!nodeList.length || !edges.length) return [];
 
-        const { entry } = this._getEntrancePoints(floorPlan || {});
-        const hasEntry = entry && Number.isFinite(entry.x) && Number.isFinite(entry.y);
-        const source = hasEntry ? this._nearestNodeId(nodeList, entry) : nodeList[0].id;
+        const points = this._getEntrancePoints(floorPlan || {});
+        const sourceSet = new Set();
+        const candidateAnchors = [points?.entry, points?.exit]
+            .concat(Array.isArray(floorPlan?.entrances)
+                ? floorPlan.entrances
+                    .map((ent) => {
+                        if (ent?.start && ent?.end) {
+                            const sx = Number(ent.start.x);
+                            const sy = Number(ent.start.y);
+                            const ex = Number(ent.end.x);
+                            const ey = Number(ent.end.y);
+                            if ([sx, sy, ex, ey].every(Number.isFinite)) {
+                                return { x: (sx + ex) / 2, y: (sy + ey) / 2 };
+                            }
+                        }
+                        const x = Number(ent?.x);
+                        const y = Number(ent?.y);
+                        return Number.isFinite(x) && Number.isFinite(y) ? { x, y } : null;
+                    })
+                    .filter(Boolean)
+                : []);
 
-        // Dijkstra from entry to orient each corridor edge away from entry.
+        for (const anchor of candidateAnchors) {
+            if (!anchor || !Number.isFinite(anchor.x) || !Number.isFinite(anchor.y)) continue;
+            sourceSet.add(this._nearestNodeId(nodeList, anchor));
+        }
+        if (sourceSet.size === 0) sourceSet.add(nodeList[0].id);
+
+        // Multi-source Dijkstra keeps direction coverage across all
+        // entrance-connected corridor components.
         const dist = new Map();
         nodeList.forEach((n) => dist.set(n.id, Infinity));
-        dist.set(source, 0);
-
-        const pq = [{ id: source, d: 0 }];
+        const pq = [];
+        sourceSet.forEach((id) => {
+            dist.set(id, 0);
+            pq.push({ id, d: 0 });
+        });
         while (pq.length) {
             pq.sort((a, b) => a.d - b.d);
             const cur = pq.shift();
@@ -989,14 +1051,17 @@ export class FloorPlanRenderer {
             }
 
             const t = String(e.corridorType || '').toUpperCase();
-            const onMain = t.includes('MAIN') || t.includes('SPINE') || t.includes('VERTICAL');
+            const onMain = t.includes('MAIN') || t.includes('SPINE');
+            const edgeLen = Math.hypot(to.x - from.x, to.y - from.y);
+            if (!onMain && edgeLen < 0.80) continue;
 
             flows.push({
                 type: t || 'ACCESS',
                 onMainRoute: onMain,
                 flowValid: true,
                 path: [{ x: from.x, y: from.y }, { x: to.x, y: to.y }],
-                arrows: []
+                arrows: [],
+                bidirectional: true
             });
         }
 
@@ -1502,6 +1567,8 @@ export class FloorPlanRenderer {
             this.corridorsGroup,
             this.perimeterGroup,
             this.corridorArrowsGroup,
+            this.measurementsGroup,
+            this.labelsGroup,
             this.connectorsGroup,
             this.connectorHighlights,
             this.stackGroup,
@@ -2111,6 +2178,48 @@ export class FloorPlanRenderer {
         return deduped.length >= 2 ? deduped : null;
     }
 
+    _pathTotalLength(points) {
+        if (!Array.isArray(points) || points.length < 2) return 0;
+        let len = 0;
+        for (let i = 0; i < points.length - 1; i++) {
+            len += Math.hypot(points[i + 1].x - points[i].x, points[i + 1].y - points[i].y);
+        }
+        return len;
+    }
+
+    _simplifyOrthogonalPath(points, minSeg = 0.12) {
+        if (!Array.isArray(points) || points.length < 2) return null;
+
+        const cleaned = [points[0]];
+        for (let i = 1; i < points.length; i++) {
+            const prev = cleaned[cleaned.length - 1];
+            const cur = points[i];
+            if (Math.hypot(cur.x - prev.x, cur.y - prev.y) >= minSeg) {
+                cleaned.push(cur);
+            }
+        }
+        if (cleaned.length < 2) return null;
+
+        // Keep elbows where direction changes; remove jitter points on straight runs.
+        const simplified = [cleaned[0]];
+        for (let i = 1; i < cleaned.length - 1; i++) {
+            const a = simplified[simplified.length - 1];
+            const b = cleaned[i];
+            const c = cleaned[i + 1];
+            const v1x = b.x - a.x;
+            const v1y = b.y - a.y;
+            const v2x = c.x - b.x;
+            const v2y = c.y - b.y;
+            const l1 = Math.hypot(v1x, v1y);
+            const l2 = Math.hypot(v2x, v2y);
+            if (l1 < 1e-6 || l2 < 1e-6) continue;
+            const cross = Math.abs(v1x * v2y - v1y * v2x) / (l1 * l2);
+            if (cross > 0.01) simplified.push(b);
+        }
+        simplified.push(cleaned[cleaned.length - 1]);
+        return simplified.length >= 2 ? simplified : null;
+    }
+
     _extractUnitRects(units = null) {
         if (Array.isArray(units) && units.length > 0) {
             return units
@@ -2149,13 +2258,13 @@ export class FloorPlanRenderer {
 
     _isFlowPointBlocked(px, py, floorPlan, unitRects = []) {
         const fp = floorPlan || {};
-        const tolerance = 0.085;
+        const tolerance = 0.04;
         const walls = fp.walls || [];
         const envelope = fp.envelope || [];
         const forbidden = fp.forbiddenZones || [];
 
         for (const r of unitRects) {
-            if (this._pointInsideRect(px, py, r, 0.04)) return true;
+            if (this._pointInsideRect(px, py, r, 0.02)) return true;
         }
 
         for (const zone of forbidden) {
@@ -2204,15 +2313,16 @@ export class FloorPlanRenderer {
     }
 
     _isPointInsideCorridor(px, py, corridor, margin = 0.02) {
-        if ([corridor?.x, corridor?.y, corridor?.width, corridor?.height].every(Number.isFinite)) {
+        const rect = this._extractCorridorRect(corridor);
+        if (rect) {
             return (
-                px >= corridor.x - margin &&
-                px <= corridor.x + corridor.width + margin &&
-                py >= corridor.y - margin &&
-                py <= corridor.y + corridor.height + margin
+                px >= rect.x - margin &&
+                px <= rect.x + rect.width + margin &&
+                py >= rect.y - margin &&
+                py <= rect.y + rect.height + margin
             );
         }
-        const path = this._normalizePathPoints(corridor?.path || corridor?.corners || corridor?.polygon);
+        const path = this._normalizePathPoints(corridor?.path);
         if (!path) return false;
         const widthHint = Number(corridor?.corridorWidth || corridor?.width || corridor?.height || 1.2);
         const tolerance = Math.max(0.2, widthHint * 0.55);
@@ -2261,10 +2371,9 @@ export class FloorPlanRenderer {
     _prepareDirectedCirculationPaths(circulationPaths, corridors, floorPlan) {
         // Prefer backend-routed circulation (entry/exit validated + connector paths).
         // The corridor-only graph is a fallback if backend paths are unavailable.
-        const output = [];
+        const routedOutput = [];
         const entry = this._getEntrancePoints(floorPlan || {}).entry || null;
         for (const cp of (Array.isArray(circulationPaths) ? circulationPaths : [])) {
-            if (cp?.flowValid === false) continue;
             const path = this._normalizePathPoints(cp?.path);
             if (!path) continue;
 
@@ -2286,33 +2395,112 @@ export class FloorPlanRenderer {
                 const dEnd = Math.hypot(end.x - entry.x, end.y - entry.y);
                 if (dEnd + 1e-6 < dStart) oriented.reverse();
             }
+            const simplifiedPath = this._simplifyOrthogonalPath(oriented, 0.12);
+            if (!simplifiedPath) continue;
+            const simplifiedLen = this._pathTotalLength(simplifiedPath);
+            if (simplifiedLen < 0.45 && !cp?.onMainRoute) continue;
 
-            const arrows = Array.isArray(cp?.arrows)
-                ? cp.arrows
-                    .map((a) => ({ x: Number(a?.x), y: Number(a?.y), angle: Number(a?.angle) }))
-                    .filter((a) => Number.isFinite(a.x) && Number.isFinite(a.y) && Number.isFinite(a.angle))
-                : [];
-
-            output.push({
+            routedOutput.push({
                 type: cp?.type || 'FLOW',
                 onMainRoute: !!cp?.onMainRoute,
                 flowValid: cp?.flowValid !== false,
-                path: oriented,
-                arrows,
-                allowOffCorridor: true
+                path: simplifiedPath,
+                // Recompute arrows in renderer for consistent spacing + lane direction.
+                arrows: [],
+                // Keep routed paths constrained to corridor geometry unless explicitly flagged.
+                allowOffCorridor: cp?.allowOffCorridor === true,
+                // Keep branch flows cleaner; bidirectional arrows are only useful on clear spines.
+                bidirectional: cp?.bidirectional === true && !!cp?.onMainRoute
             });
         }
+        const routedValid = routedOutput.filter((p) => p.flowValid !== false);
 
-        if (output.length > 0) {
-            return output;
+        const quant = (n) => Math.round(Number(n) * 20) / 20;
+        const edgeKey = (a, b) => {
+            const k1 = `${quant(a.x)},${quant(a.y)}|${quant(b.x)},${quant(b.y)}`;
+            const k2 = `${quant(b.x)},${quant(b.y)}|${quant(a.x)},${quant(a.y)}`;
+            return k1 < k2 ? k1 : k2;
+        };
+        const collectEdgeKeys = (paths) => {
+            const keys = new Set();
+            for (const flow of (paths || [])) {
+                const pts = this._normalizePathPoints(flow?.path);
+                if (!pts) continue;
+                for (let i = 0; i < pts.length - 1; i++) {
+                    keys.add(edgeKey(pts[i], pts[i + 1]));
+                }
+            }
+            return keys;
+        };
+
+        const networkPaths = this._buildDirectedNetworkFromCorridors(corridors, floorPlan).map((np) => {
+            const normalized = this._normalizePathPoints(np.path);
+            if (!normalized) return null;
+            const simplified = this._simplifyOrthogonalPath(normalized, 0.16);
+            if (!simplified) return null;
+            const len = this._pathTotalLength(simplified);
+            if (!np?.onMainRoute && len < 0.90) return null;
+            return {
+                ...np,
+                path: simplified,
+                allowOffCorridor: false,
+                // Corridor-only fallback should stay one-way to avoid noisy dual arrows.
+                bidirectional: false
+            };
+        }).filter(Boolean);
+
+        const dedupeFlowPaths = (paths) => {
+            const seen = new Set();
+            const out = [];
+            for (const flow of (paths || [])) {
+                const pts = this._normalizePathPoints(flow?.path);
+                if (!pts) continue;
+                const keys = [];
+                for (let i = 0; i < pts.length - 1; i++) {
+                    keys.push(edgeKey(pts[i], pts[i + 1]));
+                }
+                const pKey = keys.join(';');
+                if (!pKey || seen.has(pKey)) continue;
+                seen.add(pKey);
+                out.push(flow);
+            }
+            return out;
+        };
+
+        if (!routedValid.length && networkPaths.length) {
+            return dedupeFlowPaths(networkPaths);
+        }
+        if (!routedValid.length && !networkPaths.length) {
+            return dedupeFlowPaths(this._fallbackDirectedPathFromCorridors(corridors, floorPlan));
         }
 
-        const networkPaths = this._buildDirectedNetworkFromCorridors(corridors, floorPlan);
-        if (networkPaths.length > 0) {
-            return networkPaths.map((p) => ({ ...p, allowOffCorridor: false }));
+        if (!networkPaths.length) {
+            return dedupeFlowPaths(routedValid);
         }
 
-        return this._fallbackDirectedPathFromCorridors(corridors, floorPlan);
+        const routedEdges = collectEdgeKeys(routedValid);
+        const networkEdges = collectEdgeKeys(networkPaths);
+        const coverage = networkEdges.size > 0 ? (routedEdges.size / networkEdges.size) : 1;
+        // Keep backend-routed paths as authoritative whenever available,
+        // then backfill only missing network edges for continuity.
+        const output = routedValid.slice();
+        const existingEdges = new Set(routedEdges);
+        for (const np of networkPaths) {
+            const pts = np.path;
+            let hasMissing = false;
+            for (let i = 0; i < pts.length - 1; i++) {
+                const key = edgeKey(pts[i], pts[i + 1]);
+                if (!existingEdges.has(key)) {
+                    existingEdges.add(key);
+                    hasMissing = true;
+                }
+            }
+            if (hasMissing) output.push(np);
+        }
+        if (coverage < 0.72) {
+            console.log(`[DirectedFlow] Backfilled corridor graph edges (coverage ${(coverage * 100).toFixed(1)}%)`);
+        }
+        return dedupeFlowPaths(output);
     }
 
     _renderDirectedCirculation(flowPaths, floorPlan, unitRects = [], corridors = []) {
@@ -2328,22 +2516,40 @@ export class FloorPlanRenderer {
             this._disposeMaterial(child.material);
         }
 
-        if (!Array.isArray(flowPaths) || flowPaths.length === 0) return;
+        if (!Array.isArray(flowPaths) || flowPaths.length === 0) {
+            this._flowStats = { paths: 0, segments: 0, arrows: 0 };
+            return;
+        }
 
         const flowLineMaterial = new THREE.LineDashedMaterial({
-            color: 0x65b87b,
-            dashSize: 0.85,
-            gapSize: 0.8,
+            color: 0x6ebf7c,
+            dashSize: 0.72,
+            gapSize: 0.58,
             transparent: true,
-            opacity: 0.86
+            opacity: 0.92
         });
+        const bounds = floorPlan?.bounds || this.currentFloorPlan?.bounds || null;
+        const spanX = bounds ? Math.abs(Number(bounds.maxX) - Number(bounds.minX)) : 40;
+        const spanY = bounds ? Math.abs(Number(bounds.maxY) - Number(bounds.minY)) : 40;
+        const planSpan = Number.isFinite(spanX) && Number.isFinite(spanY) ? Math.max(spanX, spanY) : 40;
+        const arrowSize = Math.max(0.06, Math.min(0.12, planSpan * 0.0026));
         const arrowGeometry = new THREE.BufferGeometry();
-        const arrowSize = 0.1;
         arrowGeometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array([
             -arrowSize * 0.70, -arrowSize * 0.42, 0,
             -arrowSize * 0.70, arrowSize * 0.42, 0,
             arrowSize * 0.78, 0, 0
         ]), 3));
+        const anchorRadius = Math.max(0.09, arrowSize * 0.85);
+        const anchorSegments = 20;
+        const arrowOccupancy = new Set();
+        const arrowKeySize = Math.max(0.14, arrowSize * 1.8);
+        const renderedSegmentKeys = new Set();
+        const segQuant = (n) => Math.round(Number(n) * 20) / 20;
+        const segKey = (a, b) => {
+            const k1 = `${segQuant(a.x)},${segQuant(a.y)}|${segQuant(b.x)},${segQuant(b.y)}`;
+            const k2 = `${segQuant(b.x)},${segQuant(b.y)}|${segQuant(a.x)},${segQuant(a.y)}`;
+            return k1 < k2 ? k1 : k2;
+        };
 
         const onAnyCorridor = (x, y, margin) => (
             Array.isArray(corridors) &&
@@ -2352,31 +2558,88 @@ export class FloorPlanRenderer {
         );
 
         const addArrow = (x, y, angle, allowOffCorridor = false) => {
-            if (this._isFlowPointBlocked(x, y, floorPlan, unitRects)) return;
+            if (this._isFlowPointBlocked(x, y, floorPlan, unitRects)) return false;
             if (!allowOffCorridor && Array.isArray(corridors) && corridors.length > 0) {
-                if (!onAnyCorridor(x, y, 0.12)) return;
+                if (!onAnyCorridor(x, y, 0.14)) return false;
             }
+            const qx = Math.round(x / arrowKeySize);
+            const qy = Math.round(y / arrowKeySize);
+            const axis = Math.abs(Math.cos(angle)) >= Math.abs(Math.sin(angle)) ? 'h' : 'v';
+            const aKey = `${qx}|${qy}|${axis}`;
+            if (arrowOccupancy.has(aKey)) return false;
+            arrowOccupancy.add(aKey);
             const mesh = new THREE.Mesh(arrowGeometry, this._costoMats.arrowGreen);
             mesh.position.set(x, y, 0.21);
             mesh.rotation.z = angle;
             this._flowGroup.add(mesh);
+            return true;
         };
+        const addAnchor = (pt, fillColor) => {
+            if (!pt || !Number.isFinite(pt.x) || !Number.isFinite(pt.y)) return false;
 
-        const segmentPasses = (a, b, allowOffCorridor = false) => {
-            const mid = { x: (a.x + b.x) * 0.5, y: (a.y + b.y) * 0.5 };
-            if (!allowOffCorridor && Array.isArray(corridors) && corridors.length > 0) {
-                const onCorridor = (
-                    onAnyCorridor(a.x, a.y, 0.12) &&
-                    onAnyCorridor(mid.x, mid.y, 0.12) &&
-                    onAnyCorridor(b.x, b.y, 0.12)
-                );
-                if (!onCorridor) return false;
+            const disk = new THREE.Mesh(
+                new THREE.CircleGeometry(anchorRadius, anchorSegments),
+                new THREE.MeshBasicMaterial({ color: fillColor, transparent: true, opacity: 0.9, side: THREE.DoubleSide })
+            );
+            disk.position.set(pt.x, pt.y, 0.205);
+            this._flowGroup.add(disk);
+
+            const ringPts = [];
+            for (let i = 0; i <= anchorSegments; i++) {
+                const t = (Math.PI * 2 * i) / anchorSegments;
+                ringPts.push(new THREE.Vector3(
+                    pt.x + Math.cos(t) * (anchorRadius * 1.12),
+                    pt.y + Math.sin(t) * (anchorRadius * 1.12),
+                    0.207
+                ));
             }
-            if (this._isFlowPointBlocked(mid.x, mid.y, floorPlan, unitRects)) return false;
+            const ring = new THREE.Line(
+                new THREE.BufferGeometry().setFromPoints(ringPts),
+                new THREE.LineBasicMaterial({ color: 0x1f2937, transparent: true, opacity: 0.85 })
+            );
+            this._flowGroup.add(ring);
             return true;
         };
 
+        const segmentPasses = (a, b, allowOffCorridor = false) => {
+            const len = Math.hypot(b.x - a.x, b.y - a.y);
+            if (len < 0.08) return false;
+
+            const sampleCount = Math.max(5, Math.ceil(len / 0.22));
+            let corridorHits = 0;
+            let totalSamples = 0;
+
+            for (let i = 0; i <= sampleCount; i++) {
+                const t = i / sampleCount;
+                const x = a.x + (b.x - a.x) * t;
+                const y = a.y + (b.y - a.y) * t;
+
+                totalSamples += 1;
+                if (!allowOffCorridor && Array.isArray(corridors) && corridors.length > 0) {
+                    if (onAnyCorridor(x, y, 0.16)) corridorHits += 1;
+                }
+
+                // Ignore exact endpoints to keep joins stable around door thresholds.
+                if (i > 0 && i < sampleCount) {
+                    if (this._isFlowPointBlocked(x, y, floorPlan, unitRects)) return false;
+                }
+            }
+
+            if (!allowOffCorridor && Array.isArray(corridors) && corridors.length > 0) {
+                const minCorridorHits = Math.max(2, Math.ceil(totalSamples * 0.5));
+                if (corridorHits < minCorridorHits) return false;
+            }
+
+            return true;
+        };
+
+        let renderedSegmentCount = 0;
+        let renderedArrowCount = 0;
+        const minArrowSegmentLen = Math.max(0.26, planSpan * 0.005);
+        const tinyBranchThreshold = Math.max(0.38, minArrowSegmentLen * 1.15);
+
         for (const flow of flowPaths) {
+            if (flow?.flowValid === false) continue;
             const path = this._normalizePathPoints(flow.path);
             if (!path) continue;
             const allowOffCorridor = !!flow?.allowOffCorridor;
@@ -2402,12 +2665,22 @@ export class FloorPlanRenderer {
                         validSegments.push([a, kneeB], [kneeB, b]);
                         continue;
                     }
+                    // Reject unresolved diagonals outright to avoid cross-plan artifacts.
+                    continue;
                 }
                 if (!segmentPasses(a, b, allowOffCorridor)) continue;
                 validSegments.push([a, b]);
             }
 
+            const dedupedSegments = [];
             for (const [a, b] of validSegments) {
+                const key = segKey(a, b);
+                if (renderedSegmentKeys.has(key)) continue;
+                renderedSegmentKeys.add(key);
+                dedupedSegments.push([a, b]);
+            }
+
+            for (const [a, b] of dedupedSegments) {
                 const line = new THREE.Line(
                     new THREE.BufferGeometry().setFromPoints([
                         new THREE.Vector3(a.x, a.y, 0.17),
@@ -2417,23 +2690,63 @@ export class FloorPlanRenderer {
                 );
                 line.computeLineDistances();
                 this._flowGroup.add(line);
+                renderedSegmentCount += 1;
             }
 
             if (Array.isArray(flow.arrows) && flow.arrows.length > 0) {
-                flow.arrows.forEach((a) => addArrow(a.x, a.y, a.angle, allowOffCorridor));
-                continue;
+                let rendered = 0;
+                flow.arrows.forEach((a) => {
+                    if (addArrow(a.x, a.y, a.angle, allowOffCorridor)) rendered += 1;
+                });
+                renderedArrowCount += rendered;
+                if (rendered > 0) continue;
             }
 
-            const spacing = flow.onMainRoute ? 1.55 : 2.05;
+            const spacing = flow.onMainRoute ? 1.90 : 2.35;
+            const isBidirectional = flow?.bidirectional === true;
+            const laneOffset = isBidirectional ? 0.06 : 0;
             let carry = 0;
-            for (const [a, b] of validSegments) {
+            for (const [a, b] of dedupedSegments) {
                 const segLen = Math.hypot(b.x - a.x, b.y - a.y);
-                if (segLen < 0.2) continue;
+                if (segLen < minArrowSegmentLen) {
+                    carry = (carry + segLen) % spacing;
+                    continue;
+                }
                 const angle = Math.atan2(b.y - a.y, b.x - a.x);
+                const nx = segLen > 0 ? (-(b.y - a.y) / segLen) : 0;
+                const ny = segLen > 0 ? ((b.x - a.x) / segLen) : 0;
+                const branchArrowMinLen = Math.max(0.70, spacing * 0.30);
+                let arrowsPlacedOnSegment = 0;
 
-                // Short split-segments still need a visible direction marker.
+                // Keep tiny branch segments clean to avoid arrow clusters at dense junctions.
+                if (!flow.onMainRoute && segLen < Math.max(tinyBranchThreshold, 0.55)) {
+                    carry = (carry + segLen) % spacing;
+                    continue;
+                }
+                if (!flow.onMainRoute && segLen < branchArrowMinLen) {
+                    carry = (carry + segLen) % spacing;
+                    continue;
+                }
+                const dualAllowed = isBidirectional && segLen >= spacing * 1.35;
+                const maxArrowsPerSegment = flow.onMainRoute ? 5 : 2;
+
+                // Short segments get one clear center marker.
                 if (segLen <= spacing * 1.05) {
-                    addArrow((a.x + b.x) * 0.5, (a.y + b.y) * 0.5, angle, allowOffCorridor);
+                    const cx = (a.x + b.x) * 0.5;
+                    const cy = (a.y + b.y) * 0.5;
+                    if (dualAllowed) {
+                        if (addArrow(cx + nx * laneOffset, cy + ny * laneOffset, angle, allowOffCorridor)) {
+                            renderedArrowCount += 1;
+                            arrowsPlacedOnSegment += 1;
+                        }
+                        if (addArrow(cx - nx * laneOffset, cy - ny * laneOffset, angle + Math.PI, allowOffCorridor)) {
+                            renderedArrowCount += 1;
+                            arrowsPlacedOnSegment += 1;
+                        }
+                    } else if (addArrow(cx, cy, angle, allowOffCorridor)) {
+                        renderedArrowCount += 1;
+                        arrowsPlacedOnSegment += 1;
+                    }
                     carry = 0;
                     continue;
                 }
@@ -2442,12 +2755,44 @@ export class FloorPlanRenderer {
                 while (t <= 1.0) {
                     const x = a.x + (b.x - a.x) * t;
                     const y = a.y + (b.y - a.y) * t;
-                    addArrow(x, y, angle, allowOffCorridor);
+                    if (dualAllowed) {
+                        if (addArrow(x + nx * laneOffset, y + ny * laneOffset, angle, allowOffCorridor)) {
+                            renderedArrowCount += 1;
+                            arrowsPlacedOnSegment += 1;
+                        }
+                        if (addArrow(x - nx * laneOffset, y - ny * laneOffset, angle + Math.PI, allowOffCorridor)) {
+                            renderedArrowCount += 1;
+                            arrowsPlacedOnSegment += 1;
+                        }
+                    } else if (addArrow(x, y, angle, allowOffCorridor)) {
+                        renderedArrowCount += 1;
+                        arrowsPlacedOnSegment += 1;
+                    }
+                    if (arrowsPlacedOnSegment >= maxArrowsPerSegment) break;
                     t += spacing / segLen;
+                }
+                // Guarantee at least one directional indicator on eligible segments.
+                if (arrowsPlacedOnSegment === 0 && segLen >= branchArrowMinLen) {
+                    const cx = (a.x + b.x) * 0.5;
+                    const cy = (a.y + b.y) * 0.5;
+                    if (addArrow(cx, cy, angle, allowOffCorridor)) {
+                        renderedArrowCount += 1;
+                    }
                 }
                 carry = (segLen - ((spacing - carry) % segLen)) % spacing;
             }
         }
+
+        const anchors = this._getEntrancePoints(floorPlan || {});
+        addAnchor(anchors?.entry, 0x16a34a);
+        addAnchor(anchors?.exit, 0xf59e0b);
+
+        this._flowStats = {
+            paths: flowPaths.length,
+            segments: renderedSegmentCount,
+            arrows: renderedArrowCount
+        };
+        console.log(`[DirectedFlow] paths=${flowPaths.length}, segments=${renderedSegmentCount}, arrows=${renderedArrowCount}`);
     }
 
     renderCorridors(corridors, floorPlan) {
@@ -2477,7 +2822,8 @@ export class FloorPlanRenderer {
         const sourcePaths = corridorList;
 
         for (const corridor of sourcePaths) {
-            const pathPoints = this._normalizePathPoints(corridor?.path || corridor?.corners || corridor?.polygon);
+            // Render only explicit centerline paths.
+            const pathPoints = this._normalizePathPoints(corridor?.path);
             if (pathPoints) {
                 const poly = new THREE.Line(
                     new THREE.BufferGeometry().setFromPoints(pathPoints.map((p) => new THREE.Vector3(p.x, p.y, 0.12))),
@@ -2488,16 +2834,17 @@ export class FloorPlanRenderer {
                 continue;
             }
 
-            if (![corridor?.x, corridor?.y, corridor?.width, corridor?.height].every(Number.isFinite)) {
+            const rect = this._extractCorridorRect(corridor);
+            if (!rect) {
                 continue;
             }
 
-            const cx = corridor.x + corridor.width / 2;
-            const cy = corridor.y + corridor.height / 2;
-            const isHorizontal = corridor.direction === 'horizontal' || corridor.width >= corridor.height;
+            const cx = rect.x + rect.width / 2;
+            const cy = rect.y + rect.height / 2;
+            const isHorizontal = corridor.direction === 'horizontal' || rect.width >= rect.height;
             const seg = isHorizontal
-                ? [new THREE.Vector3(corridor.x, cy, 0.12), new THREE.Vector3(corridor.x + corridor.width, cy, 0.12)]
-                : [new THREE.Vector3(cx, corridor.y, 0.12), new THREE.Vector3(cx, corridor.y + corridor.height, 0.12)];
+                ? [new THREE.Vector3(rect.x, cy, 0.12), new THREE.Vector3(rect.x + rect.width, cy, 0.12)]
+                : [new THREE.Vector3(cx, rect.y, 0.12), new THREE.Vector3(cx, rect.y + rect.height, 0.12)];
 
             const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints(seg), centerlineMaterial);
             line.computeLineDistances();
@@ -4185,6 +4532,10 @@ export class FloorPlanRenderer {
         drawEntities(floorPlan.forbiddenZones, forbiddenColor, highlight);
         drawEntities(floorPlan.entrances, entranceColor, false);
 
+    }
+
+    getFlowStats() {
+        return { ...(this._flowStats || { paths: 0, segments: 0, arrows: 0 }) };
     }
 
     measureDistance(point1, point2) {

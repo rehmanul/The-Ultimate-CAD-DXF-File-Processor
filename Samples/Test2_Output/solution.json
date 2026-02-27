@@ -1,8 +1,8 @@
 {
-  "ilots": 269,
-  "corridors": 23,
-  "radiators": 212,
-  "circulationPaths": 33,
-  "totalArea": 945.6399999999985,
-  "generatedAt": "2026-02-26T19:08:04.873Z"
+  "ilots": 259,
+  "corridors": 53,
+  "radiators": 395,
+  "circulationPaths": 72,
+  "totalArea": 859.3129999999977,
+  "generatedAt": "2026-02-27T12:56:54.373Z"
 }

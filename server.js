@@ -1309,8 +1309,12 @@ app.post('/api/costo/generate', async (req, res) => {
 
             const maximizeFill = options.maximizeFill !== false;
             const oneWayFlow = options.oneWayFlow === true;
+            const requestedCorridorWidth = Number(options.corridorWidth);
+            const normalizedCorridorWidth = Number.isFinite(requestedCorridorWidth)
+                ? Math.max(1.2, Math.min(1.8, requestedCorridorWidth))
+                : 1.2;
             const baseEngineOptions = {
-                corridorWidth: options.corridorWidth || (maximizeFill ? 1.0 : 1.2),
+                corridorWidth: normalizedCorridorWidth,
                 wallClearance: Number.isFinite(options.wallClearance)
                     ? Math.max(0.02, Number(options.wallClearance))
                     : (maximizeFill ? 0.04 : 0.15),
@@ -1334,7 +1338,7 @@ app.post('/api/costo/generate', async (req, res) => {
                     : (maximizeFill ? 0.45 : 0.8),
                 maximizeFill,
                 oneWayFlow,
-                blockThroughUnits: options.blockThroughUnits !== false
+                blockThroughUnits: options.blockThroughUnits === true
             };
             const proEngine = new CostoProLayoutEngine(costoFloorPlan, baseEngineOptions);
 
@@ -1362,7 +1366,7 @@ app.post('/api/costo/generate', async (req, res) => {
                 const firstCorridors = Array.isArray(layoutResult?.corridors) ? layoutResult.corridors.length : 0;
                 const minExpectedCorridors = Math.max(8, Math.floor(firstUnits / 35));
                 const baseWidth = Number(baseEngineOptions.corridorWidth);
-                const retryWidth = Number.isFinite(baseWidth) ? Math.max(1.0, baseWidth - 0.2) : 1.0;
+                const retryWidth = Number.isFinite(baseWidth) ? Math.max(1.2, baseWidth - 0.15) : 1.2;
 
                 if (firstCorridors < minExpectedCorridors && retryWidth + 1e-6 < baseWidth) {
                     const retryOptions = {
@@ -1590,7 +1594,7 @@ app.post('/api/costo/export', async (req, res) => {
             case 'pdf':
                 exportData = await CostoExports.exportToReferencePDF(solution, floorPlan, metrics, {
                     pageSize: 'A1',
-                    orientation: 'auto',
+                    orientation: 'landscape',
                     fitFactor: 0.97,
                     legendMode: 'reference',
                     ...options
@@ -1602,7 +1606,7 @@ app.post('/api/costo/export', async (req, res) => {
             case 'svg':
                 exportData = CostoExports.exportToReferenceSVG(solution, floorPlan, metrics, {
                     pageSize: 'A1',
-                    orientation: 'auto',
+                    orientation: 'landscape',
                     fitFactor: 0.97,
                     ...options
                 });
@@ -1741,7 +1745,9 @@ app.post('/api/ilots', async (req, res) => {
             generatorOptions.totalIlots = Math.floor(requestedTotal);
         }
         const requestedTotalIlots = generatorOptions.totalIlots;
-        generatorOptions.corridorWidth = typeof generatorOptions.corridorWidth === 'number' ? generatorOptions.corridorWidth : 1.2;
+        generatorOptions.corridorWidth = typeof generatorOptions.corridorWidth === 'number'
+            ? Math.max(1.2, Math.min(1.8, generatorOptions.corridorWidth))
+            : 1.2;
         generatorOptions.margin = typeof generatorOptions.margin === 'number' ? generatorOptions.margin : (generatorOptions.minRowDistance || 1.0);
         generatorOptions.spacing = typeof generatorOptions.spacing === 'number'
             ? generatorOptions.spacing
@@ -1811,7 +1817,7 @@ app.post('/api/ilots', async (req, res) => {
                     ? Math.max(0.02, Number(generatorOptions.boxSpacing))
                     : (strictMode ? 0.02 : 0.04);
                 const v2Engine = new CostoProLayoutEngine(costoFloorPlan, {
-                    corridorWidth: generatorOptions.corridorWidth || 1.2,
+                    corridorWidth: Math.max(1.2, Math.min(1.8, Number(generatorOptions.corridorWidth) || 1.2)),
                     wallClearance: v2WallClearance,
                     boxDepth: v2BoxDepth,
                     boxSpacing: v2BoxSpacing,
@@ -1829,7 +1835,7 @@ app.post('/api/ilots', async (req, res) => {
                         : 0.45,
                     maximizeFill: true,
                     oneWayFlow: generatorOptions.oneWayFlow === true,
-                    blockThroughUnits: generatorOptions.blockThroughUnits !== false
+                    blockThroughUnits: generatorOptions.blockThroughUnits === true
                 });
                 const costoDistribution = convertRangeDistributionToTypology(
                     normalizedDistribution,
@@ -3134,7 +3140,7 @@ app.post('/api/costo/export/pdf', async (req, res) => {
 
         const exportOptions = {
             pageSize: 'A1',
-            orientation: 'auto',
+            orientation: 'landscape',
             fitFactor: 0.97,
             legendMode: 'reference',
             ...options
@@ -3170,7 +3176,7 @@ app.post('/api/costo/export/svg', (req, res) => {
 
         const exportOptions = {
             pageSize: 'A1',
-            orientation: 'auto',
+            orientation: 'landscape',
             fitFactor: 0.97,
             ...options
         };

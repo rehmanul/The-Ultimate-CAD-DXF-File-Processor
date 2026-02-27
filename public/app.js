@@ -812,23 +812,71 @@ function initializeModules() {
         });
     };
 
+    const buildVectorExportPayload = () => {
+        const boxes = Array.isArray(generatedIlots) ? generatedIlots : [];
+        const corridors = Array.isArray(corridorNetwork) ? corridorNetwork : [];
+        const radiators = Array.isArray(window._costoRadiators) ? window._costoRadiators : [];
+        const circulationPaths = Array.isArray(window._costoCirculationPaths) ? window._costoCirculationPaths : [];
+        const totalArea = boxes.reduce((sum, b) => sum + (Number(b.area) || (Number(b.width) || 0) * (Number(b.height) || 0)), 0);
+        return {
+            solution: { boxes, corridors, radiators, circulationPaths },
+            floorPlan: currentFloorPlan,
+            metrics: {
+                totalBoxes: boxes.length,
+                totalArea
+            }
+        };
+    };
+
+    const downloadServerExport = async (apiBase, filename) => {
+        const downloadResponse = await fetch(`${apiBase}/exports/${filename}`);
+        if (!downloadResponse.ok) {
+            throw new Error(`Failed to download exported file (${downloadResponse.status})`);
+        }
+        const blob = await downloadResponse.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        window.URL.revokeObjectURL(url);
+    };
+
     const exportSvgBtn = document.getElementById('exportSvgBtn');
     if (exportSvgBtn) {
         exportSvgBtn.addEventListener('click', async () => {
-            if (!professionalExport || typeof professionalExport.downloadSVG !== 'function') {
-                showNotification('SVG export is not available right now.', 'warning');
+            if (!currentFloorPlan) {
+                showNotification('No floor plan loaded.', 'warning');
+                return;
+            }
+            if (!generatedIlots || generatedIlots.length === 0) {
+                showNotification('Generate ilots first.', 'warning');
                 return;
             }
             try {
-                showNotification('Exporting SVG...', 'info');
-                const captureSize = computeExportCaptureSize(renderer, 5000);
-                await professionalExport.downloadSVG(`floorplan_${Date.now()}.svg`, {
-                    fidelity: 'render',
-                    width: captureSize.width,
-                    height: captureSize.height,
-                    title: 'FloorPlan Pro - Current View'
+                showNotification('Exporting vector SVG...', 'info');
+                const API = window.__API_BASE__ || window.location.origin;
+                const payload = buildVectorExportPayload();
+                const response = await fetch(`${API}/api/costo/export/svg`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        ...payload,
+                        options: {
+                            pageSize: 'A1',
+                            orientation: 'landscape',
+                            fitFactor: 0.99
+                        }
+                    })
                 });
-                showNotification('SVG exported', 'success');
+                const result = await response.json();
+                if (!response.ok || !result?.success || !result?.filename) {
+                    throw new Error(result?.error || 'SVG export failed');
+                }
+                await downloadServerExport(API, result.filename);
+                showNotification(`SVG exported: ${result.filename}`, 'success');
             } catch (error) {
                 console.error('SVG export failed:', error);
                 showNotification('SVG export failed: ' + error.message, 'error');
@@ -872,67 +920,31 @@ function initializeModules() {
     }
 
     const exportCurrentViewPdf = async (title = 'COSTO - Floor Plan Export') => {
-        if (!renderer) throw new Error('Renderer not available');
+        if (!currentFloorPlan) throw new Error('No floor plan loaded');
+        if (!generatedIlots || generatedIlots.length === 0) throw new Error('Generate ilots first');
 
-        const was3D = !!renderer.is3DMode;
-        let switchedTo2D = false;
-        try {
-            if (was3D && typeof renderer.toggle3DMode === 'function') {
-                renderer.toggle3DMode(false);
-                switchedTo2D = true;
-                await new Promise((resolve) => setTimeout(resolve, 180));
-            }
-            if (typeof renderer.render === 'function') renderer.render();
-            await new Promise((resolve) => setTimeout(resolve, 120));
-            const imageData = await captureRendererForExport(renderer, 5000);
-
-            const API = window.__API_BASE__ || window.location.origin;
-            const totalArea = (generatedIlots || []).reduce((sum, b) => sum + (b.area || b.width * b.height || 0), 0);
-            const payload = {
-                image: imageData,
-                title,
-                metrics: {
-                    totalBoxes: (generatedIlots || []).length,
-                    totalArea
-                },
+        const API = window.__API_BASE__ || window.location.origin;
+        const payload = buildVectorExportPayload();
+        const response = await fetch(`${API}/api/costo/export/reference-pdf`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                ...payload,
                 options: {
+                    title,
                     pageSize: 'A1',
-                    includeTitleBar: false,
-                    includeBorder: false,
-                    margin: 0,
-                    orientation: 'auto'
+                    orientation: 'landscape',
+                    fitFactor: 0.99,
+                    legendMode: 'reference'
                 }
-            };
-
-            const response = await fetch(`${API}/api/export/canvas-pdf`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
-            });
-            const result = await response.json();
-            if (!response.ok || !result.success || !result.filename) {
-                throw new Error(result.error || 'PDF export failed');
-            }
-
-            const downloadResponse = await fetch(`${API}/exports/${result.filename}`);
-            if (!downloadResponse.ok) {
-                throw new Error(`Failed to download exported PDF (${downloadResponse.status})`);
-            }
-            const blob = await downloadResponse.blob();
-            const url = window.URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = result.filename;
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            window.URL.revokeObjectURL(url);
-            return result.filename;
-        } finally {
-            if (switchedTo2D && typeof renderer.toggle3DMode === 'function') {
-                renderer.toggle3DMode(true);
-            }
+            })
+        });
+        const result = await response.json();
+        if (!response.ok || !result?.success || !result?.filename) {
+            throw new Error(result?.error || 'PDF export failed');
         }
+        await downloadServerExport(API, result.filename);
+        return result.filename;
     };
 
     const exportReferencePdfBtn = document.getElementById('exportReferencePdfBtn');
@@ -948,7 +960,7 @@ function initializeModules() {
             }
 
             try {
-                showNotification('Exporting reference PDF from current view...', 'info');
+                showNotification('Exporting reference vector PDF...', 'info');
                 const filename = await exportCurrentViewPdf('PLAN ETAGE 01 1-200');
                 showNotification(`Reference PDF exported: ${filename}`, 'success');
             } catch (error) {
@@ -2448,13 +2460,7 @@ async function generateAllCosto() {
                 unitMix: unitMixPayload,
                 options: {
                     skipGapCompletion: true,
-                    corridorWidth: (() => {
-                        const sliderValue = parseFloat(document.getElementById('corridorWidthSlider')?.value);
-                        if (Number.isFinite(sliderValue)) {
-                            return Math.max(0.9, Math.min(1.1, sliderValue));
-                        }
-                        return 1.0;
-                    })(),
+                    corridorWidth: getActiveCorridorWidth(),
                     optimize: true,
                     maxIterations: 50,
                     optimizationMethod: 'hybrid',
@@ -2466,7 +2472,7 @@ async function generateAllCosto() {
                     fillPlan: true,
                     maximizeFill: true,
                     oneWayFlow: false,
-                    blockThroughUnits: true,
+                    blockThroughUnits: false,
                     wallClearance: 0.08,
                     boxSpacing: 0.02,
                     rowGapClearance: 0.04,
@@ -2960,70 +2966,37 @@ async function exportToPDF() {
         return;
     }
 
-    if (!renderer) {
-        showNotification('Renderer not available.', 'error');
-        return;
-    }
-
-    showNotification('Exporting PDF from current view...', 'info');
-    let switchedTo2D = false;
+    showNotification('Exporting vector PDF...', 'info');
     try {
         const API = window.__API_BASE__ || window.location.origin;
-        const computeExportCaptureSize = (targetRenderer, longSide = 4600) => {
-            const viewWidth = Math.max(
-                1,
-                Math.round(targetRenderer?.container?.clientWidth || targetRenderer?._canvas?.clientWidth || 1600)
-            );
-            const viewHeight = Math.max(
-                1,
-                Math.round(targetRenderer?.container?.clientHeight || targetRenderer?._canvas?.clientHeight || 900)
-            );
-            const maxSide = Math.max(viewWidth, viewHeight);
-            const scale = maxSide > 0 ? (longSide / maxSide) : 1;
-            return {
-                width: Math.max(1200, Math.round(viewWidth * scale)),
-                height: Math.max(700, Math.round(viewHeight * scale))
-            };
-        };
-
-        const was3D = !!renderer.is3DMode;
-        if (was3D && typeof renderer.toggle3DMode === 'function') {
-            renderer.toggle3DMode(false);
-            switchedTo2D = true;
-            await new Promise((resolve) => setTimeout(resolve, 180));
-        }
-        if (typeof renderer.render === 'function') renderer.render();
-        await new Promise((resolve) => setTimeout(resolve, 120));
-
-        const captureSize = computeExportCaptureSize(renderer, 5000);
-        const imageData = typeof renderer.captureImageData === 'function'
-            ? await renderer.captureImageData(captureSize.width, captureSize.height, true)
-            : await renderer.exportImage(captureSize.width, captureSize.height, {
-                download: false,
-                useActiveCamera: true
-            });
-
-        const totalArea = generatedIlots.reduce((sum, b) => sum + (b.area || b.width * b.height || 0), 0);
+        const totalArea = generatedIlots.reduce((sum, b) => sum + (Number(b.area) || (Number(b.width) || 0) * (Number(b.height) || 0)), 0);
         const floorLevelInput = document.getElementById('floorLevelInput');
         const floorLevel = floorLevelInput ? parseInt(floorLevelInput.value, 10) || 1 : 1;
         const floorLabel = floorLevel === 1 ? 'PLAN ETAGE 01' : `PLAN ETAGE ${String(floorLevel).padStart(2, '0')}`;
 
-        const response = await fetch(`${API}/api/export/canvas-pdf`, {
+        const solutionPayload = {
+            boxes: Array.isArray(generatedIlots) ? generatedIlots : [],
+            corridors: Array.isArray(corridorNetwork) ? corridorNetwork : [],
+            radiators: Array.isArray(window._costoRadiators) ? window._costoRadiators : [],
+            circulationPaths: Array.isArray(window._costoCirculationPaths) ? window._costoCirculationPaths : []
+        };
+
+        const response = await fetch(`${API}/api/costo/export/reference-pdf`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                image: imageData,
-                title: `${floorLabel} 1-200`,
+                solution: solutionPayload,
+                floorPlan: currentFloorPlan,
                 metrics: {
                     totalArea,
                     totalBoxes: generatedIlots.length
                 },
                 options: {
+                    title: `${floorLabel} 1-200`,
                     pageSize: 'A1',
-                    includeTitleBar: false,
-                    includeBorder: false,
-                    margin: 0,
-                    orientation: 'auto'
+                    orientation: 'landscape',
+                    fitFactor: 0.99,
+                    legendMode: 'reference'
                 }
             })
         });
@@ -3034,7 +3007,7 @@ async function exportToPDF() {
         }
 
         const downloadResponse = await fetch(`${API}/exports/${result.filename}`);
-        if (!downloadResponse.ok) throw new Error(`Failed to download PDF (${downloadResponse.status})`);
+        if (!downloadResponse.ok) throw new Error(`Failed to download exported PDF (${downloadResponse.status})`);
         const blob = await downloadResponse.blob();
         const url = window.URL.createObjectURL(blob);
         const a = document.createElement('a');
@@ -3049,10 +3022,6 @@ async function exportToPDF() {
     } catch (e) {
         console.error('PDF export failed:', e);
         showNotification('PDF export failed: ' + e.message, 'error');
-    } finally {
-        if (switchedTo2D && typeof renderer.toggle3DMode === 'function') {
-            renderer.toggle3DMode(true);
-        }
     }
 }
 
@@ -3235,7 +3204,7 @@ function buildIlotOptions(targetIlots, distribution) {
         fillPlan: true,
         maximizeFill: true,
         oneWayFlow: false,
-        blockThroughUnits: true,
+        blockThroughUnits: false,
         densityFactor: 1.1,
         wallClearance: 0.08,
         boxSpacing: 0.02,
@@ -3283,10 +3252,12 @@ function computeDeterministicSeed(floorPlan, presetConfig, distribution) {
 
 function getActiveCorridorWidth() {
     if (typeof activePresetConfig?.corridorWidth === 'number') {
-        return activePresetConfig.corridorWidth;
+        const presetWidth = Number(activePresetConfig.corridorWidth);
+        return Number.isFinite(presetWidth) ? Math.max(1.2, Math.min(1.8, presetWidth)) : 1.2;
     }
     const slider = document.getElementById('corridorWidthSlider');
-    return slider ? parseFloat(slider.value || '1.2') : 1.2;
+    const sliderWidth = slider ? parseFloat(slider.value || '1.2') : 1.2;
+    return Number.isFinite(sliderWidth) ? Math.max(1.2, Math.min(1.8, sliderWidth)) : 1.2;
 }
 
 // Update distribution total display
@@ -5130,6 +5101,18 @@ if (typeof window !== 'undefined' && (
         ilotCount: () => (Array.isArray(generatedIlots) ? generatedIlots.length : 0),
         sampleIlot: () => (Array.isArray(generatedIlots) && generatedIlots.length > 0 ? generatedIlots[0] : null),
         corridorCount: () => (Array.isArray(corridorNetwork) ? corridorNetwork.length : 0),
+        flowPathCount: () => (Array.isArray(window._costoCirculationPaths) ? window._costoCirculationPaths.length : 0),
+        flowArrowCount: () => {
+            if (!Array.isArray(window._costoCirculationPaths)) return 0;
+            let total = 0;
+            for (const p of window._costoCirculationPaths) {
+                if (Array.isArray(p?.arrows)) total += p.arrows.length;
+            }
+            return total;
+        },
+        renderedFlowStats: () => (renderer && typeof renderer.getFlowStats === 'function'
+            ? renderer.getFlowStats()
+            : { paths: 0, segments: 0, arrows: 0 }),
         is3DMode: () => (renderer ? !!renderer.is3DMode : null),
         isGridVisible: () => {
             if (!renderer) return null;

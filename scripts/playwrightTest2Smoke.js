@@ -144,6 +144,9 @@ async function runSmoke() {
 
         const rendererInfo = await page.evaluate(() => (window.__floorplanDebug ? window.__floorplanDebug.getRendererInfo() : null));
         const corridorCount = await page.evaluate(() => (window.__floorplanDebug ? window.__floorplanDebug.corridorCount() : null));
+        const flowPathCount = await page.evaluate(() => (window.__floorplanDebug ? window.__floorplanDebug.flowPathCount() : null));
+        const flowArrowCount = await page.evaluate(() => (window.__floorplanDebug ? window.__floorplanDebug.flowArrowCount() : null));
+        const renderedFlowStats = await page.evaluate(() => (window.__floorplanDebug ? window.__floorplanDebug.renderedFlowStats() : null));
         const screenshotPath = path.join(ROOT, 'Samples', 'Test2_Output', 'playwright_smoke_after_patch.png');
         fs.mkdirSync(path.dirname(screenshotPath), { recursive: true });
         await page.screenshot({ path: screenshotPath, fullPage: true });
@@ -158,6 +161,9 @@ async function runSmoke() {
             gridStateBefore: gridState1,
             gridStateAfterFirstToggle: gridState2,
             gridStateAfterSecondToggle: gridState3,
+            flowPathCount,
+            flowArrowCount,
+            renderedFlowStats,
             rendererInfo,
             screenshotPath
         }, null, 2));
