@@ -2130,8 +2130,8 @@ export class FloorPlanRenderer {
                 // Store calculated unit size for export consistency
                 ilot.unitSize = closest;
 
-                // Professional CAD dimensions + area on every box
-                this._drawProfessionalUnitAnnotations(ilot, 0.10);
+                // Professional CAD dimensions disabled - reference uses clean boxes without internal dimension lines
+                // this._drawProfessionalUnitAnnotations(ilot, 0.10);
             }
         });
 
@@ -2812,11 +2812,11 @@ export class FloorPlanRenderer {
         }
 
         const centerlineMaterial = new THREE.LineDashedMaterial({
-            color: 0x8fb5ee,
-            dashSize: 0.55,
-            gapSize: 0.42,
+            color: 0x4488cc,  // Stronger blue matching reference "ligne circulation"
+            dashSize: 0.40,
+            gapSize: 0.25,
             transparent: true,
-            opacity: 0.75
+            opacity: 0.85
         });
 
         const sourcePaths = corridorList;
@@ -2851,10 +2851,12 @@ export class FloorPlanRenderer {
             this.corridorsGroup.add(line);
         }
 
-        const unitRects = this._extractUnitRects();
-        this._renderDirectedCirculation(flowPaths, activePlan, unitRects, corridorList);
+        // Directed flow arrows disabled - reference uses clean dashed corridor centerlines only.
+        // The scattered flow arrows cut through boxes and create a messy appearance.
+        // const unitRects = this._extractUnitRects();
+        // this._renderDirectedCirculation(flowPaths, activePlan, unitRects, corridorList);
 
-        console.log(`[Corridors] Rendered ${this.corridorsGroup.children.length} corridor centerlines with directed traffic flow`);
+        console.log(`[Corridors] Rendered ${this.corridorsGroup.children.length} corridor centerlines (clean architectural style)`);
         this.render();
     }
 
@@ -3006,7 +3008,8 @@ export class FloorPlanRenderer {
 
             // Professional CAD dimensions + area on every box
             if (showLabels) {
-                this._drawProfessionalUnitAnnotations(ilot, 0.10);
+                // Dimension lines inside boxes disabled - reference uses clean boxes
+                // this._drawProfessionalUnitAnnotations(ilot, 0.10);
             }
         });
 
