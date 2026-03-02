@@ -8,10 +8,10 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends python3 build-essential g++ pkg-config libsqlite3-dev ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 COPY package.json package-lock.json* ./
-RUN npm ci
+RUN npm install --ignore-scripts=false --no-audit --no-fund
 
 FROM deps AS production-deps
-RUN npm prune --production
+RUN npm prune --omit=dev
 
 FROM node:22-bullseye AS runner
 WORKDIR /usr/src/app
