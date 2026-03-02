@@ -11,7 +11,7 @@
  * Integrated with CostoLayerStandard for standardized COSTO layer conventions.
  */
 
-const GeometryHelpers = require('./GeometryHelpers');
+const GeometryHelpers = require('./geometryHelpers');
 const SpatialGrid = require('./spatialGrid');
 const costoLayerStandard = require('./costoLayerStandard');
 
