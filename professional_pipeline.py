@@ -32,7 +32,7 @@ except ImportError:
     HAS_COSTO = False
 
 try:
-    from shapely.geometry import Polygon
+    from shapely.geometry import Polygon, box as shapely_box
     HAS_SHAPELY = True
 except ImportError:
     HAS_SHAPELY = False
@@ -108,7 +108,16 @@ class SimpleStripPlacer:
     WALL_CLEARANCE = 0.20  # m
     BOX_SPACING    = 0.05  # m
 
-    def place(self, bounds, walls=None):
+    def place(self, bounds, walls=None, forbidden=None):
+        forbidden_polygons = []
+        if HAS_SHAPELY and forbidden:
+            for f in forbidden:
+                if f.get('polygon') and len(f['polygon']) >= 3:
+                    try:
+                        forbidden_polygons.append(Polygon(f['polygon']))
+                    except Exception as e:
+                        print(f"[placer] Warning: Invalid forbidden polygon data: {e}")
+
         minX, minY = bounds['minX'] + self.WALL_CLEARANCE, bounds['minY'] + self.WALL_CLEARANCE
         maxX, maxY = bounds['maxX'] - self.WALL_CLEARANCE, bounds['maxY'] - self.WALL_CLEARANCE
 
@@ -148,16 +157,44 @@ class SimpleStripPlacer:
             for row_y, row_name in [(top_y1, f'top_{strip_idx}'), (bottom_y1, f'bot_{strip_idx}')]:
                 x = minX
                 while x + 0.5 < maxX:
-                    btype = type_cycle[t_idx % len(type_cycle)]; t_idx += 1
+                    # Tentatively pick next box type
+                    btype = type_cycle[t_idx % len(type_cycle)]
                     cat   = self.CATALOG[btype]
                     bw, bd = cat['width'], min(row_depth, cat['depth'])
+
+                    # If the default box is too wide, find the largest that fits
                     if x + bw > maxX:
-                        # Try smallest box
-                        cat2 = self.CATALOG['S']
-                        if x + cat2['width'] <= maxX:
-                            btype, bw, bd = 'S', cat2['width'], min(row_depth, cat2['depth'])
+                        remaining_width = maxX - x
+                        best_fit_type = None
+                        
+                        sorted_catalog = sorted(self.CATALOG.items(), key=lambda item: item[1]['width'], reverse=True)
+                        for b_type_fit, b_dims_fit in sorted_catalog:
+                            if b_dims_fit['width'] <= remaining_width:
+                                best_fit_type = b_type_fit
+                                break
+                        
+                        if best_fit_type:
+                            btype = best_fit_type
+                            cat = self.CATALOG[btype]
+                            bw, bd = cat['width'], min(row_depth, cat['depth'])
                         else:
-                            break
+                            break # No box fits, end of row
+
+                    # Collision detection
+                    if forbidden_polygons:
+                        box_poly = shapely_box(x, row_y, x + bw, row_y + bd)
+                        is_colliding = False
+                        for forbidden_poly in forbidden_polygons:
+                            if forbidden_poly.intersects(box_poly):
+                                is_colliding = True
+                                obstacle_bounds = forbidden_poly.bounds
+                                x = obstacle_bounds[2] + self.BOX_SPACING # Jump over obstacle
+                                break
+                        
+                        if is_colliding:
+                            continue
+
+                    t_idx += 1
                     boxes.append({
                         'id':     f'B{box_id:04d}',
                         'type':   btype,
@@ -333,7 +370,7 @@ def run_pipeline(dxf_path: str, output_prefix: str, options: dict = None):
 
     # 2. Place boxes
     placer = SimpleStripPlacer()
-    boxes, corridors = placer.place(bounds, walls)
+    boxes, corridors = placer.place(bounds, walls, forbidden)
     print(f"[Pipeline] Placed: {len(boxes)} boxes, {len(corridors)} corridors")
 
     # 3. Generate radiators and circulation paths

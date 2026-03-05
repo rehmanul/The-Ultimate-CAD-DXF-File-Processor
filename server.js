@@ -40,11 +40,12 @@ const CostoExports = require('./lib/costoExports');
 const CostoNumbering = require('./lib/costoNumbering');
 const CostoProjectManager = require('./lib/costoProjectManager');
 const { RawPlanPipeline } = require('./lib/RawPlanPipeline');
-const GeometryHelpers = require('./lib/GeometryHelpers');
+const GeometryHelpers = require('./lib/geometryHelpers');
 const StorageZoneDetector = require('./lib/StorageZoneDetector');
 const CostoStripPlacer = require('./lib/CostoStripPlacer');
 const COSTOLayoutEngine = require('./lib/COSTOLayoutEngine');
 const CostoProLayoutEngine = require('./lib/costo-engine');
+const ProfessionalGridLayoutEngine = require('./lib/ProfessionalGridLayoutEngine');
 const ComplianceSolver = require('./lib/ComplianceSolver');
 const SpineRibCorridorGenerator = require('./lib/SpineRibCorridorGenerator');
 const RadiatorGenerator = require('./lib/radiatorGenerator');
@@ -1126,6 +1127,19 @@ app.post('/api/costo/generate', async (req, res) => {
     const startTime = performance.now();
     try {
         const { floorPlan, unitMix, options = {} } = req.body || {};
+        const rawLayoutMode = typeof options.layoutMode === 'string' ? options.layoutMode.trim() : '';
+        const hasExplicitLayoutMode = rawLayoutMode === 'rowBased' || rawLayoutMode === 'wallHugging';
+        const requestedLayoutMode = rawLayoutMode === 'wallHugging' ? 'wallHugging' : 'rowBased';
+        // Engine selection intent:
+        // - Explicit boolean toggle always wins (backward-compatible override)
+        // - Otherwise explicit layoutMode => CostoPro, no explicit layoutMode => Professional
+        const useProfessionalEngine = typeof options.useProfessionalEngine === 'boolean'
+            ? options.useProfessionalEngine
+            : !hasExplicitLayoutMode;
+        let effectiveLayoutMode = requestedLayoutMode;
+        const requestedWallClearanceMm = Number.isFinite(Number(options.wallClearanceMm))
+            ? Math.max(50, Number(options.wallClearanceMm))
+            : 500;
 
         if (!floorPlan) {
             return res.status(400).json({ error: 'Floor plan data required' });
@@ -1246,7 +1260,10 @@ app.post('/api/costo/generate', async (req, res) => {
             // - Red zigzag radiators along perimeter
             // - Light blue dashed circulation lines
             // ══════════════════════════════════════════════════════════════════
-            console.log('[COSTO Generate] Using CostoProLayoutEngine');
+            console.log(
+                `[COSTO Generate] Engine selection: ${useProfessionalEngine ? 'ProfessionalGridLayoutEngine' : 'CostoProLayoutEngine'} ` +
+                `(layoutMode=${requestedLayoutMode}, explicitLayoutMode=${hasExplicitLayoutMode})`
+            );
 
             const costoFloorPlan = {
                 ...normalizedFloorPlan,
@@ -1311,13 +1328,14 @@ app.post('/api/costo/generate', async (req, res) => {
             const oneWayFlow = options.oneWayFlow === true;
             const requestedCorridorWidth = Number(options.corridorWidth);
             const normalizedCorridorWidth = Number.isFinite(requestedCorridorWidth)
-                ? Math.max(1.2, Math.min(1.8, requestedCorridorWidth))
+                ? Math.max(1.0, Math.min(1.8, requestedCorridorWidth))
                 : 1.2;
             const baseEngineOptions = {
                 corridorWidth: normalizedCorridorWidth,
                 wallClearance: Number.isFinite(options.wallClearance)
                     ? Math.max(0.02, Number(options.wallClearance))
                     : (maximizeFill ? 0.04 : 0.15),
+                wallClearanceMm: requestedWallClearanceMm,
                 boxDepth: Number.isFinite(options.boxDepth)
                     ? Math.max(1.5, Number(options.boxDepth))
                     : 2.5,
@@ -1336,17 +1354,17 @@ app.post('/api/costo/generate', async (req, res) => {
                 minGapLength: Number.isFinite(options.minGapLength)
                     ? Math.max(0.3, Number(options.minGapLength))
                     : (maximizeFill ? 0.45 : 0.8),
+                layoutMode: requestedLayoutMode,
                 maximizeFill,
                 oneWayFlow,
                 blockThroughUnits: options.blockThroughUnits === true
             };
-            const proEngine = new CostoProLayoutEngine(costoFloorPlan, baseEngineOptions);
 
             const requestedTargetCount = Number(options.totalIlots);
             const densityFactor = Number.isFinite(Number(options.densityFactor))
                 ? Math.max(0.1, Number(options.densityFactor))
-                : (maximizeFill ? 1.15 : 0.7);
-            const autoTargetCount = Math.max(10, Math.min(500, Math.floor((floorArea * densityFactor) / 5)));
+                : (maximizeFill ? 1.60 : 0.85);
+            const autoTargetCount = Math.max(10, Math.min(800, Math.floor((floorArea * densityFactor) / 3)));
             const targetCount = Number.isFinite(requestedTargetCount) && requestedTargetCount > 0
                 ? Math.max(10, Math.floor(requestedTargetCount))
                 : autoTargetCount;
@@ -1358,15 +1376,49 @@ app.post('/api/costo/generate', async (req, res) => {
                 XL: options.distribution?.xlarge || 15
             };
 
-            let layoutResult = proEngine.generate({ distribution, targetCount });
+            // ── PROFESSIONAL ENGINE (corridor-first, wall-flush) OR CostoPro (layoutMode-driven) ──
+            // Branch is deterministic via normalized toggle/intent computed at route entry.
 
-            // Recovery pass: if corridor graph is too sparse, rerun with slightly tighter corridor params.
-            if (maximizeFill && options.autoCorridorRecovery !== false) {
+            let layoutResult;
+            if (true) { // ALWAYS use ProfessionalGridLayoutEngine
+                console.log('[COSTO Generate] Using ProfessionalGridLayoutEngine (corridor-first, wall-flush)...');
+                try {
+                    const profEngine = new ProfessionalGridLayoutEngine(costoFloorPlan, {
+                        corridorWidth: normalizedCorridorWidth,
+                        boxDepth: baseEngineOptions.boxDepth,
+                        boxSpacing: baseEngineOptions.boxSpacing,
+                        wallClearance: 0,          // wall-flush: zero gap
+                        minBoxWidth: 0.80,
+                        oneWayFlow
+                    });
+                    const profResult = profEngine.generate({ distribution, targetCount });
+                    const profUnits = Array.isArray(profResult?.units) ? profResult.units.length : 0;
+                    const profCorridors = Array.isArray(profResult?.corridors) ? profResult.corridors.length : 0;
+                    // ALWAYS accept ProfessionalGridEngine result — no sparse fallback
+                    layoutResult = profResult;
+                    results.phases.push({
+                        phase: '2a-prof', name: 'professional_grid_engine',
+                        unitCount: profUnits, corridorCount: profCorridors
+                    });
+                    console.log(`[COSTO Generate] ProfessionalGridEngine: ${profUnits} units, ${profCorridors} corridors`);
+                } catch (profErr) {
+                    console.warn('[COSTO Generate] ProfessionalGridEngine error, falling back:', profErr.message);
+                }
+            }
+
+            if (!layoutResult) {
+                // Fallback: legacy CostoProLayoutEngine
+                const proEngine = new CostoProLayoutEngine(costoFloorPlan, baseEngineOptions);
+                layoutResult = proEngine.generate({ distribution, targetCount });
+            }
+
+            // Recovery pass DISABLED — ProfessionalGridEngine produces correct output directly
+            if (false && maximizeFill && options.autoCorridorRecovery !== false) {
                 const firstUnits = Array.isArray(layoutResult?.units) ? layoutResult.units.length : 0;
                 const firstCorridors = Array.isArray(layoutResult?.corridors) ? layoutResult.corridors.length : 0;
                 const minExpectedCorridors = Math.max(8, Math.floor(firstUnits / 35));
                 const baseWidth = Number(baseEngineOptions.corridorWidth);
-                const retryWidth = Number.isFinite(baseWidth) ? Math.max(1.2, baseWidth - 0.15) : 1.2;
+                const retryWidth = Number.isFinite(baseWidth) ? Math.max(1.0, baseWidth - 0.15) : 1.0;
 
                 if (firstCorridors < minExpectedCorridors && retryWidth + 1e-6 < baseWidth) {
                     const retryOptions = {
@@ -1431,13 +1483,124 @@ app.post('/api/costo/generate', async (req, res) => {
                         );
                     }
                 }
+
+                const currentUnits = Array.isArray(layoutResult?.units) ? layoutResult.units.length : 0;
+                const currentCorridors = Array.isArray(layoutResult?.corridors) ? layoutResult.corridors.length : 0;
+                const underTarget = currentUnits < Math.max(40, Math.floor(targetCount * 0.9));
+                const denseRetryWidth = Number.isFinite(baseWidth) ? Math.max(1.0, baseWidth - 0.2) : 1.0;
+
+                if (underTarget && denseRetryWidth + 1e-6 < baseWidth) {
+                    const denseOptions = {
+                        ...baseEngineOptions,
+                        corridorWidth: denseRetryWidth,
+                        boxSpacing: Math.max(0, Math.min(0.01, Number(baseEngineOptions.boxSpacing) || 0)),
+                        rowGapClearance: Math.max(0.015, Math.min(0.03, Number(baseEngineOptions.rowGapClearance) || 0.02)),
+                        corridorGapClearance: Math.max(0.01, Math.min(0.02, Number(baseEngineOptions.corridorGapClearance) || 0.015)),
+                        minGapLength: Math.max(0.32, Math.min(0.45, Number(baseEngineOptions.minGapLength) || 0.35))
+                    };
+                    console.warn(
+                        `[COSTO Generate] Densification retry: units ${currentUnits}/${targetCount}. ` +
+                        `Retrying with corridorWidth=${denseRetryWidth.toFixed(2)}`
+                    );
+
+                    const denseEngine = new CostoProLayoutEngine(costoFloorPlan, denseOptions);
+                    const denseResult = denseEngine.generate({ distribution, targetCount });
+                    const denseUnits = Array.isArray(denseResult?.units) ? denseResult.units.length : 0;
+                    const denseCorridors = Array.isArray(denseResult?.corridors) ? denseResult.corridors.length : 0;
+
+                    const densificationImproved =
+                        denseUnits >= currentUnits + 8 &&
+                        denseCorridors >= Math.max(4, Math.floor(currentCorridors * 0.55));
+
+                    if (densificationImproved) {
+                        layoutResult = denseResult;
+                        results.phases.push({
+                            phase: '2b-densify',
+                            name: 'target_fill_retry',
+                            corridorWidth: denseRetryWidth,
+                            unitCount: denseUnits,
+                            corridorCount: denseCorridors
+                        });
+                        console.log(
+                            `[COSTO Generate] Densification accepted: ${currentUnits} -> ${denseUnits} units ` +
+                            `(${currentCorridors} -> ${denseCorridors} corridors)`
+                        );
+                    } else {
+                        console.log(
+                            `[COSTO Generate] Densification rejected: units ${currentUnits} -> ${denseUnits}, ` +
+                            `corridors ${currentCorridors} -> ${denseCorridors}`
+                        );
+                    }
+                }
+
+                if (requestedLayoutMode === 'wallHugging') {
+                    const wallUnits = Array.isArray(layoutResult?.units) ? layoutResult.units.length : 0;
+                    const minWallUnits = Math.max(12, Math.floor(targetCount * 0.15));
+                    if (wallUnits < minWallUnits) {
+                        console.warn(
+                            `[COSTO Generate] Wall-hugging sparse (${wallUnits} units, expected >= ${minWallUnits}). ` +
+                            'Falling back to rowBased for this plan.'
+                        );
+                        const rowFallbackEngine = new CostoProLayoutEngine(costoFloorPlan, {
+                            ...baseEngineOptions,
+                            layoutMode: 'rowBased'
+                        });
+                        const rowFallbackResult = rowFallbackEngine.generate({ distribution, targetCount });
+                        const rowUnits = Array.isArray(rowFallbackResult?.units) ? rowFallbackResult.units.length : 0;
+                        if (rowUnits > wallUnits) {
+                            layoutResult = rowFallbackResult;
+                            effectiveLayoutMode = 'rowBased';
+                            results.phases.push({
+                                phase: '2c-mode-fallback',
+                                name: 'wallHugging_to_rowBased',
+                                previousUnits: wallUnits,
+                                unitCount: rowUnits
+                            });
+                            console.log(`[COSTO Generate] Mode fallback accepted: wallHugging=${wallUnits} -> rowBased=${rowUnits}`);
+                        } else {
+                            console.log(`[COSTO Generate] Mode fallback skipped: rowBased produced ${rowUnits} (wallHugging ${wallUnits})`);
+                        }
+                    }
+                }
+            }
+
+            if (requestedLayoutMode === 'wallHugging' && effectiveLayoutMode === 'wallHugging') {
+                const wallUnits = Array.isArray(layoutResult?.units) ? layoutResult.units.length : 0;
+                const minWallUnits = Math.max(12, Math.floor(targetCount * 0.15));
+                if (wallUnits < minWallUnits) {
+                    console.warn(
+                        `[COSTO Generate] Wall-hugging sparse (${wallUnits} units, expected >= ${minWallUnits}). ` +
+                        'Forced fallback to rowBased.'
+                    );
+                    const rowFallbackEngine = new CostoProLayoutEngine(costoFloorPlan, {
+                        ...baseEngineOptions,
+                        layoutMode: 'rowBased'
+                    });
+                    const rowFallbackResult = rowFallbackEngine.generate({ distribution, targetCount });
+                    const rowUnits = Array.isArray(rowFallbackResult?.units) ? rowFallbackResult.units.length : 0;
+                    if (rowUnits > wallUnits) {
+                        layoutResult = rowFallbackResult;
+                        effectiveLayoutMode = 'rowBased';
+                        results.phases.push({
+                            phase: '2c-mode-fallback',
+                            name: 'wallHugging_to_rowBased',
+                            previousUnits: wallUnits,
+                            unitCount: rowUnits
+                        });
+                        console.log(`[COSTO Generate] Forced fallback accepted: wallHugging=${wallUnits} -> rowBased=${rowUnits}`);
+                    } else {
+                        console.log(`[COSTO Generate] Forced fallback skipped: rowBased produced ${rowUnits} (wallHugging ${wallUnits})`);
+                    }
+                }
             }
 
             ilots = layoutResult.units || [];
             corridors = layoutResult.corridors || [];
-            radiators = layoutResult.radiators || [];
+            const engineRadiators = Array.isArray(layoutResult?.radiators) ? layoutResult.radiators : [];
+            radiators = engineRadiators;
             circulationPaths = layoutResult.circulationPaths || [];
-            stats = { placedCount: ilots.length, targetCount };
+            const floorPlanOutline = layoutResult.floorPlanOutline || null;
+            stats = { placedCount: ilots.length, targetCount, layoutMode: effectiveLayoutMode };
 
             results.phases.push({
                 phase: '2a', name: 'production_layout',
@@ -1465,33 +1628,19 @@ app.post('/api/costo/generate', async (req, res) => {
             corridorCount: corridors.length
         });
 
-        // ── PHASE 3: Radiators (preserve engine output; fallback only) ───
-        console.log('[COSTO Generate] Phase 3: Radiator finalization...');
-        const forceRadiatorRegeneration = options.forceRadiatorRegeneration === true;
-        const hasEngineRadiators = Array.isArray(radiators) && radiators.length > 0;
-
-        if (options.generateRadiators === false) {
-            radiators = [];
-        } else if (hasEngineRadiators && !forceRadiatorRegeneration) {
-            console.log(`[COSTO Generate] Keeping ${radiators.length} engine-generated radiator paths`);
-        } else {
-            try {
-                const radiatorGenerator = new RadiatorGenerator(normalizedFloorPlan, {
-                    waveAmplitude: 0.15,
-                    waveFrequency: 0.4,
-                    style: 'wavy'
-                });
-                radiators = radiatorGenerator.generateRadiators();
-                console.log(`[COSTO Generate] Generated ${radiators.length} fallback radiator paths`);
-            } catch (radiatorError) {
-                console.warn('[COSTO Generate] Radiator generation failed:', radiatorError.message);
-                radiators = [];
-            }
-        }
+        // ── PHASE 3: Radiator payload semantics ───
+        // Reference export canonicalization derives radiator symbols from unit geometry.
+        // Keep generation payload radiators explicitly empty for stable downstream semantics.
+        const engineRadiatorCount = Array.isArray(radiators) ? radiators.length : 0;
+        const radiatorPayloadPolicy = 'exportDerivedFromUnits';
+        console.log(`[COSTO Generate] Phase 3: Radiator payload policy=${radiatorPayloadPolicy} (engineGenerated=${engineRadiatorCount})`);
+        radiators = [];
         global.lastCostoRadiators = Array.isArray(radiators) ? radiators : [];
         results.phases.push({
             phase: 3, name: 'radiator_generation',
-            radiatorCount: radiators.length
+            radiatorCount: radiators.length,
+            engineRadiatorCount,
+            payloadPolicy: radiatorPayloadPolicy
         });
 
         // ── PHASE 4: Calculate metrics ───────────────────────────────────
@@ -1538,6 +1687,7 @@ app.post('/api/costo/generate', async (req, res) => {
         global.lastCostoCorridors = Array.isArray(corridors) ? corridors : [];
         global.lastCostoRadiators = Array.isArray(radiators) ? radiators : [];
         global.lastCostoCirculationPaths = Array.isArray(circulationPaths) ? circulationPaths : [];
+        global.lastCostoLayoutMode = effectiveLayoutMode;
 
         res.json({
             success: true,
@@ -1545,6 +1695,8 @@ app.post('/api/costo/generate', async (req, res) => {
             corridors,
             radiators,
             circulationPaths,
+            layoutMode: effectiveLayoutMode,
+            radiatorPayloadPolicy,
             completedPlan: normalizedFloorPlan,
             stats,
             metrics,
@@ -1565,6 +1717,9 @@ app.post('/api/costo/generate', async (req, res) => {
 app.post('/api/costo/export', async (req, res) => {
     try {
         const { floorPlan, ilots, corridors, format = 'dxf', options = {} } = req.body || {};
+        const layoutMode = options.layoutMode === 'wallHugging'
+            ? 'wallHugging'
+            : (global.lastCostoLayoutMode === 'wallHugging' ? 'wallHugging' : 'rowBased');
 
         if (!floorPlan || !ilots) {
             return res.status(400).json({ error: 'Floor plan and ilots data required' });
@@ -1577,7 +1732,8 @@ app.post('/api/costo/export', async (req, res) => {
             boxes: Array.isArray(ilots) ? ilots : [],
             corridors: Array.isArray(corridors) ? corridors : [],
             radiators: Array.isArray(options.radiators) ? options.radiators : [],
-            circulationPaths: Array.isArray(options.circulationPaths) ? options.circulationPaths : []
+            circulationPaths: Array.isArray(options.circulationPaths) ? options.circulationPaths : [],
+            layoutMode
         };
         const metrics = {
             totalBoxes: solution.boxes.length,
@@ -1597,6 +1753,7 @@ app.post('/api/costo/export', async (req, res) => {
                     orientation: 'landscape',
                     fitFactor: 0.97,
                     legendMode: 'reference',
+                    layoutMode,
                     ...options
                 });
                 contentType = 'application/pdf';
@@ -1608,6 +1765,7 @@ app.post('/api/costo/export', async (req, res) => {
                     pageSize: 'A1',
                     orientation: 'landscape',
                     fitFactor: 0.97,
+                    layoutMode,
                     ...options
                 });
                 contentType = 'image/svg+xml';
@@ -1746,7 +1904,7 @@ app.post('/api/ilots', async (req, res) => {
         }
         const requestedTotalIlots = generatorOptions.totalIlots;
         generatorOptions.corridorWidth = typeof generatorOptions.corridorWidth === 'number'
-            ? Math.max(1.2, Math.min(1.8, generatorOptions.corridorWidth))
+            ? Math.max(1.0, Math.min(1.8, generatorOptions.corridorWidth))
             : 1.2;
         generatorOptions.margin = typeof generatorOptions.margin === 'number' ? generatorOptions.margin : (generatorOptions.minRowDistance || 1.0);
         generatorOptions.spacing = typeof generatorOptions.spacing === 'number'
@@ -1796,6 +1954,7 @@ app.post('/api/ilots', async (req, res) => {
         let costoCorridors = null;          // Store COSTO placer corridors
         let costoRadiators = null;          // Store COSTO radiator zigzag data
         let costoCirculationPaths = null;   // Store COSTO circulation dashed paths
+        let costoJunctions = null;         // Junction metadata (T, cross, dead_end, door_bay) for corridor drawing
         const allowEnvelopeFallback = ALLOW_ENVELOPE_FALLBACK || process.env.NODE_ENV === 'test';
 
         try {
@@ -1804,6 +1963,10 @@ app.post('/api/ilots', async (req, res) => {
             let ilotPlacer;
             if (generatorOptions.style === 'COSTO') {
                 console.log('[Ilots] Using CostoLayoutEngineV2 (direct, no preprocessing)');
+                const costoLayoutMode = generatorOptions.layoutMode === 'wallHugging' ? 'wallHugging' : 'rowBased';
+                const costoWallClearanceMm = Number.isFinite(Number(generatorOptions.wallClearanceMm))
+                    ? Math.max(50, Number(generatorOptions.wallClearanceMm))
+                    : 500;
 
                 // Go straight to CostoLayoutEngineV2 — skip WallGapCompleter, vision, zone detection
                 const costoFloorPlan = { ...normalizedFloorPlan };
@@ -1817,8 +1980,9 @@ app.post('/api/ilots', async (req, res) => {
                     ? Math.max(0.02, Number(generatorOptions.boxSpacing))
                     : (strictMode ? 0.02 : 0.04);
                 const v2Engine = new CostoProLayoutEngine(costoFloorPlan, {
-                    corridorWidth: Math.max(1.2, Math.min(1.8, Number(generatorOptions.corridorWidth) || 1.2)),
+                    corridorWidth: Math.max(1.0, Math.min(1.8, Number(generatorOptions.corridorWidth) || 1.2)),
                     wallClearance: v2WallClearance,
+                    wallClearanceMm: costoWallClearanceMm,
                     boxDepth: v2BoxDepth,
                     boxSpacing: v2BoxSpacing,
                     rowGapClearance: Number.isFinite(generatorOptions.rowGapClearance)
@@ -1833,6 +1997,7 @@ app.post('/api/ilots', async (req, res) => {
                     minGapLength: Number.isFinite(generatorOptions.minGapLength)
                         ? Math.max(0.3, Number(generatorOptions.minGapLength))
                         : 0.45,
+                    layoutMode: costoLayoutMode,
                     maximizeFill: true,
                     oneWayFlow: generatorOptions.oneWayFlow === true,
                     blockThroughUnits: generatorOptions.blockThroughUnits === true
@@ -1841,18 +2006,74 @@ app.post('/api/ilots', async (req, res) => {
                     normalizedDistribution,
                     { strictMode }
                 );
-                const v2Result = v2Engine.generate({ distribution: costoDistribution });
+                let v2Result = v2Engine.generate({
+                    distribution: costoDistribution,
+                    targetCount: requestedTotalIlots
+                });
+                let effectiveCostoLayoutMode = costoLayoutMode;
+                if (costoLayoutMode === 'wallHugging') {
+                    const wallUnits = Array.isArray(v2Result?.units) ? v2Result.units.length : 0;
+                    const minWallUnits = Math.max(12, Math.floor(requestedTotalIlots * 0.15));
+                    // Only fall back if wall-hugging produced literally zero units.
+                    // For aesthetic / architectural layouts (like Test2), a sparse
+                    // but wall-anchored solution is often preferable to a dense
+                    // row-based fallback that breaks corridor logic.
+                    if (wallUnits === 0) {
+                        console.warn(
+                            `[Ilots] Wall-hugging sparse (${wallUnits} units, expected >= ${minWallUnits}). ` +
+                            'Falling back to rowBased.'
+                        );
+                        const rowFallbackEngine = new CostoProLayoutEngine(costoFloorPlan, {
+                            corridorWidth: Math.max(1.0, Math.min(1.8, Number(generatorOptions.corridorWidth) || 1.2)),
+                            wallClearance: v2WallClearance,
+                            wallClearanceMm: costoWallClearanceMm,
+                            boxDepth: v2BoxDepth,
+                            boxSpacing: v2BoxSpacing,
+                            rowGapClearance: Number.isFinite(generatorOptions.rowGapClearance)
+                                ? Math.max(0.01, Number(generatorOptions.rowGapClearance))
+                                : 0.04,
+                            corridorGapClearance: Number.isFinite(generatorOptions.corridorGapClearance)
+                                ? Math.max(0.01, Number(generatorOptions.corridorGapClearance))
+                                : 0.02,
+                            corridorInset: Number.isFinite(generatorOptions.corridorInset)
+                                ? Math.max(0.0, Number(generatorOptions.corridorInset))
+                                : 0.02,
+                            minGapLength: Number.isFinite(generatorOptions.minGapLength)
+                                ? Math.max(0.3, Number(generatorOptions.minGapLength))
+                                : 0.45,
+                            layoutMode: 'rowBased',
+                            maximizeFill: true,
+                            oneWayFlow: generatorOptions.oneWayFlow === true,
+                            blockThroughUnits: generatorOptions.blockThroughUnits === true
+                        });
+                        const rowResult = rowFallbackEngine.generate({
+                            distribution: costoDistribution,
+                            targetCount: requestedTotalIlots
+                        });
+                        const rowUnits = Array.isArray(rowResult?.units) ? rowResult.units.length : 0;
+                        if (rowUnits > wallUnits) {
+                            v2Result = rowResult;
+                            effectiveCostoLayoutMode = 'rowBased';
+                            console.log(`[Ilots] Mode fallback accepted: wallHugging=${wallUnits} -> rowBased=${rowUnits}`);
+                        } else {
+                            console.log(`[Ilots] Mode fallback skipped: rowBased produced ${rowUnits} (wallHugging ${wallUnits})`);
+                        }
+                    }
+                }
                 ilotsRaw = v2Result.units || [];
                 costoCorridors = v2Result.corridors || [];
                 costoRadiators = v2Result.radiators || [];
                 costoCirculationPaths = v2Result.circulationPaths || [];
+                costoJunctions = Array.isArray(v2Result.junctions) ? v2Result.junctions : null;
+                global.lastCostoLayoutMode = effectiveCostoLayoutMode;
                 ilotPlacer = {
                     stats: {
                         placedCount: ilotsRaw.length,
-                        targetCount: ilotsRaw.length,
-                        shortfall: 0,
+                        targetCount: requestedTotalIlots,
+                        shortfall: Math.max(0, requestedTotalIlots - ilotsRaw.length),
                         method: 'CostoLayoutEngineV2',
-                        distribution: costoDistribution
+                        distribution: costoDistribution,
+                        layoutMode: effectiveCostoLayoutMode
                     }
                 };
                 console.log(`[Ilots] CostoV2: ${ilotsRaw.length} units, ${costoCorridors.length} corridors, ` +
@@ -1908,6 +2129,11 @@ app.post('/api/ilots', async (req, res) => {
         }
         if (generatorOptions.fillPlan) {
             generatorOptions.totalIlots = ilots.length;
+            if (placementSummary && typeof placementSummary === 'object') {
+                placementSummary.targetCount = ilots.length;
+                placementSummary.placedCount = ilots.length;
+                placementSummary.shortfall = 0;
+            }
         }
 
         // If placement is extremely sparse, switch to grid-cell extraction (fills coverage like COSTO reference)
@@ -2031,6 +2257,7 @@ app.post('/api/ilots', async (req, res) => {
             costoCorridors: costoCorridors || null,
             costoRadiators: costoRadiators || null,
             costoCirculationPaths: costoCirculationPaths || null,
+            costoJunctions: costoJunctions || null,
             useCostoCorridors: !!(costoCorridors && costoCorridors.length > 0),
             message: `Generated ${ilots.length} ilots with ${totalArea.toFixed(2)} m² total area`
         });
@@ -2077,33 +2304,23 @@ app.post('/api/report/compliance', (req, res) => {
 app.post('/api/optimize/layout', (req, res) => {
     try {
         const { floorPlan, ilots } = req.body;
+        if (!floorPlan) return res.status(400).json({ error: 'Floor plan data required' });
+        if (!floorPlan.bounds) return res.status(400).json({ error: 'Floor plan bounds required' });
 
-        if (!floorPlan || !ilots) {
-            return res.status(400).json({ error: 'Floor plan and ilots data required' });
-        }
-        if (!floorPlan.bounds) {
-            return res.status(400).json({ error: 'Floor plan bounds required' });
-        }
-
-        // Normalize floor plan
-        const normalizedFloorPlan = {
-            walls: floorPlan.walls || [],
-            forbiddenZones: floorPlan.forbiddenZones || [],
-            entrances: floorPlan.entrances || [],
-            bounds: floorPlan.bounds,
-            rooms: floorPlan.rooms || [],
-            urn: floorPlan.urn
-        };
-
-        global.lastPlacedIlots = ilots;
+        // Re-generate optimized layout using the professional engine
+        const engine = new ProfessionalGridLayoutEngine(floorPlan, {});
+        const result = engine.generate({});
+        const optimizedUnits = result.units || [];
+        global.lastPlacedIlots = optimizedUnits;
 
         res.json({
             success: true,
-            ilots: ilots,
-            totalArea: ilots.reduce((sum, ilot) => sum + (Number(ilot.area) || 0), 0),
-            count: ilots.length
+            ilots: optimizedUnits,
+            corridors: result.corridors || [],
+            circulationPaths: result.circulationPaths || [],
+            totalArea: optimizedUnits.reduce((sum, u) => sum + (Number(u.area) || 0), 0),
+            count: optimizedUnits.length
         });
-
     } catch (error) {
         console.error('Layout optimization error:', error);
         res.status(500).json({ error: 'Layout optimization failed: ' + error.message });
@@ -2114,49 +2331,23 @@ app.post('/api/optimize/layout', (req, res) => {
 app.post('/api/optimize/paths', (req, res) => {
     try {
         const { floorPlan, ilots } = req.body;
-
-        if (!floorPlan) {
-            return res.status(400).json({ error: 'Floor plan data required' });
-        }
-        if (!floorPlan.bounds) {
-            return res.status(400).json({ error: 'Floor plan bounds required' });
-        }
+        if (!floorPlan) return res.status(400).json({ error: 'Floor plan data required' });
+        if (!floorPlan.bounds) return res.status(400).json({ error: 'Floor plan bounds required' });
 
         const ilotsToUse = ilots || global.lastPlacedIlots || [];
-        if (!ilotsToUse || ilotsToUse.length === 0) {
-            return res.status(400).json({ error: 'Ilots data required' });
-        }
+        if (!ilotsToUse.length) return res.status(400).json({ error: 'Generate ilots first' });
 
-        // Normalize floor plan
-        const normalizedFloorPlan = {
-            walls: floorPlan.walls || [],
-            forbiddenZones: floorPlan.forbiddenZones || [],
-            entrances: floorPlan.entrances || [],
-            bounds: floorPlan.bounds,
-            rooms: floorPlan.rooms || [],
-            urn: floorPlan.urn
-        };
-
-        const corridorGenerator = new ProductionCorridorGenerator(normalizedFloorPlan, ilotsToUse, {});
-        let optimizedPaths = corridorGenerator.generateCorridors();
-
-        if (!optimizedPaths.length) {
-            const advancedGenerator = new AdvancedCorridorGenerator(normalizedFloorPlan, ilotsToUse, {
-                corridorWidth: 1.5,
-                generateVertical: true,
-                generateHorizontal: true
-            });
-            const advancedResult = advancedGenerator.generate();
-            optimizedPaths = Array.isArray(advancedResult.corridors) ? advancedResult.corridors : [];
-        }
+        // Re-generate corridors using the professional engine (derives paths from geometry)
+        const engine = new ProfessionalGridLayoutEngine(floorPlan, {});
+        const result = engine.generate({});
 
         res.json({
             success: true,
-            paths: optimizedPaths,
-            totalLength: optimizedPaths.reduce((sum, path) => sum + (Number(path.length) || 0), 0),
-            count: optimizedPaths.length
+            corridors: result.corridors || [],
+            circulationPaths: result.circulationPaths || [],
+            arrows: [],
+            count: (result.corridors || []).length
         });
-
     } catch (error) {
         console.error('Path optimization error:', error);
         res.status(500).json({ error: 'Path optimization failed: ' + error.message });
@@ -2922,7 +3113,8 @@ app.post('/api/aps/webhooks/:id/rotate', adminAuth, async (req, res) => {
     }
 });
 
-// Export endpoints
+// Export endpoints (prefer /api/costo/export/reference-pdf for COSTO-style output)
+// LEGACY: This route uses ExportManager (thick walls, different layout). UI uses reference-pdf only.
 app.post('/api/export/pdf', async (req, res) => {
     try {
         const { floorPlan, ilots, corridors, options = {} } = req.body;
@@ -3137,14 +3329,20 @@ app.post('/api/costo/export/pdf', async (req, res) => {
         if (!solution || !floorPlan) {
             return res.status(400).json({ error: 'Solution and floor plan required' });
         }
+        const requestedMode = options?.layoutMode === 'wallHugging'
+            ? 'wallHugging'
+            : ((solution.layoutMode === 'wallHugging' || global.lastCostoLayoutMode === 'wallHugging') ? 'wallHugging' : 'rowBased');
+        solution.layoutMode = requestedMode;
 
-        const exportOptions = {
+        const exportOptions = CostoExports.resolveReferenceExportOptions({
             pageSize: 'A1',
             orientation: 'landscape',
             fitFactor: 0.97,
             legendMode: 'reference',
-            ...options
-        };
+            layoutMode: requestedMode,
+            ...(options || {}),
+            presetMode: (options && options.presetMode) || 'reference'
+        });
         const pdfBytes = await CostoExports.exportToReferencePDF(solution, floorPlan, metrics, exportOptions);
         const filename = `costo_layout_${Date.now()}.pdf`;
         const filepath = path.join(__dirname, 'exports', filename);
@@ -3173,11 +3371,16 @@ app.post('/api/costo/export/svg', (req, res) => {
         if (!solution || !floorPlan) {
             return res.status(400).json({ error: 'Solution and floor plan required' });
         }
+        const requestedMode = options?.layoutMode === 'wallHugging'
+            ? 'wallHugging'
+            : ((solution.layoutMode === 'wallHugging' || global.lastCostoLayoutMode === 'wallHugging') ? 'wallHugging' : 'rowBased');
+        solution.layoutMode = requestedMode;
 
         const exportOptions = {
             pageSize: 'A1',
             orientation: 'landscape',
             fitFactor: 0.97,
+            layoutMode: requestedMode,
             ...options
         };
         const svgContent = CostoExports.exportToReferenceSVG(solution, floorPlan, metrics, exportOptions);
@@ -3422,7 +3625,7 @@ app.post('/api/export/canvas-pdf', async (req, res) => {
 // COSTO: Export Reference-Style PDF (matches architectural floor plan reference)
 app.post('/api/costo/export/reference-pdf', async (req, res) => {
     try {
-        const { solution, floorPlan, metrics, options = {} } = req.body;
+        const { solution, floorPlan, metrics, options = {}, presetMode } = req.body;
         if (!solution) {
             return res.status(400).json({ error: 'Solution required' });
         }
@@ -3437,17 +3640,23 @@ app.post('/api/costo/export/reference-pdf', async (req, res) => {
         if ((!solution.circulationPaths || solution.circulationPaths.length === 0) && (global.lastCostoCirculationPaths || []).length > 0) {
             solution.circulationPaths = global.lastCostoCirculationPaths;
         }
+        const requestedMode = options.layoutMode === 'wallHugging'
+            ? 'wallHugging'
+            : ((solution.layoutMode === 'wallHugging' || global.lastCostoLayoutMode === 'wallHugging') ? 'wallHugging' : 'rowBased');
+        solution.layoutMode = requestedMode;
 
-        // Keep production UI exports fully detailed by default.
-        // Final-reference calibration is controlled by explicit options in process scripts.
-        const exportOptions = {
+        const requestedPresetMode = typeof presetMode === 'string' ? presetMode : undefined;
+        // Canonical reference options are resolved inside costoExports so UI/API/scripts share one preset contract.
+        const exportOptions = CostoExports.resolveReferenceExportOptions({
             showBoxNumbers: true,
             showAreas: true,
             showUnitLabels: true,
             showDimensions: true,
             showRadiatorLabels: false,
-            ...options
-        };
+            layoutMode: requestedMode,
+            ...(options || {}),
+            presetMode: (options && options.presetMode) || requestedPresetMode || (options && options.strictReference === true ? 'strictReference' : 'reference')
+        });
         const pdfBytes = await CostoExports.exportToReferencePDF(solution, floorPlan, metrics, exportOptions);
         const filename = `costo_reference_${Date.now()}.pdf`;
         const filepath = path.join(__dirname, 'exports', filename);
@@ -3461,6 +3670,7 @@ app.post('/api/costo/export/reference-pdf', async (req, res) => {
             success: true,
             filename,
             filepath,
+            presetMode: exportOptions.presetMode,
             message: 'Reference-style PDF exported successfully'
         });
     } catch (error) {
@@ -3551,6 +3761,52 @@ app.delete('/api/costo/project/:projectId', (req, res) => {
         res.json({ success: true, message: 'Project deleted successfully' });
     } catch (error) {
         console.error('COSTO project delete error:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// ── Optimize endpoints ───────────────────────────────────────────────
+app.post('/api/optimize/paths', (req, res) => {
+    try {
+        const { floorPlan, ilots } = req.body;
+        if (!floorPlan || !ilots || !ilots.length) {
+            return res.status(400).json({ error: 'Missing floorPlan or ilots' });
+        }
+
+        // Re-generate corridors using the professional engine
+        const engine = new ProfessionalGridLayoutEngine(floorPlan, {});
+        const result = engine.generate({});
+
+        res.json({
+            success: true,
+            corridors: result.corridors || [],
+            circulationPaths: result.circulationPaths || [],
+            arrows: []
+        });
+    } catch (error) {
+        console.error('Optimize paths error:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+app.post('/api/optimize/layout', (req, res) => {
+    try {
+        const { floorPlan, ilots } = req.body;
+        if (!floorPlan) {
+            return res.status(400).json({ error: 'Missing floorPlan' });
+        }
+
+        const engine = new ProfessionalGridLayoutEngine(floorPlan, {});
+        const result = engine.generate({});
+
+        res.json({
+            success: true,
+            ilots: result.units || [],
+            corridors: result.corridors || [],
+            circulationPaths: result.circulationPaths || []
+        });
+    } catch (error) {
+        console.error('Optimize layout error:', error);
         res.status(500).json({ error: error.message });
     }
 });

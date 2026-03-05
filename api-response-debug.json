@@ -1,0 +1,2009 @@
+{
+  "success": true,
+  "ilots": [
+    {
+      "x": 1.22,
+      "y": 3.7,
+      "width": 1.279,
+      "height": 2.5,
+      "area": 3.2,
+      "type": "M",
+      "label": "3.2m²",
+      "partitionType": "toleGrise",
+      "corridorFace": "bottom",
+      "row": "top",
+      "id": "unit_1",
+      "displayNumber": 1,
+      "dimensionLabel": "1.28"
+    },
+    {
+      "x": 2.519,
+      "y": 3.7,
+      "width": 1.279,
+      "height": 2.5,
+      "area": 3.2,
+      "type": "M",
+      "label": "3.2m²",
+      "partitionType": "toleGrise",
+      "corridorFace": "bottom",
+      "row": "top",
+      "id": "unit_2",
+      "displayNumber": 2,
+      "dimensionLabel": "1.28"
+    },
+    {
+      "x": 3.8179,
+      "y": 3.7,
+      "width": 1.279,
+      "height": 2.5,
+      "area": 3.2,
+      "type": "M",
+      "label": "3.2m²",
+      "partitionType": "toleGrise",
+      "corridorFace": "bottom",
+      "row": "top",
+      "id": "unit_3",
+      "displayNumber": 3,
+      "dimensionLabel": "1.28"
+    },
+    {
+      "x": 5.1169,
+      "y": 3.7,
+      "width": 1.279,
+      "height": 2.5,
+      "area": 3.2,
+      "type": "M",
+      "label": "3.2m²",
+      "partitionType": "toleGrise",
+      "corridorFace": "bottom",
+      "row": "top",
+      "id": "unit_4",
+      "displayNumber": 4,
+      "dimensionLabel": "1.28"
+    },
+    {
+      "x": 6.4158,
+      "y": 3.7,
+      "width": 1.279,
+      "height": 2.5,
+      "area": 3.2,
+      "type": "M",
+      "label": "3.2m²",
+      "partitionType": "toleGrise",
+      "corridorFace": "bottom",
+      "row": "top",
+      "id": "unit_5",
+      "displayNumber": 5,
+      "dimensionLabel": "1.28"
+    },
+    {
+      "x": 7.7148,
+      "y": 3.7,
+      "width": 1.279,
+      "height": 2.5,
+      "area": 3.2,
+      "type": "M",
+      "label": "3.2m²",
+      "partitionType": "toleGrise",
+      "corridorFace": "bottom",
+      "row": "top",
+      "id": "unit_6",
+      "displayNumber": 6,
+      "dimensionLabel": "1.28"
+    },
+    {
+      "x": 11.0117,
+      "y": 3.7,
+      "width": 1.279,
+      "height": 2.5,
+      "area": 3.2,
+      "type": "M",
+      "label": "3.2m²",
+      "partitionType": "toleGrise",
+      "corridorFace": "bottom",
+      "row": "top",
+      "id": "unit_7",
+      "displayNumber": 7,
+      "dimensionLabel": "1.28"
+    },
+    {
+      "x": 12.3106,
+      "y": 3.7,
+      "width": 1.279,
+      "height": 2.5,
+      "area": 3.2,
+      "type": "M",
+      "label": "3.2m²",
+      "partitionType": "toleGrise",
+      "corridorFace": "bottom",
+      "row": "top",
+      "id": "unit_8",
+      "displayNumber": 8,
+      "dimensionLabel": "1.28"
+    },
+    {
+      "x": 13.6096,
+      "y": 3.7,
+      "width": 1.279,
+      "height": 2.5,
+      "area": 3.2,
+      "type": "M",
+      "label": "3.2m²",
+      "partitionType": "toleGrise",
+      "corridorFace": "bottom",
+      "row": "top",
+      "id": "unit_9",
+      "displayNumber": 9,
+      "dimensionLabel": "1.28"
+    },
+    {
+      "x": 14.9086,
+      "y": 3.7,
+      "width": 1.279,
+      "height": 2.5,
+      "area": 3.2,
+      "type": "M",
+      "label": "3.2m²",
+      "partitionType": "toleGrise",
+      "corridorFace": "bottom",
+      "row": "top",
+      "id": "unit_10",
+      "displayNumber": 10,
+      "dimensionLabel": "1.28"
+    },
+    {
+      "x": 16.2075,
+      "y": 3.7,
+      "width": 1.279,
+      "height": 2.5,
+      "area": 3.2,
+      "type": "M",
+      "label": "3.2m²",
+      "partitionType": "toleGrise",
+      "corridorFace": "bottom",
+      "row": "top",
+      "id": "unit_11",
+      "displayNumber": 11,
+      "dimensionLabel": "1.28"
+    },
+    {
+      "x": 17.5065,
+      "y": 3.7,
+      "width": 1.279,
+      "height": 2.5,
+      "area": 3.2,
+      "type": "M",
+      "label": "3.2m²",
+      "partitionType": "toleGrise",
+      "corridorFace": "bottom",
+      "row": "top",
+      "id": "unit_12",
+      "displayNumber": 12,
+      "dimensionLabel": "1.28"
+    },
+    {
+      "x": 18.8055,
+      "y": 3.7,
+      "width": 1.279,
+      "height": 2.5,
+      "area": 3.2,
+      "type": "M",
+      "label": "3.2m²",
+      "partitionType": "toleGrise",
+      "corridorFace": "bottom",
+      "row": "top",
+      "id": "unit_13",
+      "displayNumber": 13,
+      "dimensionLabel": "1.28"
+    },
+    {
+      "x": 21.4034,
+      "y": 3.7,
+      "width": 1.279,
+      "height": 2.5,
+      "area": 3.2,
+      "type": "M",
+      "label": "3.2m²",
+      "partitionType": "toleGrise",
+      "corridorFace": "bottom",
+      "row": "top",
+      "id": "unit_14",
+      "displayNumber": 14,
+      "dimensionLabel": "1.28"
+    },
+    {
+      "x": 22.7023,
+      "y": 3.7,
+      "width": 1.279,
+      "height": 2.5,
+      "area": 3.2,
+      "type": "M",
+      "label": "3.2m²",
+      "partitionType": "toleGrise",
+      "corridorFace": "bottom",
+      "row": "top",
+      "id": "unit_15",
+      "displayNumber": 15,
+      "dimensionLabel": "1.28"
+    },
+    {
+      "x": 24.0013,
+      "y": 3.7,
+      "width": 1.279,
+      "height": 2.5,
+      "area": 3.2,
+      "type": "M",
+      "label": "3.2m²",
+      "partitionType": "toleGrise",
+      "corridorFace": "bottom",
+      "row": "top",
+      "id": "unit_16",
+      "displayNumber": 16,
+      "dimensionLabel": "1.28"
+    },
+    {
+      "x": 25.3003,
+      "y": 3.7,
+      "width": 1.279,
+      "height": 2.5,
+      "area": 3.2,
+      "type": "M",
+      "label": "3.2m²",
+      "partitionType": "toleGrise",
+      "corridorFace": "bottom",
+      "row": "top",
+      "id": "unit_17",
+      "displayNumber": 17,
+      "dimensionLabel": "1.28"
+    },
+    {
+      "x": 26.5992,
+      "y": 3.7,
+      "width": 1.279,
+      "height": 2.5,
+      "area": 3.2,
+      "type": "M",
+      "label": "3.2m²",
+      "partitionType": "toleGrise",
+      "corridorFace": "bottom",
+      "row": "top",
+      "id": "unit_18",
+      "displayNumber": 18,
+      "dimensionLabel": "1.28"
+    },
+    {
+      "x": 29.22,
+      "y": 3.7,
+      "width": 1.279,
+      "height": 2.5,
+      "area": 3.2,
+      "type": "M",
+      "label": "3.2m²",
+      "partitionType": "toleGrise",
+      "corridorFace": "bottom",
+      "row": "top",
+      "id": "unit_19",
+      "displayNumber": 19,
+      "dimensionLabel": "1.28"
+    },
+    {
+      "x": 31.7951,
+      "y": 3.7,
+      "width": 1.279,
+      "height": 2.5,
+      "area": 3.2,
+      "type": "M",
+      "label": "3.2m²",
+      "partitionType": "toleGrise",
+      "corridorFace": "bottom",
+      "row": "top",
+      "id": "unit_20",
+      "displayNumber": 20,
+      "dimensionLabel": "1.28"
+    },
+    {
+      "x": 33.094,
+      "y": 3.7,
+      "width": 1.279,
+      "height": 2.5,
+      "area": 3.2,
+      "type": "M",
+      "label": "3.2m²",
+      "partitionType": "toleGrise",
+      "corridorFace": "bottom",
+      "row": "top",
+      "id": "unit_21",
+      "displayNumber": 21,
+      "dimensionLabel": "1.28"
+    },
+    {
+      "x": 34.393,
+      "y": 3.7,
+      "width": 1.279,
+      "height": 2.5,
+      "area": 3.2,
+      "type": "M",
+      "label": "3.2m²",
+      "partitionType": "toleGrise",
+      "corridorFace": "bottom",
+      "row": "top",
+      "id": "unit_22",
+      "displayNumber": 22,
+      "dimensionLabel": "1.28"
+    },
+    {
+      "x": 35.6919,
+      "y": 3.7,
+      "width": 1.279,
+      "height": 2.5,
+      "area": 3.2,
+      "type": "M",
+      "label": "3.2m²",
+      "partitionType": "toleGrise",
+      "corridorFace": "bottom",
+      "row": "top",
+      "id": "unit_23",
+      "displayNumber": 23,
+      "dimensionLabel": "1.28"
+    },
+    {
+      "x": 36.9909,
+      "y": 3.7,
+      "width": 1.279,
+      "height": 2.5,
+      "area": 3.2,
+      "type": "M",
+      "label": "3.2m²",
+      "partitionType": "toleGrise",
+      "corridorFace": "bottom",
+      "row": "top",
+      "id": "unit_24",
+      "displayNumber": 24,
+      "dimensionLabel": "1.28"
+    },
+    {
+      "x": 38.2899,
+      "y": 3.7,
+      "width": 1.279,
+      "height": 2.5,
+      "area": 3.2,
+      "type": "M",
+      "label": "3.2m²",
+      "partitionType": "toleGrise",
+      "corridorFace": "bottom",
+      "row": "top",
+      "id": "unit_25",
+      "displayNumber": 25,
+      "dimensionLabel": "1.28"
+    },
+    {
+      "x": 39.5888,
+      "y": 3.7,
+      "width": 1.279,
+      "height": 2.5,
+      "area": 3.2,
+      "type": "M",
+      "label": "3.2m²",
+      "partitionType": "toleGrise",
+      "corridorFace": "bottom",
+      "row": "top",
+      "id": "unit_26",
+      "displayNumber": 26,
+      "dimensionLabel": "1.28"
+    },
+    {
+      "x": 42.1868,
+      "y": 3.7,
+      "width": 1.279,
+      "height": 2.5,
+      "area": 3.2,
+      "type": "M",
+      "label": "3.2m²",
+      "partitionType": "toleGrise",
+      "corridorFace": "bottom",
+      "row": "top",
+      "id": "unit_27",
+      "displayNumber": 27,
+      "dimensionLabel": "1.28"
+    },
+    {
+      "x": 43.4857,
+      "y": 3.7,
+      "width": 1.279,
+      "height": 2.5,
+      "area": 3.2,
+      "type": "M",
+      "label": "3.2m²",
+      "partitionType": "toleGrise",
+      "corridorFace": "bottom",
+      "row": "top",
+      "id": "unit_28",
+      "displayNumber": 28,
+      "dimensionLabel": "1.28"
+    },
+    {
+      "x": 44.7847,
+      "y": 3.7,
+      "width": 1.279,
+      "height": 2.5,
+      "area": 3.2,
+      "type": "M",
+      "label": "3.2m²",
+      "partitionType": "toleGrise",
+      "corridorFace": "bottom",
+      "row": "top",
+      "id": "unit_29",
+      "displayNumber": 29,
+      "dimensionLabel": "1.28"
+    },
+    {
+      "x": 46.0836,
+      "y": 3.7,
+      "width": 1.279,
+      "height": 2.5,
+      "area": 3.2,
+      "type": "M",
+      "label": "3.2m²",
+      "partitionType": "toleGrise",
+      "corridorFace": "bottom",
+      "row": "top",
+      "id": "unit_30",
+      "displayNumber": 30,
+      "dimensionLabel": "1.28"
+    },
+    {
+      "x": 47.3826,
+      "y": 3.7,
+      "width": 1.279,
+      "height": 2.5,
+      "area": 3.2,
+      "type": "M",
+      "label": "3.2m²",
+      "partitionType": "toleGrise",
+      "corridorFace": "bottom",
+      "row": "top",
+      "id": "unit_31",
+      "displayNumber": 31,
+      "dimensionLabel": "1.28"
+    },
+    {
+      "x": 48.6816,
+      "y": 3.7,
+      "width": 1.279,
+      "height": 2.5,
+      "area": 3.2,
+      "type": "M",
+      "label": "3.2m²",
+      "partitionType": "toleGrise",
+      "corridorFace": "bottom",
+      "row": "top",
+      "id": "unit_32",
+      "displayNumber": 32,
+      "dimensionLabel": "1.28"
+    },
+    {
+      "x": 49.9805,
+      "y": 3.7,
+      "width": 1.279,
+      "height": 2.5,
+      "area": 3.2,
+      "type": "M",
+      "label": "3.2m²",
+      "partitionType": "toleGrise",
+      "corridorFace": "bottom",
+      "row": "top",
+      "id": "unit_33",
+      "displayNumber": 33,
+      "dimensionLabel": "1.28"
+    },
+    {
+      "x": 52.5784,
+      "y": 3.7,
+      "width": 1.279,
+      "height": 2.5,
+      "area": 3.2,
+      "type": "M",
+      "label": "3.2m²",
+      "partitionType": "toleGrise",
+      "corridorFace": "bottom",
+      "row": "top",
+      "id": "unit_34",
+      "displayNumber": 34,
+      "dimensionLabel": "1.28"
+    },
+    {
+      "x": 53.8774,
+      "y": 3.7,
+      "width": 1.279,
+      "height": 2.5,
+      "area": 3.2,
+      "type": "M",
+      "label": "3.2m²",
+      "partitionType": "toleGrise",
+      "corridorFace": "bottom",
+      "row": "top",
+      "id": "unit_35",
+      "displayNumber": 35,
+      "dimensionLabel": "1.28"
+    },
+    {
+      "x": 55.1764,
+      "y": 3.7,
+      "width": 1.279,
+      "height": 2.5,
+      "area": 3.2,
+      "type": "M",
+      "label": "3.2m²",
+      "partitionType": "toleGrise",
+      "corridorFace": "bottom",
+      "row": "top",
+      "id": "unit_36",
+      "displayNumber": 36,
+      "dimensionLabel": "1.28"
+    },
+    {
+      "x": 56.4753,
+      "y": 3.7,
+      "width": 1.279,
+      "height": 2.5,
+      "area": 3.2,
+      "type": "M",
+      "label": "3.2m²",
+      "partitionType": "toleGrise",
+      "corridorFace": "bottom",
+      "row": "top",
+      "id": "unit_37",
+      "displayNumber": 37,
+      "dimensionLabel": "1.28"
+    },
+    {
+      "x": 57.7743,
+      "y": 3.7,
+      "width": 1.279,
+      "height": 2.5,
+      "area": 3.2,
+      "type": "M",
+      "label": "3.2m²",
+      "partitionType": "toleGrise",
+      "corridorFace": "bottom",
+      "row": "top",
+      "id": "unit_38",
+      "displayNumber": 38,
+      "dimensionLabel": "1.28"
+    },
+    {
+      "x": 59.0732,
+      "y": 3.7,
+      "width": 1.279,
+      "height": 2.5,
+      "area": 3.2,
+      "type": "M",
+      "label": "3.2m²",
+      "partitionType": "toleGrise",
+      "corridorFace": "bottom",
+      "row": "top",
+      "id": "unit_39",
+      "displayNumber": 39,
+      "dimensionLabel": "1.28"
+    },
+    {
+      "x": 60.3722,
+      "y": 3.7,
+      "width": 1.279,
+      "height": 2.5,
+      "area": 3.2,
+      "type": "M",
+      "label": "3.2m²",
+      "partitionType": "toleGrise",
+      "corridorFace": "bottom",
+      "row": "top",
+      "id": "unit_40",
+      "displayNumber": 40,
+      "dimensionLabel": "1.28"
+    },
+    {
+      "x": 62.9701,
+      "y": 3.7,
+      "width": 1.279,
+      "height": 2.5,
+      "area": 3.2,
+      "type": "M",
+      "label": "3.2m²",
+      "partitionType": "toleGrise",
+      "corridorFace": "bottom",
+      "row": "top",
+      "id": "unit_41",
+      "displayNumber": 41,
+      "dimensionLabel": "1.28"
+    },
+    {
+      "x": 64.2691,
+      "y": 3.7,
+      "width": 1.279,
+      "height": 2.5,
+      "area": 3.2,
+      "type": "M",
+      "label": "3.2m²",
+      "partitionType": "toleGrise",
+      "corridorFace": "bottom",
+      "row": "top",
+      "id": "unit_42",
+      "displayNumber": 42,
+      "dimensionLabel": "1.28"
+    },
+    {
+      "x": 65.5681,
+      "y": 3.7,
+      "width": 1.279,
+      "height": 2.5,
+      "area": 3.2,
+      "type": "M",
+      "label": "3.2m²",
+      "partitionType": "toleGrise",
+      "corridorFace": "bottom",
+      "row": "top",
+      "id": "unit_43",
+      "displayNumber": 43,
+      "dimensionLabel": "1.28"
+    },
+    {
+      "x": 66.867,
+      "y": 3.7,
+      "width": 1.279,
+      "height": 2.5,
+      "area": 3.2,
+      "type": "M",
+      "label": "3.2m²",
+      "partitionType": "toleGrise",
+      "corridorFace": "bottom",
+      "row": "top",
+      "id": "unit_44",
+      "displayNumber": 44,
+      "dimensionLabel": "1.28"
+    },
+    {
+      "x": 70.02,
+      "y": 3.7,
+      "width": 1.279,
+      "height": 2.5,
+      "area": 3.2,
+      "type": "M",
+      "label": "3.2m²",
+      "partitionType": "toleGrise",
+      "corridorFace": "bottom",
+      "row": "top",
+      "id": "unit_45",
+      "displayNumber": 45,
+      "dimensionLabel": "1.28"
+    },
+    {
+      "x": 73.3618,
+      "y": 3.7,
+      "width": 1.279,
+      "height": 2.5,
+      "area": 3.2,
+      "type": "M",
+      "label": "3.2m²",
+      "partitionType": "toleGrise",
+      "corridorFace": "bottom",
+      "row": "top",
+      "id": "unit_46",
+      "displayNumber": 46,
+      "dimensionLabel": "1.28"
+    },
+    {
+      "x": 74.6608,
+      "y": 3.7,
+      "width": 1.279,
+      "height": 2.5,
+      "area": 3.2,
+      "type": "M",
+      "label": "3.2m²",
+      "partitionType": "toleGrise",
+      "corridorFace": "bottom",
+      "row": "top",
+      "id": "unit_47",
+      "displayNumber": 47,
+      "dimensionLabel": "1.28"
+    },
+    {
+      "x": 75.9597,
+      "y": 3.7,
+      "width": 1.279,
+      "height": 2.5,
+      "area": 3.2,
+      "type": "M",
+      "label": "3.2m²",
+      "partitionType": "toleGrise",
+      "corridorFace": "bottom",
+      "row": "top",
+      "id": "unit_48",
+      "displayNumber": 48,
+      "dimensionLabel": "1.28"
+    },
+    {
+      "x": 79.22,
+      "y": 3.7,
+      "width": 1.279,
+      "height": 2.5,
+      "area": 3.2,
+      "type": "M",
+      "label": "3.2m²",
+      "partitionType": "toleGrise",
+      "corridorFace": "bottom",
+      "row": "top",
+      "id": "unit_49",
+      "displayNumber": 49,
+      "dimensionLabel": "1.28"
+    },
+    {
+      "x": 80.519,
+      "y": 3.7,
+      "width": 1.279,
+      "height": 2.5,
+      "area": 3.2,
+      "type": "M",
+      "label": "3.2m²",
+      "partitionType": "toleGrise",
+      "corridorFace": "bottom",
+      "row": "top",
+      "id": "unit_50",
+      "displayNumber": 50,
+      "dimensionLabel": "1.28"
+    },
+    {
+      "x": 83.7535,
+      "y": 3.7,
+      "width": 1.279,
+      "height": 2.5,
+      "area": 3.2,
+      "type": "M",
+      "label": "3.2m²",
+      "partitionType": "toleGrise",
+      "corridorFace": "bottom",
+      "row": "top",
+      "id": "unit_51",
+      "displayNumber": 51,
+      "dimensionLabel": "1.28"
+    },
+    {
+      "x": 85.0525,
+      "y": 3.7,
+      "width": 1.279,
+      "height": 2.5,
+      "area": 3.2,
+      "type": "M",
+      "label": "3.2m²",
+      "partitionType": "toleGrise",
+      "corridorFace": "bottom",
+      "row": "top",
+      "id": "unit_52",
+      "displayNumber": 52,
+      "dimensionLabel": "1.28"
+    },
+    {
+      "x": 86.3514,
+      "y": 3.7,
+      "width": 1.279,
+      "height": 2.5,
+      "area": 3.2,
+      "type": "M",
+      "label": "3.2m²",
+      "partitionType": "toleGrise",
+      "corridorFace": "bottom",
+      "row": "top",
+      "id": "unit_53",
+      "displayNumber": 53,
+      "dimensionLabel": "1.28"
+    },
+    {
+      "x": 87.6504,
+      "y": 3.7,
+      "width": 1.279,
+      "height": 2.5,
+      "area": 3.2,
+      "type": "M",
+      "label": "3.2m²",
+      "partitionType": "toleGrise",
+      "corridorFace": "bottom",
+      "row": "top",
+      "id": "unit_54",
+      "displayNumber": 54,
+      "dimensionLabel": "1.28"
+    },
+    {
+      "x": 88.9494,
+      "y": 3.7,
+      "width": 1.279,
+      "height": 2.5,
+      "area": 3.2,
+      "type": "M",
+      "label": "3.2m²",
+      "partitionType": "toleGrise",
+      "corridorFace": "bottom",
+      "row": "top",
+      "id": "unit_55",
+      "displayNumber": 55,
+      "dimensionLabel": "1.28"
+    },
+    {
+      "x": 90.2483,
+      "y": 3.7,
+      "width": 1.279,
+      "height": 2.5,
+      "area": 3.2,
+      "type": "M",
+      "label": "3.2m²",
+      "partitionType": "toleGrise",
+      "corridorFace": "bottom",
+      "row": "top",
+      "id": "unit_56",
+      "displayNumber": 56,
+      "dimensionLabel": "1.28"
+    },
+    {
+      "x": 91.5473,
+      "y": 3.7,
+      "width": 1.279,
+      "height": 2.5,
+      "area": 3.2,
+      "type": "M",
+      "label": "3.2m²",
+      "partitionType": "toleGrise",
+      "corridorFace": "bottom",
+      "row": "top",
+      "id": "unit_57",
+      "displayNumber": 57,
+      "dimensionLabel": "1.28"
+    },
+    {
+      "x": 94.1452,
+      "y": 3.7,
+      "width": 1.279,
+      "height": 2.5,
+      "area": 3.2,
+      "type": "M",
+      "label": "3.2m²",
+      "partitionType": "toleGrise",
+      "corridorFace": "bottom",
+      "row": "top",
+      "id": "unit_58",
+      "displayNumber": 58,
+      "dimensionLabel": "1.28"
+    },
+    {
+      "x": 95.4442,
+      "y": 3.7,
+      "width": 1.279,
+      "height": 2.5,
+      "area": 3.2,
+      "type": "M",
+      "label": "3.2m²",
+      "partitionType": "toleGrise",
+      "corridorFace": "bottom",
+      "row": "top",
+      "id": "unit_59",
+      "displayNumber": 59,
+      "dimensionLabel": "1.28"
+    },
+    {
+      "x": 96.7431,
+      "y": 3.7,
+      "width": 1.279,
+      "height": 2.5,
+      "area": 3.2,
+      "type": "M",
+      "label": "3.2m²",
+      "partitionType": "toleGrise",
+      "corridorFace": "bottom",
+      "row": "top",
+      "id": "unit_60",
+      "displayNumber": 60,
+      "dimensionLabel": "1.28"
+    },
+    {
+      "x": 1.22,
+      "y": 6.666666666666667,
+      "width": 1.279,
+      "height": 2.5,
+      "area": 3.2,
+      "type": "M",
+      "label": "3.2m²",
+      "partitionType": "toleGrise",
+      "corridorFace": "top",
+      "row": "bottom",
+      "id": "unit_61",
+      "displayNumber": 61,
+      "dimensionLabel": "1.28"
+    },
+    {
+      "x": 2.519,
+      "y": 6.666666666666667,
+      "width": 1.279,
+      "height": 2.5,
+      "area": 3.2,
+      "type": "M",
+      "label": "3.2m²",
+      "partitionType": "toleGrise",
+      "corridorFace": "top",
+      "row": "bottom",
+      "id": "unit_62",
+      "displayNumber": 62,
+      "dimensionLabel": "1.28"
+    },
+    {
+      "x": 3.8179,
+      "y": 6.666666666666667,
+      "width": 1.279,
+      "height": 2.5,
+      "area": 3.2,
+      "type": "M",
+      "label": "3.2m²",
+      "partitionType": "toleGrise",
+      "corridorFace": "top",
+      "row": "bottom",
+      "id": "unit_63",
+      "displayNumber": 63,
+      "dimensionLabel": "1.28"
+    },
+    {
+      "x": 5.1169,
+      "y": 6.666666666666667,
+      "width": 1.279,
+      "height": 2.5,
+      "area": 3.2,
+      "type": "M",
+      "label": "3.2m²",
+      "partitionType": "toleGrise",
+      "corridorFace": "top",
+      "row": "bottom",
+      "id": "unit_64",
+      "displayNumber": 64,
+      "dimensionLabel": "1.28"
+    },
+    {
+      "x": 6.4158,
+      "y": 6.666666666666667,
+      "width": 1.279,
+      "height": 2.5,
+      "area": 3.2,
+      "type": "M",
+      "label": "3.2m²",
+      "partitionType": "toleGrise",
+      "corridorFace": "top",
+      "row": "bottom",
+      "id": "unit_65",
+      "displayNumber": 65,
+      "dimensionLabel": "1.28"
+    },
+    {
+      "x": 7.7148,
+      "y": 6.666666666666667,
+      "width": 1.279,
+      "height": 2.5,
+      "area": 3.2,
+      "type": "M",
+      "label": "3.2m²",
+      "partitionType": "toleGrise",
+      "corridorFace": "top",
+      "row": "bottom",
+      "id": "unit_66",
+      "displayNumber": 66,
+      "dimensionLabel": "1.28"
+    },
+    {
+      "x": 11.0117,
+      "y": 6.666666666666667,
+      "width": 1.279,
+      "height": 2.5,
+      "area": 3.2,
+      "type": "M",
+      "label": "3.2m²",
+      "partitionType": "toleGrise",
+      "corridorFace": "top",
+      "row": "bottom",
+      "id": "unit_67",
+      "displayNumber": 67,
+      "dimensionLabel": "1.28"
+    },
+    {
+      "x": 12.3106,
+      "y": 6.666666666666667,
+      "width": 1.279,
+      "height": 2.5,
+      "area": 3.2,
+      "type": "M",
+      "label": "3.2m²",
+      "partitionType": "toleGrise",
+      "corridorFace": "top",
+      "row": "bottom",
+      "id": "unit_68",
+      "displayNumber": 68,
+      "dimensionLabel": "1.28"
+    },
+    {
+      "x": 13.6096,
+      "y": 6.666666666666667,
+      "width": 1.279,
+      "height": 2.5,
+      "area": 3.2,
+      "type": "M",
+      "label": "3.2m²",
+      "partitionType": "toleGrise",
+      "corridorFace": "top",
+      "row": "bottom",
+      "id": "unit_69",
+      "displayNumber": 69,
+      "dimensionLabel": "1.28"
+    },
+    {
+      "x": 14.9086,
+      "y": 6.666666666666667,
+      "width": 1.279,
+      "height": 2.5,
+      "area": 3.2,
+      "type": "M",
+      "label": "3.2m²",
+      "partitionType": "toleGrise",
+      "corridorFace": "top",
+      "row": "bottom",
+      "id": "unit_70",
+      "displayNumber": 70,
+      "dimensionLabel": "1.28"
+    },
+    {
+      "x": 16.2075,
+      "y": 6.666666666666667,
+      "width": 1.279,
+      "height": 2.5,
+      "area": 3.2,
+      "type": "M",
+      "label": "3.2m²",
+      "partitionType": "toleGrise",
+      "corridorFace": "top",
+      "row": "bottom",
+      "id": "unit_71",
+      "displayNumber": 71,
+      "dimensionLabel": "1.28"
+    },
+    {
+      "x": 17.5065,
+      "y": 6.666666666666667,
+      "width": 1.279,
+      "height": 2.5,
+      "area": 3.2,
+      "type": "M",
+      "label": "3.2m²",
+      "partitionType": "toleGrise",
+      "corridorFace": "top",
+      "row": "bottom",
+      "id": "unit_72",
+      "displayNumber": 72,
+      "dimensionLabel": "1.28"
+    },
+    {
+      "x": 18.8055,
+      "y": 6.666666666666667,
+      "width": 1.279,
+      "height": 2.5,
+      "area": 3.2,
+      "type": "M",
+      "label": "3.2m²",
+      "partitionType": "toleGrise",
+      "corridorFace": "top",
+      "row": "bottom",
+      "id": "unit_73",
+      "displayNumber": 73,
+      "dimensionLabel": "1.28"
+    },
+    {
+      "x": 21.4034,
+      "y": 6.666666666666667,
+      "width": 1.279,
+      "height": 2.5,
+      "area": 3.2,
+      "type": "M",
+      "label": "3.2m²",
+      "partitionType": "toleGrise",
+      "corridorFace": "top",
+      "row": "bottom",
+      "id": "unit_74",
+      "displayNumber": 74,
+      "dimensionLabel": "1.28"
+    },
+    {
+      "x": 22.7023,
+      "y": 6.666666666666667,
+      "width": 1.279,
+      "height": 2.5,
+      "area": 3.2,
+      "type": "M",
+      "label": "3.2m²",
+      "partitionType": "toleGrise",
+      "corridorFace": "top",
+      "row": "bottom",
+      "id": "unit_75",
+      "displayNumber": 75,
+      "dimensionLabel": "1.28"
+    },
+    {
+      "x": 24.0013,
+      "y": 6.666666666666667,
+      "width": 1.279,
+      "height": 2.5,
+      "area": 3.2,
+      "type": "M",
+      "label": "3.2m²",
+      "partitionType": "toleGrise",
+      "corridorFace": "top",
+      "row": "bottom",
+      "id": "unit_76",
+      "displayNumber": 76,
+      "dimensionLabel": "1.28"
+    },
+    {
+      "x": 25.3003,
+      "y": 6.666666666666667,
+      "width": 1.279,
+      "height": 2.5,
+      "area": 3.2,
+      "type": "M",
+      "label": "3.2m²",
+      "partitionType": "toleGrise",
+      "corridorFace": "top",
+      "row": "bottom",
+      "id": "unit_77",
+      "displayNumber": 77,
+      "dimensionLabel": "1.28"
+    },
+    {
+      "x": 26.5992,
+      "y": 6.666666666666667,
+      "width": 1.279,
+      "height": 2.5,
+      "area": 3.2,
+      "type": "M",
+      "label": "3.2m²",
+      "partitionType": "toleGrise",
+      "corridorFace": "top",
+      "row": "bottom",
+      "id": "unit_78",
+      "displayNumber": 78,
+      "dimensionLabel": "1.28"
+    },
+    {
+      "x": 29.22,
+      "y": 6.666666666666667,
+      "width": 1.279,
+      "height": 2.5,
+      "area": 3.2,
+      "type": "M",
+      "label": "3.2m²",
+      "partitionType": "toleGrise",
+      "corridorFace": "top",
+      "row": "bottom",
+      "id": "unit_79",
+      "displayNumber": 79,
+      "dimensionLabel": "1.28"
+    },
+    {
+      "x": 31.7951,
+      "y": 6.666666666666667,
+      "width": 1.279,
+      "height": 2.5,
+      "area": 3.2,
+      "type": "M",
+      "label": "3.2m²",
+      "partitionType": "toleGrise",
+      "corridorFace": "top",
+      "row": "bottom",
+      "id": "unit_80",
+      "displayNumber": 80,
+      "dimensionLabel": "1.28"
+    }
+  ],
+  "corridors": [
+    {
+      "id": "corridor_0",
+      "type": "ACCESS",
+      "direction": "horizontal",
+      "x": 0,
+      "y": 2.5,
+      "width": 100,
+      "height": 1.2
+    },
+    {
+      "id": "corridor_1",
+      "type": "ACCESS",
+      "direction": "horizontal",
+      "x": 0,
+      "y": 9.166666666666668,
+      "width": 100,
+      "height": 1.2
+    },
+    {
+      "id": "corridor_2",
+      "type": "ACCESS",
+      "direction": "horizontal",
+      "x": 0,
+      "y": 15.833333333333334,
+      "width": 100,
+      "height": 1.2
+    },
+    {
+      "id": "corridor_3",
+      "type": "ACCESS",
+      "direction": "horizontal",
+      "x": 0,
+      "y": 22.5,
+      "width": 100,
+      "height": 1.2
+    },
+    {
+      "id": "corridor_4",
+      "type": "ACCESS",
+      "direction": "horizontal",
+      "x": 0,
+      "y": 29.166666666666668,
+      "width": 20,
+      "height": 1.2
+    },
+    {
+      "id": "corridor_5",
+      "type": "ACCESS",
+      "direction": "horizontal",
+      "x": 28,
+      "y": 29.166666666666668,
+      "width": 42,
+      "height": 1.2
+    },
+    {
+      "id": "corridor_6",
+      "type": "ACCESS",
+      "direction": "horizontal",
+      "x": 78,
+      "y": 29.166666666666668,
+      "width": 22,
+      "height": 1.2
+    },
+    {
+      "id": "corridor_7",
+      "type": "ACCESS",
+      "direction": "horizontal",
+      "x": 0,
+      "y": 35.833333333333336,
+      "width": 100,
+      "height": 1.2
+    },
+    {
+      "id": "corridor_8",
+      "type": "ACCESS",
+      "direction": "horizontal",
+      "x": 0,
+      "y": 42.5,
+      "width": 100,
+      "height": 1.2
+    },
+    {
+      "id": "corridor_9",
+      "type": "ACCESS",
+      "direction": "horizontal",
+      "x": 0,
+      "y": 49.16666666666667,
+      "width": 100,
+      "height": 1.2
+    },
+    {
+      "id": "corridor_10",
+      "type": "ACCESS",
+      "direction": "horizontal",
+      "x": 0,
+      "y": 55.833333333333336,
+      "width": 100,
+      "height": 1.2
+    },
+    {
+      "id": "corridor_11",
+      "type": "PERIMETER",
+      "direction": "vertical",
+      "x": 0,
+      "y": 0,
+      "width": 1.2,
+      "height": 60,
+      "isSpine": true
+    },
+    {
+      "id": "corridor_12",
+      "type": "PERIMETER",
+      "direction": "vertical",
+      "x": 98.8,
+      "y": 0,
+      "width": 1.2,
+      "height": 60,
+      "isSpine": true
+    },
+    {
+      "id": "corridor_13",
+      "type": "PERIMETER",
+      "direction": "horizontal",
+      "x": 0,
+      "y": 58.8,
+      "width": 100,
+      "height": 1.2,
+      "isSpine": true
+    },
+    {
+      "id": "corridor_14",
+      "type": "PERIMETER",
+      "direction": "horizontal",
+      "x": 0,
+      "y": 0,
+      "width": 100,
+      "height": 1.2,
+      "isSpine": true
+    },
+    {
+      "id": "corridor_15",
+      "type": "SPINE",
+      "direction": "vertical",
+      "x": 9.791688311688313,
+      "y": 0,
+      "width": 1.2,
+      "height": 60,
+      "isSpine": true
+    },
+    {
+      "id": "corridor_16",
+      "type": "SPINE",
+      "direction": "vertical",
+      "x": 20.183376623376624,
+      "y": 0,
+      "width": 1.2,
+      "height": 25,
+      "isSpine": true
+    },
+    {
+      "id": "corridor_17",
+      "type": "SPINE",
+      "direction": "vertical",
+      "x": 20.183376623376624,
+      "y": 33,
+      "width": 1.2,
+      "height": 27,
+      "isSpine": true
+    },
+    {
+      "id": "corridor_18",
+      "type": "SPINE",
+      "direction": "vertical",
+      "x": 30.575064935064937,
+      "y": 0,
+      "width": 1.2,
+      "height": 60,
+      "isSpine": true
+    },
+    {
+      "id": "corridor_19",
+      "type": "SPINE",
+      "direction": "vertical",
+      "x": 40.96675324675325,
+      "y": 0,
+      "width": 1.2,
+      "height": 60,
+      "isSpine": true
+    },
+    {
+      "id": "corridor_20",
+      "type": "SPINE",
+      "direction": "vertical",
+      "x": 51.35844155844156,
+      "y": 0,
+      "width": 1.2,
+      "height": 60,
+      "isSpine": true
+    },
+    {
+      "id": "corridor_21",
+      "type": "SPINE",
+      "direction": "vertical",
+      "x": 61.750129870129875,
+      "y": 0,
+      "width": 1.2,
+      "height": 60,
+      "isSpine": true
+    },
+    {
+      "id": "corridor_22",
+      "type": "SPINE",
+      "direction": "vertical",
+      "x": 72.1418181818182,
+      "y": 0,
+      "width": 1.2,
+      "height": 25,
+      "isSpine": true
+    },
+    {
+      "id": "corridor_23",
+      "type": "SPINE",
+      "direction": "vertical",
+      "x": 72.1418181818182,
+      "y": 33,
+      "width": 1.2,
+      "height": 27,
+      "isSpine": true
+    },
+    {
+      "id": "corridor_24",
+      "type": "SPINE",
+      "direction": "vertical",
+      "x": 82.53350649350651,
+      "y": 0,
+      "width": 1.2,
+      "height": 60,
+      "isSpine": true
+    },
+    {
+      "id": "corridor_25",
+      "type": "SPINE",
+      "direction": "vertical",
+      "x": 92.92519480519482,
+      "y": 0,
+      "width": 1.2,
+      "height": 60,
+      "isSpine": true
+    },
+    {
+      "id": "corridor_26",
+      "type": "SPINE",
+      "direction": "vertical",
+      "x": 28,
+      "y": 0,
+      "width": 1.2,
+      "height": 60,
+      "isSpine": true
+    },
+    {
+      "id": "corridor_27",
+      "type": "SPINE",
+      "direction": "vertical",
+      "x": 68.8,
+      "y": 0,
+      "width": 1.2,
+      "height": 60,
+      "isSpine": true
+    },
+    {
+      "id": "corridor_28",
+      "type": "SPINE",
+      "direction": "vertical",
+      "x": 78,
+      "y": 0,
+      "width": 1.2,
+      "height": 60,
+      "isSpine": true
+    }
+  ],
+  "radiators": [],
+  "circulationPaths": [
+    {
+      "type": "ACCESS",
+      "direction": "horizontal",
+      "points": [
+        {
+          "x": 0,
+          "y": 3.1
+        },
+        {
+          "x": 100,
+          "y": 3.1
+        }
+      ]
+    },
+    {
+      "type": "ACCESS",
+      "direction": "horizontal",
+      "points": [
+        {
+          "x": 0,
+          "y": 9.766666666666667
+        },
+        {
+          "x": 100,
+          "y": 9.766666666666667
+        }
+      ]
+    },
+    {
+      "type": "ACCESS",
+      "direction": "horizontal",
+      "points": [
+        {
+          "x": 0,
+          "y": 16.433333333333334
+        },
+        {
+          "x": 100,
+          "y": 16.433333333333334
+        }
+      ]
+    },
+    {
+      "type": "ACCESS",
+      "direction": "horizontal",
+      "points": [
+        {
+          "x": 0,
+          "y": 23.1
+        },
+        {
+          "x": 100,
+          "y": 23.1
+        }
+      ]
+    },
+    {
+      "type": "ACCESS",
+      "direction": "horizontal",
+      "points": [
+        {
+          "x": 0,
+          "y": 29.76666666666667
+        },
+        {
+          "x": 20,
+          "y": 29.76666666666667
+        }
+      ]
+    },
+    {
+      "type": "ACCESS",
+      "direction": "horizontal",
+      "points": [
+        {
+          "x": 28,
+          "y": 29.76666666666667
+        },
+        {
+          "x": 70,
+          "y": 29.76666666666667
+        }
+      ]
+    },
+    {
+      "type": "ACCESS",
+      "direction": "horizontal",
+      "points": [
+        {
+          "x": 78,
+          "y": 29.76666666666667
+        },
+        {
+          "x": 100,
+          "y": 29.76666666666667
+        }
+      ]
+    },
+    {
+      "type": "ACCESS",
+      "direction": "horizontal",
+      "points": [
+        {
+          "x": 0,
+          "y": 36.43333333333334
+        },
+        {
+          "x": 100,
+          "y": 36.43333333333334
+        }
+      ]
+    },
+    {
+      "type": "ACCESS",
+      "direction": "horizontal",
+      "points": [
+        {
+          "x": 0,
+          "y": 43.1
+        },
+        {
+          "x": 100,
+          "y": 43.1
+        }
+      ]
+    },
+    {
+      "type": "ACCESS",
+      "direction": "horizontal",
+      "points": [
+        {
+          "x": 0,
+          "y": 49.76666666666667
+        },
+        {
+          "x": 100,
+          "y": 49.76666666666667
+        }
+      ]
+    },
+    {
+      "type": "ACCESS",
+      "direction": "horizontal",
+      "points": [
+        {
+          "x": 0,
+          "y": 56.43333333333334
+        },
+        {
+          "x": 100,
+          "y": 56.43333333333334
+        }
+      ]
+    },
+    {
+      "type": "PERIMETER",
+      "direction": "vertical",
+      "points": [
+        {
+          "x": 0.6,
+          "y": 0
+        },
+        {
+          "x": 0.6,
+          "y": 60
+        }
+      ]
+    },
+    {
+      "type": "PERIMETER",
+      "direction": "vertical",
+      "points": [
+        {
+          "x": 99.39999999999999,
+          "y": 0
+        },
+        {
+          "x": 99.39999999999999,
+          "y": 60
+        }
+      ]
+    },
+    {
+      "type": "PERIMETER",
+      "direction": "horizontal",
+      "points": [
+        {
+          "x": 0,
+          "y": 59.4
+        },
+        {
+          "x": 100,
+          "y": 59.4
+        }
+      ]
+    },
+    {
+      "type": "PERIMETER",
+      "direction": "horizontal",
+      "points": [
+        {
+          "x": 0,
+          "y": 0.6
+        },
+        {
+          "x": 100,
+          "y": 0.6
+        }
+      ]
+    },
+    {
+      "type": "SPINE",
+      "direction": "vertical",
+      "points": [
+        {
+          "x": 10.391688311688313,
+          "y": 0
+        },
+        {
+          "x": 10.391688311688313,
+          "y": 60
+        }
+      ]
+    },
+    {
+      "type": "SPINE",
+      "direction": "vertical",
+      "points": [
+        {
+          "x": 20.783376623376626,
+          "y": 0
+        },
+        {
+          "x": 20.783376623376626,
+          "y": 25
+        }
+      ]
+    },
+    {
+      "type": "SPINE",
+      "direction": "vertical",
+      "points": [
+        {
+          "x": 20.783376623376626,
+          "y": 33
+        },
+        {
+          "x": 20.783376623376626,
+          "y": 60
+        }
+      ]
+    },
+    {
+      "type": "SPINE",
+      "direction": "vertical",
+      "points": [
+        {
+          "x": 31.17506493506494,
+          "y": 0
+        },
+        {
+          "x": 31.17506493506494,
+          "y": 60
+        }
+      ]
+    },
+    {
+      "type": "SPINE",
+      "direction": "vertical",
+      "points": [
+        {
+          "x": 41.56675324675325,
+          "y": 0
+        },
+        {
+          "x": 41.56675324675325,
+          "y": 60
+        }
+      ]
+    },
+    {
+      "type": "SPINE",
+      "direction": "vertical",
+      "points": [
+        {
+          "x": 51.958441558441564,
+          "y": 0
+        },
+        {
+          "x": 51.958441558441564,
+          "y": 60
+        }
+      ]
+    },
+    {
+      "type": "SPINE",
+      "direction": "vertical",
+      "points": [
+        {
+          "x": 62.35012987012988,
+          "y": 0
+        },
+        {
+          "x": 62.35012987012988,
+          "y": 60
+        }
+      ]
+    },
+    {
+      "type": "SPINE",
+      "direction": "vertical",
+      "points": [
+        {
+          "x": 72.74181818181819,
+          "y": 0
+        },
+        {
+          "x": 72.74181818181819,
+          "y": 25
+        }
+      ]
+    },
+    {
+      "type": "SPINE",
+      "direction": "vertical",
+      "points": [
+        {
+          "x": 72.74181818181819,
+          "y": 33
+        },
+        {
+          "x": 72.74181818181819,
+          "y": 60
+        }
+      ]
+    },
+    {
+      "type": "SPINE",
+      "direction": "vertical",
+      "points": [
+        {
+          "x": 83.1335064935065,
+          "y": 0
+        },
+        {
+          "x": 83.1335064935065,
+          "y": 60
+        }
+      ]
+    },
+    {
+      "type": "SPINE",
+      "direction": "vertical",
+      "points": [
+        {
+          "x": 93.52519480519481,
+          "y": 0
+        },
+        {
+          "x": 93.52519480519481,
+          "y": 60
+        }
+      ]
+    },
+    {
+      "type": "SPINE",
+      "direction": "vertical",
+      "points": [
+        {
+          "x": 28.6,
+          "y": 0
+        },
+        {
+          "x": 28.6,
+          "y": 60
+        }
+      ]
+    },
+    {
+      "type": "SPINE",
+      "direction": "vertical",
+      "points": [
+        {
+          "x": 69.39999999999999,
+          "y": 0
+        },
+        {
+          "x": 69.39999999999999,
+          "y": 60
+        }
+      ]
+    },
+    {
+      "type": "SPINE",
+      "direction": "vertical",
+      "points": [
+        {
+          "x": 78.6,
+          "y": 0
+        },
+        {
+          "x": 78.6,
+          "y": 60
+        }
+      ]
+    }
+  ],
+  "layoutMode": "rowBased",
+  "radiatorPayloadPolicy": "exportDerivedFromUnits",
+  "completedPlan": {
+    "bounds": {
+      "minX": 0,
+      "minY": 0,
+      "maxX": 100,
+      "maxY": 60
+    },
+    "walls": [
+      {
+        "start": {
+          "x": 50,
+          "y": 10
+        },
+        "end": {
+          "x": 50,
+          "y": 50
+        }
+      }
+    ],
+    "forbiddenZones": [
+      {
+        "x": 20,
+        "y": 25,
+        "width": 8,
+        "height": 8
+      },
+      {
+        "x": 70,
+        "y": 25,
+        "width": 8,
+        "height": 8
+      }
+    ],
+    "entrances": [
+      {
+        "x": 5,
+        "y": 5,
+        "width": 1,
+        "height": 1
+      }
+    ]
+  },
+  "stats": {
+    "placedCount": 80,
+    "targetCount": 80,
+    "layoutMode": "rowBased"
+  },
+  "metrics": {
+    "totalBoxes": 80,
+    "totalArea": 256,
+    "usableArea": 5100,
+    "yieldRatio": 0.05,
+    "typeDistribution": {
+      "M": 80
+    },
+    "corridorCount": 29,
+    "radiatorCount": 0,
+    "complianceRate": null
+  },
+  "complianceReport": null,
+  "phases": [
+    {
+      "phase": 1,
+      "name": "plan_precheck",
+      "completed": true,
+      "rawPlanCompletion": false
+    },
+    {
+      "phase": "2a-prof",
+      "name": "professional_grid_engine",
+      "unitCount": 80,
+      "corridorCount": 29
+    },
+    {
+      "phase": "2a",
+      "name": "production_layout",
+      "unitCount": 80,
+      "corridorCount": 29,
+      "method": "CostoProLayoutEngine"
+    },
+    {
+      "phase": 2,
+      "name": "layout_generation",
+      "boxCount": 80,
+      "totalArea": 256,
+      "corridorCount": 29
+    },
+    {
+      "phase": 3,
+      "name": "radiator_generation",
+      "radiatorCount": 0,
+      "engineRadiatorCount": 80,
+      "payloadPolicy": "exportDerivedFromUnits"
+    },
+    {
+      "phase": 3,
+      "name": "metrics",
+      "metrics": {
+        "totalBoxes": 80,
+        "totalArea": 256,
+        "usableArea": 5100,
+        "yieldRatio": 0.05,
+        "typeDistribution": {
+          "M": 80
+        },
+        "corridorCount": 29,
+        "radiatorCount": 0,
+        "complianceRate": null
+      }
+    }
+  ],
+  "elapsedMs": 126
+}

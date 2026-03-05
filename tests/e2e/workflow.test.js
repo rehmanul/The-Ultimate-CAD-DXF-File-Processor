@@ -229,9 +229,8 @@ EOF`;
       .expect(200);
 
     expect(response.body.success).toBe(true);
-    expect(response.body.paths).toBeDefined();
-    // totalLength may be 0 for small test plans with few ilots
-    expect(typeof response.body.totalLength).toBe('number');
+    expect(response.body.corridors).toBeDefined();
+    expect(typeof response.body.count).toBe('number');
   });
 
   test('Step 7: PDF export should generate report', async () => {

@@ -1,5 +1,5 @@
 // FloorPlan Pro Clean - Complete Production System
-import { FloorPlanRenderer } from './threeRenderer.js?v=1772040650';
+import { FloorPlanRenderer } from './threeRenderer.js?v=1772570038';
 import { InteractiveEditor } from './interactiveEditor.js';
 import { AdvancedEffects } from './advancedEffects.js';
 import { KeyboardShortcuts } from './keyboardShortcuts.js';
@@ -31,6 +31,7 @@ let multiFloorResult = null;
 let activeStackFloorId = null;
 let stackVisualizationEnabled = false;
 let activePresetConfig = null;
+const WALL_HUGGING_LAYOUT_STORAGE_KEY = 'costo-wall-hugging-layout-mode';
 
 const deepClone = (data) => {
     if (data === null || data === undefined) return data;
@@ -46,6 +47,38 @@ const deepClone = (data) => {
         throw new Error(`Deep clone failed: ${err.message}`);
     }
 };
+
+function getSelectedLayoutMode() {
+    const toggle = document.getElementById('wallHuggingLayoutCheckbox');
+    return toggle && toggle.checked ? 'wallHugging' : 'rowBased';
+}
+
+function loadWallHuggingPreference() {
+    try {
+        return window.sessionStorage.getItem(WALL_HUGGING_LAYOUT_STORAGE_KEY) === '1';
+    } catch (error) {
+        return false;
+    }
+}
+
+function persistWallHuggingPreference(enabled) {
+    try {
+        window.sessionStorage.setItem(WALL_HUGGING_LAYOUT_STORAGE_KEY, enabled ? '1' : '0');
+    } catch (error) {
+        console.warn('Unable to persist wall-hugging preference:', error);
+    }
+}
+
+function initializeWallHuggingToggle() {
+    const toggle = document.getElementById('wallHuggingLayoutCheckbox');
+    if (!toggle) return;
+    toggle.checked = loadWallHuggingPreference();
+    window._costoLayoutMode = toggle.checked ? 'wallHugging' : 'rowBased';
+    toggle.addEventListener('change', () => {
+        persistWallHuggingPreference(toggle.checked);
+        window._costoLayoutMode = toggle.checked ? 'wallHugging' : 'rowBased';
+    });
+}
 
 document.addEventListener('DOMContentLoaded', function () {
     console.log('✨ FloorPlan Pro - Production System Initialized');
@@ -381,6 +414,7 @@ function initializeModules() {
 
     initializeLayoutChrome();
     initializeHeaderActions();
+    initializeWallHuggingToggle();
 
     // Attach event listeners to UI elements
     const fileInput = document.getElementById('fileInput');
@@ -817,15 +851,67 @@ function initializeModules() {
         const corridors = Array.isArray(corridorNetwork) ? corridorNetwork : [];
         const radiators = Array.isArray(window._costoRadiators) ? window._costoRadiators : [];
         const circulationPaths = Array.isArray(window._costoCirculationPaths) ? window._costoCirculationPaths : [];
+        const layoutMode = window._costoLayoutMode || getSelectedLayoutMode();
         const totalArea = boxes.reduce((sum, b) => sum + (Number(b.area) || (Number(b.width) || 0) * (Number(b.height) || 0)), 0);
         return {
-            solution: { boxes, corridors, radiators, circulationPaths },
+            solution: { boxes, corridors, radiators, circulationPaths, layoutMode },
             floorPlan: currentFloorPlan,
             metrics: {
                 totalBoxes: boxes.length,
                 totalArea
             }
         };
+    };
+
+    const buildReferenceExportOptions = (overrides = {}) => {
+        const layoutMode = window._costoLayoutMode || getSelectedLayoutMode();
+        const floorLevelInput = document.getElementById('floorLevelInput');
+        const floorLevel = floorLevelInput ? parseInt(floorLevelInput.value, 10) || 1 : 1;
+        const primaryLabel = floorLevel === 1 ? 'PLAN ETAGE 01' : `PLAN ETAGE ${String(floorLevel).padStart(2, '0')}`;
+        const secondaryLabel = 'PLAN ETAGE 02';
+        return {
+            // Canonical preset contract: backend resolves strict reference style defaults.
+            // Frontend only supplies preset selection + metadata/labels to avoid style drift.
+            presetMode: 'strictReference',
+            strictReference: true,
+            title: `${primaryLabel} 1-200`,
+            layoutMode,
+            scale: '1:200',
+            sheetNumber: '3',
+            drawingNumber: '[01]',
+            documentId: '[01]',
+            companyName: 'COSTO',
+            companyAddress: '5 chemin de la dime 95700 Roissy FRANCE',
+            floorLabels: [primaryLabel, secondaryLabel],
+            ...overrides
+        };
+    };
+    window.buildReferenceExportOptions = buildReferenceExportOptions;
+
+    window.applyReferenceLayoutOverlay = () => {
+        if (!renderer) return;
+        const options = buildReferenceExportOptions();
+        // Three.js now supports an explicit reference-mode contract; keep Babylon-compatible fallbacks.
+        if (typeof renderer.setReferenceRenderMode === 'function') {
+            renderer.setReferenceRenderMode(true, {
+                showArchitectureContext: true,
+                simplifyCirculation: true,
+                showLayoutOverlay: true
+            });
+        }
+        if (typeof renderer.setLayoutOverlayConfig === 'function') {
+            renderer.setLayoutOverlayConfig({
+                title: options.title,
+                secondaryTitle: `${options.floorLabels?.[1] || 'PLAN ETAGE 02'} ${options.scale || '1-200'}`,
+                sheetNumber: options.sheetNumber,
+                companyName: options.companyName,
+                companyAddress: options.companyAddress,
+                footerLabel: 'SURFACES DES BOX'
+            });
+        }
+        if (typeof renderer.setLayoutOverlayVisible === 'function') {
+            renderer.setLayoutOverlayVisible(true);
+        }
     };
 
     const downloadServerExport = async (apiBase, filename) => {
@@ -859,6 +945,7 @@ function initializeModules() {
                 showNotification('Exporting vector SVG...', 'info');
                 const API = window.__API_BASE__ || window.location.origin;
                 const payload = buildVectorExportPayload();
+                const layoutMode = window._costoLayoutMode || getSelectedLayoutMode();
                 const response = await fetch(`${API}/api/costo/export/svg`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -867,7 +954,8 @@ function initializeModules() {
                         options: {
                             pageSize: 'A1',
                             orientation: 'landscape',
-                            fitFactor: 0.99
+                            fitFactor: 0.99,
+                            layoutMode
                         }
                     })
                 });
@@ -910,6 +998,7 @@ function initializeModules() {
             }
             try {
                 showNotification('Exporting 4K image...', 'info');
+                applyReferenceLayoutOverlay();
                 await professionalExport.downloadHighResPNG(4096, 4096, `floorplan_4k_${Date.now()}.png`);
                 showNotification('4K image exported', 'success');
             } catch (error) {
@@ -925,18 +1014,14 @@ function initializeModules() {
 
         const API = window.__API_BASE__ || window.location.origin;
         const payload = buildVectorExportPayload();
+        const options = buildReferenceExportOptions({ title });
         const response = await fetch(`${API}/api/costo/export/reference-pdf`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 ...payload,
-                options: {
-                    title,
-                    pageSize: 'A1',
-                    orientation: 'landscape',
-                    fitFactor: 0.99,
-                    legendMode: 'reference'
-                }
+                presetMode: options.presetMode,
+                options
             })
         });
         const result = await response.json();
@@ -2451,6 +2536,7 @@ async function generateAllCosto() {
         const floorLevel = floorLevelInput ? parseInt(floorLevelInput.value) || 1 : 1;
         const normalizedDistribution = parseDistribution();
         const costoDistribution = toCostoDistribution(normalizedDistribution);
+        const layoutMode = getSelectedLayoutMode();
 
         const response = await fetch(`${API}/api/costo/generate`, {
             method: 'POST',
@@ -2480,6 +2566,8 @@ async function generateAllCosto() {
                     corridorInset: 0.02,
                     minGapLength: 0.45,
                     densityFactor: 1.15,
+                    layoutMode,
+                    wallClearanceMm: 500,
                     totalIlots: targetIlots,
                     distribution: costoDistribution
                 }
@@ -2504,6 +2592,7 @@ async function generateAllCosto() {
         corridorNetwork = data.corridors || [];
         window._costoRadiators = data.radiators || [];
         window._costoCirculationPaths = data.circulationPaths || [];
+        window._costoLayoutMode = data.layoutMode || layoutMode;
 
         // Add labels to ilots
         if (textLabels) {
@@ -2523,6 +2612,31 @@ async function generateAllCosto() {
             if (typeof window.__syncOrientationButtons === 'function') {
                 window.__syncOrientationButtons();
             }
+
+            // Apply reference layout configuration BEFORE rendering to avoid multiple re-renders
+            const options = buildReferenceExportOptions();
+            if (typeof renderer.setReferenceRenderMode === 'function') {
+                renderer.setReferenceRenderMode(true, {
+                    showArchitectureContext: true,
+                    simplifyCirculation: true,
+                    showLayoutOverlay: true
+                }, false); // Pass false to skip immediate re-render
+            }
+            if (typeof renderer.setLayoutOverlayConfig === 'function') {
+                renderer.setLayoutOverlayConfig({
+                    title: options.title,
+                    secondaryTitle: `${options.floorLabels?.[1] || 'PLAN ETAGE 02'} ${options.scale || '1-200'}`,
+                    sheetNumber: options.sheetNumber,
+                    companyName: options.companyName,
+                    companyAddress: options.companyAddress,
+                    footerLabel: 'SURFACES DES BOX'
+                }, false); // Pass false to skip immediate re-render
+            }
+            if (typeof renderer.setLayoutOverlayVisible === 'function') {
+                renderer.setLayoutOverlayVisible(true, false); // Pass false to skip immediate re-render
+            }
+
+            // Now render once with all configurations applied
             renderer.renderCostoLayout(currentFloorPlan, {
                 units: generatedIlots,
                 corridors: corridorNetwork || [],
@@ -2533,6 +2647,7 @@ async function generateAllCosto() {
         } else if (renderer) {
             renderCurrentState();
             fitCurrentView();
+            applyReferenceLayoutOverlay();
         }
 
         // Update statistics (with safety checks)
@@ -2719,6 +2834,7 @@ async function generateIlots() {
             }))
             : null;
 
+        const ilotOptions = buildIlotOptions(targetIlots, distribution);
         const response = await fetch(`${API}/api/ilots`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -2726,7 +2842,7 @@ async function generateIlots() {
                 floorPlan: floorPlan,
                 distribution: distribution,
                 unitMix: unitMixPayload,
-                options: buildIlotOptions(targetIlots, distribution)
+                options: ilotOptions
             })
         });
 
@@ -2737,6 +2853,7 @@ async function generateIlots() {
 
         const data = await response.json();
         generatedIlots = data.ilots || [];
+        window._costoLayoutMode = ilotOptions.layoutMode || getSelectedLayoutMode();
 
         console.log(`Generated ${generatedIlots.length} ilots with total area: ${data.totalArea?.toFixed(2) || 0} m²`);
         console.log('First 3 ilots:', generatedIlots.slice(0, 3));
@@ -2970,15 +3087,13 @@ async function exportToPDF() {
     try {
         const API = window.__API_BASE__ || window.location.origin;
         const totalArea = generatedIlots.reduce((sum, b) => sum + (Number(b.area) || (Number(b.width) || 0) * (Number(b.height) || 0)), 0);
-        const floorLevelInput = document.getElementById('floorLevelInput');
-        const floorLevel = floorLevelInput ? parseInt(floorLevelInput.value, 10) || 1 : 1;
-        const floorLabel = floorLevel === 1 ? 'PLAN ETAGE 01' : `PLAN ETAGE ${String(floorLevel).padStart(2, '0')}`;
-
+        const options = buildReferenceExportOptions();
         const solutionPayload = {
             boxes: Array.isArray(generatedIlots) ? generatedIlots : [],
             corridors: Array.isArray(corridorNetwork) ? corridorNetwork : [],
             radiators: Array.isArray(window._costoRadiators) ? window._costoRadiators : [],
-            circulationPaths: Array.isArray(window._costoCirculationPaths) ? window._costoCirculationPaths : []
+            circulationPaths: Array.isArray(window._costoCirculationPaths) ? window._costoCirculationPaths : [],
+            layoutMode: options.layoutMode
         };
 
         const response = await fetch(`${API}/api/costo/export/reference-pdf`, {
@@ -2991,13 +3106,8 @@ async function exportToPDF() {
                     totalArea,
                     totalBoxes: generatedIlots.length
                 },
-                options: {
-                    title: `${floorLabel} 1-200`,
-                    pageSize: 'A1',
-                    orientation: 'landscape',
-                    fitFactor: 0.99,
-                    legendMode: 'reference'
-                }
+                presetMode: options.presetMode,
+                options
             })
         });
 
@@ -3038,7 +3148,8 @@ async function exportToImage() {
     }
     showNotification('Generating PNG image...', 'info');
     try {
-        // Capture the Babylon canvas directly at high resolution
+        applyReferenceLayoutOverlay();
+        // Capture the Babylon canvas directly at high resolution (sheet + plan)
         const dataURL = await renderer.exportImage(4096, 4096, {
             download: false,
             useActiveCamera: true
@@ -3178,6 +3289,7 @@ function normalizePresetDistribution(distribution) {
 function buildIlotOptions(targetIlots, distribution) {
     const corridorWidth = getActiveCorridorWidth();
     const presetOptions = activePresetConfig?.options || {};
+    const layoutMode = getSelectedLayoutMode();
 
     // COSTO layout: organized rows with 1.2m corridors – wire checkbox
     const costoCheckbox = document.getElementById('costoLayoutCheckbox');
@@ -3206,6 +3318,8 @@ function buildIlotOptions(targetIlots, distribution) {
         oneWayFlow: false,
         blockThroughUnits: false,
         densityFactor: 1.1,
+        layoutMode,
+        wallClearanceMm: 500,
         wallClearance: 0.08,
         boxSpacing: 0.02,
         rowGapClearance: 0.04,
@@ -4260,46 +4374,17 @@ function initializeLayerToggles() {
     });
 }
 
-const AUTOSAVE_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
-const AUTOSAVE_KEY = 'fp-autosave-v1';
+// AUTOSAVE DISABLED - Caching was preventing corridor fix from showing
+// const AUTOSAVE_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
+// const AUTOSAVE_KEY = 'fp-autosave-v1';
 
 function initializeAutosave() {
-    setInterval(() => {
-        if (!currentFloorPlan || !generatedIlots?.length) return;
-        try {
-            const payload = {
-                floorPlan: currentFloorPlan,
-                ilots: generatedIlots,
-                corridors: corridorNetwork,
-                unitMix: activeUnitMix,
-                timestamp: Date.now()
-            };
-            localStorage.setItem(AUTOSAVE_KEY, JSON.stringify(payload));
-        } catch (e) {
-            console.warn('[Autosave] Failed:', e.message);
-        }
-    }, AUTOSAVE_INTERVAL_MS);
-
-    // Restore on load if recent (< 24h)
+    // Autosave disabled to prevent caching issues
+    // Clear any existing autosave data
     try {
-        const raw = localStorage.getItem(AUTOSAVE_KEY);
-        if (!raw) return;
-        const data = JSON.parse(raw);
-        if (!data?.timestamp || Date.now() - data.timestamp > 24 * 60 * 60 * 1000) return;
-        if (data.floorPlan && data.ilots?.length) {
-            currentFloorPlan = data.floorPlan;
-            generatedIlots = data.ilots;
-            corridorNetwork = data.corridors || [];
-            activeUnitMix = data.unitMix || null;
-            if (renderer) {
-                renderer.loadFloorPlan(currentFloorPlan);
-                renderer.renderIlots(generatedIlots);
-                if (corridorNetwork.length) renderer.renderCorridors(corridorNetwork);
-            }
-            showNotification('Restored from autosave', 'info');
-        }
+        localStorage.removeItem('fp-autosave-v1');
     } catch (e) {
-        console.warn('[Autosave] Restore failed:', e.message);
+        // Ignore
     }
 }
 
@@ -5174,4 +5259,3 @@ if (typeof window !== 'undefined' && (
         fitView: () => fitCurrentView()
     };
 }
-

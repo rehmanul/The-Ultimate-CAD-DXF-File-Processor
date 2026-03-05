@@ -326,3 +326,32 @@ Built with:
 **Status**: Production Ready ✅
 **Version**: 1.0.0
 **Last Updated**: 2025-01-27
+
+## Layout Modes And Validation
+
+### Layout mode payload
+- API requests now accept `options.layoutMode` with values:
+  - `rowBased` (default)
+  - `wallHugging`
+- Optional perimeter clearance control: `options.wallClearanceMm` (default `500`).
+
+### Frontend toggle
+- Export panel includes **Wall-hugging layout** checkbox.
+- Toggle state is persisted in `sessionStorage` key `costo-wall-hugging-layout-mode`.
+- The selected mode is sent to:
+  - `/api/costo/generate`
+  - `/api/ilots` (COSTO style)
+  - `/api/costo/export/reference-pdf`
+  - `/api/costo/export/svg`
+
+### Quality validation flow
+- Unit test target:
+```bash
+npm test -- tests/unit/lib/costoEngine.test.js
+```
+- Reference quality smoke check:
+```bash
+npm run quality:smoke
+```
+- CI workflow:
+  - `.github/workflows/ci.yml` runs unit tests then quality smoke checks.

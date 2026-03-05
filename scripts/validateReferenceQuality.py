@@ -63,6 +63,236 @@ def classify_colors(samples, pixel_count):
     return c, ratios
 
 
+def _luma_at(samples, idx):
+    # Integer approximation of Rec.601 luma; fast and deterministic.
+    return (77 * int(samples[idx]) + 150 * int(samples[idx + 1]) + 29 * int(samples[idx + 2])) >> 8
+
+
+def estimate_edge_density(samples, width, height, step=2, edge_threshold=28):
+    if width <= step or height <= step:
+        return 0.0
+
+    stride = width * 3
+    edges = 0
+    comparisons = 0
+
+    for y in range(0, height - step, step):
+        row_off = y * stride
+        row_off_down = (y + step) * stride
+        for x in range(0, width - step, step):
+            idx = row_off + (x * 3)
+            idx_right = row_off + ((x + step) * 3)
+            idx_down = row_off_down + (x * 3)
+
+            here = _luma_at(samples, idx)
+            right = _luma_at(samples, idx_right)
+            down = _luma_at(samples, idx_down)
+
+            if abs(here - right) > edge_threshold or abs(here - down) > edge_threshold:
+                edges += 1
+            comparisons += 1
+
+    return (edges / float(comparisons)) if comparisons > 0 else 0.0
+
+
+def normalized_region_to_px(width, height, region):
+    x0 = max(0, min(width - 1, int(region["x0"] * width)))
+    y0 = max(0, min(height - 1, int(region["y0"] * height)))
+    x1 = max(x0 + 1, min(width, int(region["x1"] * width)))
+    y1 = max(y0 + 1, min(height, int(region["y1"] * height)))
+    return x0, y0, x1, y1
+
+
+def extract_region(samples, width, height, region):
+    x0, y0, x1, y1 = normalized_region_to_px(width, height, region)
+    region_w = x1 - x0
+    region_h = y1 - y0
+    stride = width * 3
+    out = bytearray(region_w * region_h * 3)
+    out_idx = 0
+
+    for y in range(y0, y1):
+        row_start = y * stride + x0 * 3
+        row_end = y * stride + x1 * 3
+        row = samples[row_start:row_end]
+        row_len = len(row)
+        out[out_idx:out_idx + row_len] = row
+        out_idx += row_len
+
+    return bytes(out), {
+        "x0": x0,
+        "y0": y0,
+        "x1": x1,
+        "y1": y1,
+        "width": region_w,
+        "height": region_h,
+        "pixel_count": region_w * region_h,
+        "normalized": region,
+    }
+
+
+def analyze_region(gen_samples, ref_samples, width, height, region):
+    gen_region, bounds = extract_region(gen_samples, width, height, region)
+    ref_region, _ = extract_region(ref_samples, width, height, region)
+    px = bounds["pixel_count"]
+
+    gen_counts, gen_ratios = classify_colors(gen_region, px)
+    ref_counts, ref_ratios = classify_colors(ref_region, px)
+
+    gen_edge_density = estimate_edge_density(gen_region, bounds["width"], bounds["height"])
+    ref_edge_density = estimate_edge_density(ref_region, bounds["width"], bounds["height"])
+
+    return {
+        "bounds": bounds,
+        "generated": {
+            "color_counts": gen_counts,
+            "color_ratios": gen_ratios,
+            "edge_density": gen_edge_density,
+        },
+        "reference": {
+            "color_counts": ref_counts,
+            "color_ratios": ref_ratios,
+            "edge_density": ref_edge_density,
+        },
+    }
+
+
+def build_structural_analysis(gen_samples, ref_samples, width, height):
+    # Reference-sheet regions are normalized so checks remain deterministic across output sizes.
+    # Thresholds are reference-relative + absolute floors to avoid brittle exact-pixel coupling.
+    regions = {
+        "title_block": {"x0": 0.72, "y0": 0.77, "x1": 0.995, "y1": 0.995},
+        "legend": {"x0": 0.70, "y0": 0.20, "x1": 0.995, "y1": 0.77},
+        "drawing_context": {"x0": 0.02, "y0": 0.04, "x1": 0.70, "y1": 0.97},
+    }
+    border_regions = {
+        "top": {"x0": 0.00, "y0": 0.00, "x1": 1.00, "y1": 0.022},
+        "bottom": {"x0": 0.00, "y0": 0.978, "x1": 1.00, "y1": 1.00},
+        "left": {"x0": 0.00, "y0": 0.00, "x1": 0.022, "y1": 1.00},
+        "right": {"x0": 0.978, "y0": 0.00, "x1": 1.00, "y1": 1.00},
+    }
+
+    region_metrics = {name: analyze_region(gen_samples, ref_samples, width, height, spec) for name, spec in regions.items()}
+    border_metrics = {name: analyze_region(gen_samples, ref_samples, width, height, spec) for name, spec in border_regions.items()}
+
+    # Border presence: require 3/4 sides with non-white content and a minimal green-line signal.
+    side_thresholds = {}
+    side_results = {}
+    side_detected = 0
+    gen_green_sum = 0.0
+    ref_green_sum = 0.0
+    for side, metric in border_metrics.items():
+        gen_ratios = metric["generated"]["color_ratios"]
+        ref_ratios = metric["reference"]["color_ratios"]
+        min_non_white = max(0.0015, ref_ratios["non_white_ratio"] * 0.40)
+        pass_side = gen_ratios["non_white_ratio"] >= min_non_white
+        if pass_side:
+            side_detected += 1
+        gen_green_sum += gen_ratios["green_ratio"]
+        ref_green_sum += ref_ratios["green_ratio"]
+        side_thresholds[side] = {"non_white_min": min_non_white}
+        side_results[side] = {
+            "pass": pass_side,
+            "generated_non_white_ratio": gen_ratios["non_white_ratio"],
+            "reference_non_white_ratio": ref_ratios["non_white_ratio"],
+            "generated_green_ratio": gen_ratios["green_ratio"],
+            "reference_green_ratio": ref_ratios["green_ratio"],
+        }
+
+    avg_gen_border_green = gen_green_sum / 4.0
+    avg_ref_border_green = ref_green_sum / 4.0
+    border_green_min = max(0.00005, avg_ref_border_green * 0.35)
+    border_presence_pass = side_detected >= 3 and avg_gen_border_green >= border_green_min
+
+    title_metric = region_metrics["title_block"]
+    title_gen = title_metric["generated"]["color_ratios"]
+    title_ref = title_metric["reference"]["color_ratios"]
+    title_non_white_min = max(0.018, title_ref["non_white_ratio"] * 0.45)
+    # Keep low absolute floors so reference-vs-reference always passes even if linework is light.
+    title_black_min = max(0.0004, title_ref["black_ratio"] * 0.35)
+    title_block_pass = (
+        title_gen["non_white_ratio"] >= title_non_white_min
+        and title_gen["black_ratio"] >= title_black_min
+    )
+
+    legend_metric = region_metrics["legend"]
+    legend_gen = legend_metric["generated"]["color_ratios"]
+    legend_ref = legend_metric["reference"]["color_ratios"]
+    legend_non_white_min = max(0.025, legend_ref["non_white_ratio"] * 0.45)
+    legend_black_min = max(0.00035, legend_ref["black_ratio"] * 0.35)
+    legend_occupancy_pass = (
+        legend_gen["non_white_ratio"] >= legend_non_white_min
+        and legend_gen["black_ratio"] >= legend_black_min
+    )
+
+    context_metric = region_metrics["drawing_context"]
+    context_gen = context_metric["generated"]["color_ratios"]
+    context_ref = context_metric["reference"]["color_ratios"]
+    context_gen_edge = context_metric["generated"]["edge_density"]
+    context_ref_edge = context_metric["reference"]["edge_density"]
+
+    context_non_white_min = max(0.050, context_ref["non_white_ratio"] * 0.55)
+    context_black_min = max(0.0006, context_ref["black_ratio"] * 0.35)
+    context_edge_min = max(0.010, context_ref_edge * 0.45)
+    wall_context_pass = (
+        context_gen["non_white_ratio"] >= context_non_white_min
+        and context_gen["black_ratio"] >= context_black_min
+        and context_gen_edge >= context_edge_min
+    )
+
+    checks = {
+        "border_presence": {
+            "pass": border_presence_pass,
+            "required_sides": 3,
+            "sides_detected": side_detected,
+            "avg_border_green_ratio": avg_gen_border_green,
+            "avg_border_green_min": border_green_min,
+            "side_thresholds": side_thresholds,
+            "side_results": side_results,
+        },
+        "title_block_occupancy": {
+            "pass": title_block_pass,
+            "generated_non_white_ratio": title_gen["non_white_ratio"],
+            "generated_black_ratio": title_gen["black_ratio"],
+            "non_white_min": title_non_white_min,
+            "black_min": title_black_min,
+        },
+        "legend_region_occupancy": {
+            "pass": legend_occupancy_pass,
+            "generated_non_white_ratio": legend_gen["non_white_ratio"],
+            "generated_black_ratio": legend_gen["black_ratio"],
+            "non_white_min": legend_non_white_min,
+            "black_min": legend_black_min,
+        },
+        "wall_context_presence": {
+            "pass": wall_context_pass,
+            "generated_non_white_ratio": context_gen["non_white_ratio"],
+            "generated_black_ratio": context_gen["black_ratio"],
+            "generated_edge_density": context_gen_edge,
+            "non_white_min": context_non_white_min,
+            "black_min": context_black_min,
+            "edge_density_min": context_edge_min,
+        },
+    }
+
+    failed = [name for name, detail in checks.items() if not detail["pass"]]
+    aggregate = {
+        "passed": len(failed) == 0,
+        "total": len(checks),
+        "passed_count": len(checks) - len(failed),
+        "failed_checks": failed,
+    }
+
+    return {
+        "regions": {
+            **region_metrics,
+            "border_sides": border_metrics,
+        },
+        "checks": checks,
+        "aggregate": aggregate,
+    }
+
+
 def compare_pixels(gen_samples, ref_samples, width, height):
     total = width * height
     abs_sum = 0
@@ -134,6 +364,7 @@ def main():
         "black_ratio_delta": abs(gen_ratios["black_ratio"] - ref_ratios["black_ratio"]),
         "non_white_ratio_delta": abs(gen_ratios["non_white_ratio"] - ref_ratios["non_white_ratio"]),
     }
+    structural = build_structural_analysis(gen_crop, ref_crop, cmp_w, cmp_h)
 
     checks = {
         "page_count_match": gen["page_count"] == ref["page_count"],
@@ -147,6 +378,11 @@ def main():
         "has_red_radiators": gen_ratios["red_ratio"] >= red_presence_threshold,
         "has_green_border": gen_ratios["green_ratio"] >= 0.00002,
         "has_nonwhite_content": gen_ratios["non_white_ratio"] >= 0.03,
+        "structural_border_presence": structural["checks"]["border_presence"]["pass"],
+        "structural_title_block_occupancy": structural["checks"]["title_block_occupancy"]["pass"],
+        "structural_legend_region_occupancy": structural["checks"]["legend_region_occupancy"]["pass"],
+        "structural_wall_context_presence": structural["checks"]["wall_context_presence"]["pass"],
+        "structural_checks_pass": structural["aggregate"]["passed"],
     }
 
     passed = all(checks.values())
@@ -178,7 +414,17 @@ def main():
             **pixel_metrics,
             **ratio_deltas,
         },
+        "structural_checks": structural["checks"],
+        "structural_regions": structural["regions"],
+        "structural_aggregate": structural["aggregate"],
         "checks": checks,
+        "aggregate_decision": {
+            "pixel_and_color_checks_passed": all(
+                checks[k] for k in checks.keys() if not k.startswith("structural_")
+            ),
+            "structural_checks_passed": structural["aggregate"]["passed"],
+            "overall_passed": passed,
+        },
         "passed": passed,
     }
 

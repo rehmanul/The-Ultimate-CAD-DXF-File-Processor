@@ -7,9 +7,10 @@ const fs = require('fs');
 const path = require('path');
 const request = require('supertest');
 const app = require('../server');
+const CostoExports = require('../lib/costoExports');
 
 const INPUT_DXF_CANDIDATES = [
-    path.join(__dirname, '..', 'Samples', 'Ref. Output Samples', 'Final.dxf'),
+    path.join(__dirname, '..', 'Reference Output Examples', 'Final.dxf'),
     path.join(__dirname, '..', 'Samples', 'Final.dxf')
 ];
 const OUTPUT_DIR = path.join(__dirname, '..', 'Samples', 'Final_Output');
@@ -130,15 +131,22 @@ async function run() {
             options: { 
                 totalIlots: targetIlots, 
                 corridorWidth: 1.2, 
-                wallClearance: 0.2,
-                boxSpacing: 0.2,
+                wallClearance: 0.08,
+                wallClearanceMm: 500,
+                boxSpacing: 0.02,
+                rowGapClearance: 0.04,
+                corridorGapClearance: 0.02,
+                corridorInset: 0.02,
+                minGapLength: 0.45,
                 seed: 42, 
                 style: 'COSTO',
+                layoutMode: 'wallHugging',
                 floor: 1,
                 floorStart: 1,
                 startNumber: 1,
                 strictMode: true,
-                fillPlan: false
+                fillPlan: true,
+                maximizeFill: true
             }
         });
 
@@ -166,34 +174,13 @@ async function run() {
                 yieldRatio: 0.85,
                 totalBoxes: ilots.length
             },
+            presetMode: 'strictReference',
             options: {
-                pageSize: 'A1',
+                ...CostoExports.getReferenceExportPreset('strictReference'),
                 title: 'PLAN ETAGE 01 1-200',
-                scale: '1:200',
-                showLegend: true,
-                showTitleBlock: true,
-                drawingNumber: '[01]',
-                sheetNumber: '3',
                 documentId: '[01]',
-                companyName: 'COSTO',
-                companyAddress: '5 chemin de la dime 95700 Roissy FRANCE',
-                includeCompass: true,
-                legendMode: 'reference',
-                showScaleInfo: true,
-                showDimensions: false,
-                showUnitLabels: false,
-                showAreas: false,
-                showBoxNumbers: false,
-                showRadiatorLabels: false,
-                radiatorSpacing: 9,
-                radiatorStrokeWidth: 0.8,
-                showCirculationArrows: false,
-                useSourceWallColors: true,
-                wallLineWidth: 0.35,
-                renderGeneratedBoxes: false,
-                renderGeneratedRadiators: false,
-                renderGeneratedCirculation: false,
-                showRoomNumbers: false
+                layoutMode: 'wallHugging',
+                floorLabels: ['PLAN ETAGE 01', 'PLAN ETAGE 02']
             }
         });
 

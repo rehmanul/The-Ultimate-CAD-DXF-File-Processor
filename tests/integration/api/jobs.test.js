@@ -258,14 +258,14 @@ EOF`;
       expect(response.body).toHaveProperty('count');
     });
 
-    test('should return error when floor plan or ilots are missing', async () => {
+    test('should return error when floor plan is missing', async () => {
       const response = await request(app)
         .post('/api/optimize/layout')
         .send({})
         .expect(400);
 
       expect(response.body).toHaveProperty('error');
-      expect(response.body.error).toContain('Floor plan and ilots data required');
+      expect(response.body.error).toContain('Floor plan data required');
     });
   });
 
@@ -280,8 +280,7 @@ EOF`;
         .expect(200);
 
       expect(response.body).toHaveProperty('success', true);
-      expect(response.body).toHaveProperty('paths');
-      expect(response.body).toHaveProperty('totalLength');
+      expect(response.body).toHaveProperty('corridors');
       expect(response.body).toHaveProperty('count');
     });
 

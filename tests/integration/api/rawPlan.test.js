@@ -46,7 +46,7 @@ describe('API /api/raw-plan', () => {
     });
 
     describe('POST /api/raw-plan/complete', () => {
-        test('should complete floor plan with gaps', async () => {
+        test('should return 410 (endpoint disabled in production)', async () => {
             const floorPlanWithGap = {
                 walls: [
                     { start: { x: 0, y: 0 }, end: { x: 10, y: 0 } },
@@ -60,33 +60,31 @@ describe('API /api/raw-plan', () => {
             const res = await request(app)
                 .post('/api/raw-plan/complete')
                 .send({ floorPlan: floorPlanWithGap })
-                .expect(200);
+                .expect(410);
 
-            expect(res.body.success).toBe(true);
-            expect(res.body.completedPlan).toBeDefined();
-            expect(res.body.completedPlan.walls.length).toBeGreaterThan(floorPlanWithGap.walls.length);
-            expect(res.body.syntheticSegments).toBeDefined();
-            expect(Array.isArray(res.body.syntheticSegments)).toBe(true);
+            expect(res.body.success).toBe(false);
+            expect(res.body.error).toContain('Raw plan completion is disabled');
+            expect(res.body.error).toContain('Source geometry is kept authentic');
         });
 
-        test('should return completed plan when no gaps', async () => {
+        test('should return 410 for any request (endpoint disabled)', async () => {
             const res = await request(app)
                 .post('/api/raw-plan/complete')
                 .send({ floorPlan: baseFloorPlan })
-                .expect(200);
+                .expect(410);
 
-            expect(res.body.success).toBe(true);
-            expect(res.body.completedPlan.walls.length).toBe(baseFloorPlan.walls.length);
-            expect(res.body.syntheticSegments.length).toBe(0);
+            expect(res.body.success).toBe(false);
+            expect(res.body.error).toBeDefined();
         });
 
-        test('should return 400 when floor plan missing', async () => {
+        test('should return 410 even when floor plan missing', async () => {
             const res = await request(app)
                 .post('/api/raw-plan/complete')
                 .send({})
-                .expect(400);
+                .expect(410);
 
-            expect(res.body.error).toBeDefined();
+            expect(res.body.success).toBe(false);
+            expect(res.body.error).toContain('Raw plan completion is disabled');
         });
     });
 });

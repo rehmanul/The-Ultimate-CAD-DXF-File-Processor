@@ -1,6 +1,6 @@
 {
   "name": "floorplan-pro-clean",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Clean FloorPlan Pro - No Conflicts, No Freezing",
   "main": "server.js",
   "scripts": {
@@ -14,6 +14,9 @@
     "process-test2": "node scripts/processTest2Dwg.js",
     "test-reference": "node scripts/productionQualityGate.js",
     "quality-gate": "node scripts/productionQualityGate.js",
+    "quality:smoke": "node scripts/qualitySmokeCheck.js",
+    "smoke:test2-corridors": "node scripts/smokeTest2Corridors.js",
+    "smoke:corridors": "node scripts/processTest2Dxf.js && node scripts/smokeCorridorCheck.js",
     "smoke:test2-ui": "node scripts/playwrightTest2Smoke.js",
     "acceptance-gate": "node scripts/productionAcceptanceGate.js"
   },

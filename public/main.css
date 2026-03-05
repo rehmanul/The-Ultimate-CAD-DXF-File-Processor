@@ -1579,6 +1579,18 @@ body.is-drawer-resizing * {
     font-weight: 500;
 }
 
+.circulation-legend {
+    margin-top: var(--space-sm, 8px);
+    padding-top: var(--space-sm, 8px);
+    border-top: 1px solid rgba(31, 75, 110, 0.12);
+}
+
+.legend-label.legend-help {
+    font-size: 0.85em;
+    color: var(--gray-500, #6b7280);
+    font-weight: 400;
+}
+
 /* ===== FLOATING CONTROLS ===== */
 .floating-controls {
     position: absolute;

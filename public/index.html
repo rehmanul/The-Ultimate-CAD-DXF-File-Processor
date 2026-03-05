@@ -34,6 +34,14 @@
 
     <!-- Main Stylesheet -->
     <link rel="stylesheet" href="main.css">
+    
+    <!-- Force cache clear for corridor fix -->
+    <script>
+        // Clear localStorage cache that was preventing corridor fix from showing
+        try {
+            localStorage.removeItem('fp-autosave-v1');
+        } catch(e) {}
+    </script>
 </head>
 
 <body>
@@ -240,6 +248,10 @@
                                 <input type="checkbox" id="layerArrows" checked>
                                 <span>Circulation arrows</span>
                             </label>
+                            <label class="checkbox-label" title="Match PDF export: thin wall lines">
+                                <input type="checkbox" id="thinWallsCheckbox">
+                                <span>PDF-style thin walls</span>
+                            </label>
                         </div>
                     </div>
                 </div>
@@ -396,6 +408,15 @@
                             <label>Floor Height (m)</label>
                             <input type="number" id="floorHeightInput" step="0.1" value="3.2">
                         </div>
+                        <div class="input-row">
+                            <label>Building code preset</label>
+                            <select id="buildingCodePresetSelect" class="form-control" style="width:100%; padding:6px 8px;">
+                                <option value="none">None (custom)</option>
+                                <option value="ibc_common">IBC-style (common path)</option>
+                                <option value="eurocode_style">Eurocode-style</option>
+                                <option value="storage_warehouse">Storage / warehouse</option>
+                            </select>
+                        </div>
 
                         <button class="btn btn-block btn-sm" id="computeMultiFloorBtn">
                             <i class="fas fa-layer-group"></i> Compute Stack
@@ -421,6 +442,9 @@
                     <div id="multiFloorProfile" class="list-content" style="margin-top: 8px;"></div>
                     <div id="multiFloorReport" class="list-content" style="margin-top: 8px;"></div>
                     <div id="multiFloorCompliance" class="list-content" style="margin-top: 8px;"></div>
+                    <button class="btn btn-block btn-sm btn-secondary" id="downloadComplianceSummaryBtn" style="margin-top: 8px;" title="Download egress & accessibility summary as text">
+                        <i class="fas fa-file-download"></i> Download compliance summary
+                    </button>
                 </div>
             </div>
 
@@ -431,6 +455,12 @@
                     <i class="fas fa-chevron-down collapse-icon"></i>
                 </h3>
                 <div class="section-content">
+                    <div class="checkbox-group" style="margin-bottom: 8px;">
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="wallHuggingLayoutCheckbox">
+                            Wall-hugging layout
+                        </label>
+                    </div>
                     <div style="display: flex; flex-direction: column; gap: 6px;">
                         <button class="btn btn-sm btn-block" id="exportPdfBtn">
                             <i class="fas fa-file-pdf"></i> PDF
@@ -503,8 +533,8 @@
                         <span class="legend-label">XL — Extra Large</span>
                     </div>
                     <div class="legend-item">
-                        <div class="legend-line legend-dashed" style="border-top: 2px dashed #e06090;"></div>
-                        <span class="legend-label">Circulation</span>
+                        <div class="legend-line legend-dashed" style="border-top: 2px dashed #d21414;"></div>
+                        <span class="legend-label">Ligne circulation (red)</span>
                     </div>
                 </div>
 
@@ -525,6 +555,18 @@
                     <div class="legend-item">
                         <div class="legend-color" style="background-color: #fce4ec; border: 1px solid #e06090;"></div>
                         <span class="legend-label">Corridors (1.2m)</span>
+                    </div>
+                </div>
+                <!-- Circulation meaning: corridor band, arrows, points -->
+                <div class="legend-section circulation-legend" title="What you see on the plan">
+                    <div class="legend-item">
+                        <span class="legend-label legend-help">Corridor = pathway between two facing rows of boxes</span>
+                    </div>
+                    <div class="legend-item">
+                        <span class="legend-label legend-help">Arrows = flow direction along corridors</span>
+                    </div>
+                    <div class="legend-item">
+                        <span class="legend-label legend-help">Points = corridor connections / nodes</span>
                     </div>
                 </div>
             </div>
@@ -749,8 +791,8 @@
             }
         });
     </script>
-    <script type="module" src="app.js?v=1772040650"></script>
-    <script src="presetSelector.js"></script>
+    <script type="module" src="app.js?v=1772570000"></script>
+    <script src="presetSelector.js?v=1772570000"></script>
 </body>
 
 </html>

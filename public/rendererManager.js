@@ -13,6 +13,9 @@ export class RendererManager {
         this.floorPlan = null;
         this.ilots = [];
         this.corridors = [];
+        this.referenceRenderMode = null;
+        this.layoutOverlayVisible = null;
+        this.layoutOverlayConfig = null;
     }
 
     async initializeDefaultRenderer(urn) {
@@ -50,6 +53,17 @@ export class RendererManager {
             this.threeRenderer = new FloorPlanRenderer(this.container);
             this.rendererType = 'threejs';
             this.currentRenderer = this.threeRenderer;
+
+            // Re-apply any pending reference-mode overlay state after switching renderers.
+            if (this.referenceRenderMode && typeof this.threeRenderer.setReferenceRenderMode === 'function') {
+                this.threeRenderer.setReferenceRenderMode(this.referenceRenderMode);
+            }
+            if (this.layoutOverlayConfig && typeof this.threeRenderer.setLayoutOverlayConfig === 'function') {
+                this.threeRenderer.setLayoutOverlayConfig(this.layoutOverlayConfig);
+            }
+            if (typeof this.layoutOverlayVisible === 'boolean' && typeof this.threeRenderer.setLayoutOverlayVisible === 'function') {
+                this.threeRenderer.setLayoutOverlayVisible(this.layoutOverlayVisible);
+            }
 
             if (this.floorPlan) {
                 this.threeRenderer.renderFloorPlan(this.floorPlan, this.ilots, this.corridors);
@@ -131,6 +145,39 @@ export class RendererManager {
 
     isReady() {
         return this.currentRenderer !== null;
+    }
+
+    setReferenceRenderMode(enabledOrConfig = false, overrides = {}) {
+        if (enabledOrConfig && typeof enabledOrConfig === 'object') {
+            this.referenceRenderMode = { ...enabledOrConfig };
+        } else {
+            this.referenceRenderMode = {
+                ...(overrides || {}),
+                enabled: Boolean(enabledOrConfig)
+            };
+        }
+
+        if (this.rendererType === 'threejs' && this.threeRenderer && typeof this.threeRenderer.setReferenceRenderMode === 'function') {
+            return this.threeRenderer.setReferenceRenderMode(enabledOrConfig, overrides);
+        }
+        return null;
+    }
+
+    setLayoutOverlayVisible(visible) {
+        this.layoutOverlayVisible = Boolean(visible);
+        if (this.rendererType === 'threejs' && this.threeRenderer && typeof this.threeRenderer.setLayoutOverlayVisible === 'function') {
+            this.threeRenderer.setLayoutOverlayVisible(visible);
+        }
+    }
+
+    setLayoutOverlayConfig(config = {}) {
+        this.layoutOverlayConfig = {
+            ...(this.layoutOverlayConfig || {}),
+            ...(config || {})
+        };
+        if (this.rendererType === 'threejs' && this.threeRenderer && typeof this.threeRenderer.setLayoutOverlayConfig === 'function') {
+            this.threeRenderer.setLayoutOverlayConfig(config);
+        }
     }
 
     dispose() {

@@ -135,6 +135,14 @@ export class FloorPlanRenderer {
         this.crossFloorOptions = {};
         this.corridorArrowsVisible = true;
         this.showLayoutOverlay = false;
+        this.layoutOverlayConfig = {
+            title: 'PLAN ETAGE 01 1-200',
+            secondaryTitle: 'PLAN ETAGE 02 1-200',
+            sheetNumber: '3',
+            companyName: 'COSTO',
+            companyAddress: '5 chemin de la dime 95700\nRoissy FRANCE',
+            footerLabel: 'SURFACES DES BOX'
+        };
         this.arrowMeshes = [];
         this.arrowAnimationActive = false;
         this.arrowAnimationFrame = null;
@@ -1160,9 +1168,9 @@ export class FloorPlanRenderer {
             }
         }
 
-        const trafficPrimaryLine = 0x94befd;
-        const trafficSecondaryLine = 0xc9ddff;
-        const trafficArrowColor = 0x5ca968;
+        const trafficPrimaryLine = 0xd21414;   // Red "ligne circulation" (match reference + PDF)
+        const trafficSecondaryLine = 0xe85c5c; // Lighter red for secondary
+        const trafficArrowColor = 0xd21414;   // Red (match circulation line)
 
         // Compute plan span for scaling arrow sizes
         const fb = fitBounds || bounds || { minX: 0, minY: 0, maxX: 50, maxY: 50 };
@@ -1330,11 +1338,9 @@ export class FloorPlanRenderer {
                 const key = segKey(p1, p2);
                 const state = renderedTrafficSegments.get(key) || { line: false, arrows: false };
                 if (!state.line) {
-                    this._createDashedLineMesh(
+                    this._createLineMesh(
                         [{ x: p1.x, y: p1.y, z: 0.08 }, { x: p2.x, y: p2.y, z: 0.08 }],
                         lineColor,
-                        dashSize,
-                        gapSize,
                         this.corridorsGroup
                     );
                     state.line = true;
@@ -1630,10 +1636,10 @@ export class FloorPlanRenderer {
             if (![ilot.x, ilot.y, ilot.width, ilot.height].every(Number.isFinite)) return;
             const partitionKey = String(ilot.partitionType || '').toLowerCase().replace(/[^a-z]/g, '');
             const outlineColor = boxOutlineByPartition.get(partitionKey) || toleGriseColor;
-
-            const fillMesh = this._createFilledRect(ilot.x, ilot.y, ilot.width, ilot.height, 0xffffff, 1.0, 0.01, this.ilotsGroup);
+            const BOX_FILL_GREY = 0xe0e0e4; // Light grey (reference: filled boxes on entire plan)
+            const fillMesh = this._createFilledRect(ilot.x, ilot.y, ilot.width, ilot.height, BOX_FILL_GREY, 1.0, 0.01, this.ilotsGroup);
             if (fillMesh) {
-                fillMesh.userData = { ilot, index, type: 'ilot', _origColor: 0xffffff, _origOpacity: 1.0 };
+                fillMesh.userData = { ilot, index, type: 'ilot', _origColor: BOX_FILL_GREY, _origOpacity: 1.0 };
                 fillMesh.isPickable = true;
                 this.ilotMeshes.push(fillMesh);
             }
@@ -2009,8 +2015,10 @@ export class FloorPlanRenderer {
         tb.scaling = new BABYLON.Vector3(1.1, 0.7, 1);
         tb.parent = this.overlayGroup;
 
-        this._createLineMesh([{ x: legX, y: entryLegY - 1.4, z: 0.2 }, { x: legX + 3, y: entryLegY - 1.4, z: 0.2 }], 0x2563eb, this.overlayGroup);
-        const tg = this.createTextSprite('Tole Grise / ligne circulation', { fontSize: 13, fontColor: '#374151', backgroundColor: 'transparent' });
+        this._createLineMesh([{ x: legX, y: entryLegY - 1.4, z: 0.2 }, { x: legX + 3, y: entryLegY - 1.4, z: 0.2 }], 0xd21414, this.overlayGroup);
+        this._createLineMesh([{ x: legX + 2.4, y: entryLegY - 1.4, z: 0.2 }, { x: legX + 1.8, y: entryLegY - 1.1, z: 0.2 }], 0xd21414, this.overlayGroup);
+        this._createLineMesh([{ x: legX + 2.4, y: entryLegY - 1.4, z: 0.2 }, { x: legX + 1.8, y: entryLegY - 1.7, z: 0.2 }], 0xd21414, this.overlayGroup);
+        const tg = this.createTextSprite('Ligne circulation', { fontSize: 13, fontColor: '#374151', backgroundColor: 'transparent' });
         tg.position = new BABYLON.Vector3(legX + 7, entryLegY - 1.4, 0.25);
         tg.scaling = new BABYLON.Vector3(1.8, 0.7, 1);
         tg.parent = this.overlayGroup;
@@ -2036,13 +2044,14 @@ export class FloorPlanRenderer {
         const showLabels = ilots && ilots.length <= 800;
         if (!ilots || ilots.length === 0) { this.render(); return; }
 
+        const BOX_FILL_GREY = 0xe0e0e4; // Light grey fill (matching reference: boxes filled on entire plan)
         ilots.forEach((ilot, index) => {
             if (!ilot || typeof ilot.x !== 'number' || typeof ilot.y !== 'number' || typeof ilot.width !== 'number' || typeof ilot.height !== 'number') return;
 
-            // COSTO style: White fill, thin black outline
-            const fillMesh = this._createFilledRect(ilot.x, ilot.y, ilot.width, ilot.height, 0xffffff, 1.0, 0.01, this.ilotsGroup);
+            // COSTO style: light grey fill (reference), thin black outline
+            const fillMesh = this._createFilledRect(ilot.x, ilot.y, ilot.width, ilot.height, BOX_FILL_GREY, 1.0, 0.01, this.ilotsGroup);
             if (fillMesh) {
-                fillMesh.userData = { ilot, index, type: 'ilot', _origColor: 0xffffff, _origOpacity: 1.0 };
+                fillMesh.userData = { ilot, index, type: 'ilot', _origColor: BOX_FILL_GREY, _origOpacity: 1.0 };
                 fillMesh.isPickable = true;
                 this.ilotMeshes.push(fillMesh);
             }
@@ -2091,7 +2100,8 @@ export class FloorPlanRenderer {
         this._disposeChildren(this.corridorsGroup);
         const arrowSpacing = 8.0;
         const arrowSize = 0.45;
-        const showDirectionalArrows = false;
+        const lineColor = 0xd21414; // Red "ligne circulation" (match reference + PDF)
+        const showDirectionalArrows = true;
 
         const normalizePath = (rawPoints) => {
             if (!Array.isArray(rawPoints)) return null;
@@ -2111,15 +2121,19 @@ export class FloorPlanRenderer {
                 -arrowSize * cos - (half) * sin + x, -arrowSize * sin + (half) * cos + y, 0.15,
                 arrowSize * cos + x, arrowSize * sin + y, 0.15
             ];
-            this._createTriangleMesh(v, 0xd90014, this.corridorsGroup);
+            this._createTriangleMesh(v, 0xd21414, this.corridorsGroup);
         };
 
         corridors.forEach(corridor => {
             const pathPoints = normalizePath(corridor.path || corridor.corners);
             if (pathPoints) {
-                // COSTO style: Solid Blue Line
-                this._createLineMesh(pathPoints.map(p => ({ x: p.x, y: p.y, z: 0.1 })), 0x2563eb, this.corridorsGroup);
-
+                this._createDashedLineMesh(
+                    pathPoints.map(p => ({ x: p.x, y: p.y, z: 0.1 })),
+                    lineColor,
+                    0.35,
+                    0.20,
+                    this.corridorsGroup
+                );
                 if (showDirectionalArrows) {
                     for (let i = 0; i < pathPoints.length - 1; i++) {
                         const p1 = pathPoints[i], p2 = pathPoints[i + 1];
@@ -2139,12 +2153,10 @@ export class FloorPlanRenderer {
             if (![corridor.x, corridor.y, corridor.width, corridor.height].every(n => Number.isFinite(n))) return;
             const isH = corridor.direction === 'horizontal' || corridor.width > corridor.height;
             const cX = corridor.x + corridor.width / 2, cY = corridor.y + corridor.height / 2;
-
-            // COSTO style: Solid Blue Centerline
             const centerPts = isH
                 ? [{ x: corridor.x, y: cY, z: 0.1 }, { x: corridor.x + corridor.width, y: cY, z: 0.1 }]
                 : [{ x: cX, y: corridor.y, z: 0.1 }, { x: cX, y: corridor.y + corridor.height, z: 0.1 }];
-            this._createLineMesh(centerPts, 0x2563eb, this.corridorsGroup);
+            this._createDashedLineMesh(centerPts, lineColor, 0.35, 0.20, this.corridorsGroup);
 
             if (showDirectionalArrows) {
                 const arrowAngle = isH ? 0 : Math.PI / 2;
@@ -2153,7 +2165,7 @@ export class FloorPlanRenderer {
             }
         });
 
-        console.log(`[Corridors] Rendered ${corridors.length} corridors in COSTO style`);
+        console.log(`[Corridors] Rendered connected red dashed flow + arrows for ${corridors.length} corridors`);
         this.render();
     }
 
@@ -2249,61 +2261,72 @@ export class FloorPlanRenderer {
 
     renderCirculationPaths(circulationPaths) {
         if (!Array.isArray(circulationPaths) || circulationPaths.length === 0) return;
-        const lineColorPrimary = 0x8bb8ff;
-        const lineColorSecondary = 0xb8d4ff;
-        const arrowColor = 0x69b86e;
-        const seenLineSegments = new Set();
+        const arrowColor = 0xd21414; // Red "ligne circulation" (match reference + PDF)
+        const lineColor = 0xd21414;
         const seenArrows = new Set();
+        const seenSegments = new Set();
         const q = (v) => Math.round(v * 20) / 20;
-        const lineKey = (a, b) => {
-            const k1 = `${q(a.x)},${q(a.y)}|${q(b.x)},${q(b.y)}`;
-            const k2 = `${q(b.x)},${q(b.y)}|${q(a.x)},${q(a.y)}`;
-            return k1 < k2 ? k1 : k2;
+        const segKey = (x1, y1, x2, y2) => {
+            const a = `${q(x1)},${q(y1)}`;
+            const b = `${q(x2)},${q(y2)}`;
+            return a < b ? `${a}|${b}` : `${b}|${a}`;
         };
-
-        circulationPaths.forEach(cp => {
-            const path = cp.path;
-            if (!Array.isArray(path) || path.length < 2) return;
-            const vecs = path.map((pt) => {
-                const x = Number(pt.x), y = Number(pt.y);
-                return Number.isFinite(x) && Number.isFinite(y) ? { x, y, z: 0.08 } : null;
-            }).filter(Boolean);
-            if (vecs.length < 2) return;
-            const type = String(cp.type || '').toUpperCase();
-            const secondary = type === 'CORRIDOR_CENTER';
-            for (let i = 0; i < vecs.length - 1; i++) {
-                const p1 = vecs[i];
-                const p2 = vecs[i + 1];
-                const key = lineKey(p1, p2);
-                if (seenLineSegments.has(key)) continue;
-                seenLineSegments.add(key);
-                this._createDashedLineMesh(
-                    [{ x: p1.x, y: p1.y, z: 0.08 }, { x: p2.x, y: p2.y, z: 0.08 }],
-                    secondary ? lineColorSecondary : lineColorPrimary,
-                    secondary ? 0.14 : 0.18,
-                    secondary ? 0.18 : 0.12,
-                    this.corridorsGroup
-                );
-            }
-        });
         console.log(`Rendered ${circulationPaths.length} circulation paths`);
         const arrowSize = 0.15;
         circulationPaths.forEach(cp => {
-            if (!Array.isArray(cp.arrows)) return;
-            cp.arrows.forEach(arrow => {
-                const ax = Number(arrow.x), ay = Number(arrow.y), angle = Number(arrow.angle);
-                if (!Number.isFinite(ax) || !Number.isFinite(ay) || !Number.isFinite(angle)) return;
-                const aKey = `${q(ax)},${q(ay)},${q(angle)}`;
-                if (seenArrows.has(aKey)) return;
+            const arrows = Array.isArray(cp.arrows) ? cp.arrows : [];
+            if (arrows.length > 0) {
+                arrows.forEach(arrow => {
+                    const ax = Number(arrow.x), ay = Number(arrow.y), angle = Number(arrow.angle);
+                    if (!Number.isFinite(ax) || !Number.isFinite(ay) || !Number.isFinite(angle)) return;
+                    const aKey = `${q(ax)},${q(ay)},${q(angle)}`;
+                    if (seenArrows.has(aKey)) return;
+                    seenArrows.add(aKey);
+                    const cos = Math.cos(angle), sin = Math.sin(angle);
+                    const v = [
+                        -arrowSize * cos - (-arrowSize * 0.5) * sin + ax, -arrowSize * sin + (-arrowSize * 0.5) * cos + ay, 0.12,
+                        -arrowSize * cos - (arrowSize * 0.5) * sin + ax, -arrowSize * sin + (arrowSize * 0.5) * cos + ay, 0.12,
+                        arrowSize * 0.7 * cos + ax, arrowSize * 0.7 * sin + ay, 0.12
+                    ];
+                    this._createTriangleMesh(v, arrowColor, this.corridorsGroup);
+                });
+                return;
+            }
+
+            const path = Array.isArray(cp.path) ? cp.path : [];
+            for (let i = 0; i < path.length - 1; i++) {
+                const p1 = path[i];
+                const p2 = path[i + 1];
+                const x1 = Number(p1.x), y1 = Number(p1.y), x2 = Number(p2.x), y2 = Number(p2.y);
+                if (![x1, y1, x2, y2].every(Number.isFinite)) continue;
+                const sk = segKey(x1, y1, x2, y2);
+                if (!seenSegments.has(sk)) {
+                    seenSegments.add(sk);
+                    this._createDashedLineMesh(
+                        [{ x: x1, y: y1, z: 0.1 }, { x: x2, y: y2, z: 0.1 }],
+                        lineColor,
+                        0.30,
+                        0.18,
+                        this.corridorsGroup
+                    );
+                }
+                const dx = x2 - x1, dy = y2 - y1;
+                const len = Math.hypot(dx, dy);
+                if (len < 0.6) continue;
+                const angle = Math.atan2(dy, dx);
+                const midX = x1 + dx * 0.5;
+                const midY = y1 + dy * 0.5;
+                const aKey = `${q(midX)},${q(midY)},${q(angle)}`;
+                if (seenArrows.has(aKey)) continue;
                 seenArrows.add(aKey);
                 const cos = Math.cos(angle), sin = Math.sin(angle);
                 const v = [
-                    -arrowSize * cos - (-arrowSize * 0.5) * sin + ax, -arrowSize * sin + (-arrowSize * 0.5) * cos + ay, 0.12,
-                    -arrowSize * cos - (arrowSize * 0.5) * sin + ax, -arrowSize * sin + (arrowSize * 0.5) * cos + ay, 0.12,
-                    arrowSize * 0.7 * cos + ax, arrowSize * 0.7 * sin + ay, 0.12
+                    -arrowSize * cos - (-arrowSize * 0.5) * sin + midX, -arrowSize * sin + (-arrowSize * 0.5) * cos + midY, 0.12,
+                    -arrowSize * cos - (arrowSize * 0.5) * sin + midX, -arrowSize * sin + (arrowSize * 0.5) * cos + midY, 0.12,
+                    arrowSize * 0.7 * cos + midX, arrowSize * 0.7 * sin + midY, 0.12
                 ];
                 this._createTriangleMesh(v, arrowColor, this.corridorsGroup);
-            });
+            }
         });
         this.render();
     }
@@ -2445,6 +2468,19 @@ export class FloorPlanRenderer {
             this.drawLayoutOverlay(this.currentBounds);
         }
         this.render();
+    }
+
+    setLayoutOverlayConfig(config = {}) {
+        const base = this.layoutOverlayConfig || {};
+        this.layoutOverlayConfig = {
+            ...base,
+            ...(config || {})
+        };
+        if (this.showLayoutOverlay && this.currentBounds) {
+            this.drawLayoutOverlay(this.currentBounds);
+        } else if (this.showLayoutOverlay) {
+            this.render();
+        }
     }
 
     fitToBounds(bounds) {
@@ -2735,6 +2771,14 @@ export class FloorPlanRenderer {
         this._disposeChildren(this.overlayGroup);
         const overlayBorderColor = 0x2b2b2b;
 
+        const cfg = this.layoutOverlayConfig || {};
+        const primaryTitle = cfg.title || 'PLAN ETAGE 01 1-200';
+        const secondaryTitle = cfg.secondaryTitle || 'PLAN ETAGE 02 1-200';
+        const sheetLabel = cfg.sheetNumber != null ? String(cfg.sheetNumber) : '3';
+        const companyName = cfg.companyName || 'COSTO';
+        const companyAddress = cfg.companyAddress || '5 chemin de la dime 95700\nRoissy FRANCE';
+        const footerLabel = cfg.footerLabel || 'SURFACES DES BOX';
+
         // Calculate Visual Bounds (Flipped Y)
         const margin = 5.0;
         const minX = bounds.minX - margin * 2;
@@ -2777,21 +2821,25 @@ export class FloorPlanRenderer {
         );
 
         // Section 1: Top Left of Bar (Plan Name)
-        // "PLAN ETAGE 01 1-200"
-        const title = this.createTextSprite("PLAN ETAGE 01 1-200", { fontSize: 18, fontColor: '#000000', backgroundColor: 'transparent' });
+        const title = this.createTextSprite(primaryTitle, { fontSize: 18, fontColor: '#000000', backgroundColor: 'transparent' });
         title.position = new BABYLON.Vector3(minX + 10, barY + 2.5, 0.1);
         title.scaling = new BABYLON.Vector3(2, 2, 1);
         title.parent = this.overlayGroup;
 
+        // Sheet number box approximation on far left of footer
+        if (sheetLabel) {
+            const sheet = this.createTextSprite(String(sheetLabel), { fontSize: 16, fontColor: '#000000', backgroundColor: 'transparent' });
+            sheet.position = new BABYLON.Vector3(minX + 3, barY + 2.5, 0.1);
+            sheet.parent = this.overlayGroup;
+        }
+
         // Section 2: Center (Surface Area Info)
-        // "SURFACES DES BOX"
-        const surf = this.createTextSprite("SURFACES DES BOX", { fontSize: 16, fontColor: '#000000', backgroundColor: 'transparent' });
+        const surf = this.createTextSprite(footerLabel, { fontSize: 16, fontColor: '#000000', backgroundColor: 'transparent' });
         surf.position = new BABYLON.Vector3((minX + maxX) / 2, barY + 2.5, 0.1);
         surf.scaling = new BABYLON.Vector3(1.8, 1.8, 1);
         surf.parent = this.overlayGroup;
 
         // Section 3: Right (Company Info)
-        // "-COSTO- 5 chemin de la dime..."
         // Vertical separator line
         const rightSectionW = 20.0;
         this._createLineMesh(
@@ -2799,17 +2847,16 @@ export class FloorPlanRenderer {
             overlayBorderColor, this.overlayGroup
         );
 
-        const company = this.createTextSprite("-COSTO-", { fontSize: 14, fontColor: '#000000', backgroundColor: 'transparent' });
+        const company = this.createTextSprite(`-${companyName}-`, { fontSize: 14, fontColor: '#000000', backgroundColor: 'transparent' });
         company.position = new BABYLON.Vector3(maxX - rightSectionW / 2, barY + 3.0, 0.1);
         company.parent = this.overlayGroup;
 
-        const addr = this.createTextSprite("5 chemin de la dime 95700\nRoissy FRANCE", { fontSize: 9, fontColor: '#000000', backgroundColor: 'transparent' });
+        const addr = this.createTextSprite(companyAddress, { fontSize: 9, fontColor: '#000000', backgroundColor: 'transparent' });
         addr.position = new BABYLON.Vector3(maxX - rightSectionW / 2, barY + 1.2, 0.1);
         addr.parent = this.overlayGroup;
 
-        // Section 4: "PLAN ETAGE 02" (Right side, left of company info?)
-        // Reference shows another plan title. Adding placeholder text.
-        const title2 = this.createTextSprite("PLAN ETAGE 02 1-200", { fontSize: 16, fontColor: '#000000', backgroundColor: 'transparent' });
+        // Section 4: Secondary plan title (PLAN ETAGE 02 1-200)
+        const title2 = this.createTextSprite(secondaryTitle, { fontSize: 16, fontColor: '#000000', backgroundColor: 'transparent' });
         title2.position = new BABYLON.Vector3(maxX - rightSectionW - 10, barY + 2.5, 0.1);
         title2.parent = this.overlayGroup;
     }
@@ -2819,7 +2866,7 @@ export class FloorPlanRenderer {
         const items = [
             { text: 'Tole Blanche', color: 0x6B7280, style: 'line' },
             { text: 'Tole Grise', color: 0x374151, style: 'line' }, // 0x2563eb
-            { text: 'ligne circulation', color: 0x2563eb, style: 'line' },
+            { text: 'Ligne circulation', color: 0xd21414, style: 'arrow' },
             { text: 'Radiateur', color: 0xd90014, style: 'scallop' }
         ];
 
@@ -2829,6 +2876,10 @@ export class FloorPlanRenderer {
             // Draw Symbol
             if (item.style === 'line') {
                 this._createLineMesh([{ x: x, y: ly, z: 0.1 }, { x: x + 3, y: ly, z: 0.1 }], item.color, this.overlayGroup);
+            } else if (item.style === 'arrow') {
+                this._createLineMesh([{ x: x, y: ly, z: 0.1 }, { x: x + 3, y: ly, z: 0.1 }], item.color, this.overlayGroup);
+                this._createLineMesh([{ x: x + 2.5, y: ly, z: 0.1 }, { x: x + 1.9, y: ly + 0.3, z: 0.1 }], item.color, this.overlayGroup);
+                this._createLineMesh([{ x: x + 2.5, y: ly, z: 0.1 }, { x: x + 1.9, y: ly - 0.3, z: 0.1 }], item.color, this.overlayGroup);
             } else if (item.style === 'scallop') {
                 // Draw a small scallop segment
                 this._drawZigzagRadiator([{ x: x, y: ly }, { x: x + 3, y: ly }], this.overlayGroup);

@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Clear Cache - FloorPlan Pro</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            max-width: 600px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            margin-top: 0;
+        }
+        .button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            font-size: 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 10px 5px;
+        }
+        .button:hover {
+            background: #0056b3;
+        }
+        .button.success {
+            background: #28a745;
+        }
+        .button.danger {
+            background: #dc3545;
+        }
+        .status {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 4px;
+            display: none;
+        }
+        .status.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .status.info {
+            background: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+        .code {
+            background: #f8f9fa;
+            padding: 10px;
+            border-radius: 4px;
+            font-family: 'Courier New', monospace;
+            margin: 10px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔥 Clear Browser Cache</h1>
+        
+        <p>The corridor accessibility fix is working in the API, but your browser is showing cached data from localStorage.</p>
+        
+        <p><strong>Click the button below to clear the cache and see the fix:</strong></p>
+        
+        <button class="button" onclick="clearCacheAndReload()">
+            Clear Cache & Reload
+        </button>
+        
+        <button class="button danger" onclick="clearCacheOnly()">
+            Clear Cache Only (No Reload)
+        </button>
+        
+        <div id="status" class="status"></div>
+        
+        <hr style="margin: 30px 0;">
+        
+        <h3>What This Does:</h3>
+        <ul>
+            <li>Clears localStorage (autosaved floor plans)</li>
+            <li>Clears sessionStorage (temporary data)</li>
+            <li>Reloads the page with fresh data from the server</li>
+        </ul>
+        
+        <h3>Manual Method:</h3>
+        <p>You can also clear cache manually by opening the browser console (F12) and running:</p>
+        <div class="code">
+            localStorage.clear(); sessionStorage.clear(); location.reload();
+        </div>
+        
+        <h3>After Clearing:</h3>
+        <ol>
+            <li>Upload your floor plan again</li>
+            <li>Generate the COSTO layout</li>
+            <li>Check the red dashed circulation lines - they should be fully connected!</li>
+        </ol>
+    </div>
+    
+    <script>
+        function showStatus(message, type = 'success') {
+            const status = document.getElementById('status');
+            status.textContent = message;
+            status.className = 'status ' + type;
+            status.style.display = 'block';
+        }
+        
+        function clearCacheAndReload() {
+            try {
+                localStorage.clear();
+                sessionStorage.clear();
+                showStatus('Cache cleared! Reloading...', 'success');
+                setTimeout(() => {
+                    window.location.href = '/';
+                }, 1000);
+            } catch (e) {
+                showStatus('Error clearing cache: ' + e.message, 'danger');
+            }
+        }
+        
+        function clearCacheOnly() {
+            try {
+                localStorage.clear();
+                sessionStorage.clear();
+                showStatus('Cache cleared successfully! You can now navigate back to the app.', 'success');
+            } catch (e) {
+                showStatus('Error clearing cache: ' + e.message, 'danger');
+            }
+        }
+        
+        // Show current cache status
+        window.addEventListener('load', () => {
+            const hasCache = localStorage.length > 0 || sessionStorage.length > 0;
+            if (hasCache) {
+                showStatus(`Found ${localStorage.length} localStorage items and ${sessionStorage.length} sessionStorage items. Click the button above to clear them.`, 'info');
+            } else {
+                showStatus('Cache is already clear!', 'success');
+            }
+        });
+    </script>
+</body>
+</html>

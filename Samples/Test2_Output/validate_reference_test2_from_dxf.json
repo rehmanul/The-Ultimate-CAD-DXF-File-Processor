@@ -1,0 +1,561 @@
+{
+  "generated": {
+    "path": "c:\\Users\\Admin\\Desktop\\The-Ultimate-CAD-DXF-File-Processor\\Samples\\Test2_Output\\Test2_layout_from_dxf.pdf",
+    "page_count": 1,
+    "width": 900,
+    "height": 1200,
+    "aspect_ratio": 0.706301362736361,
+    "color_counts": {
+      "green": 4431,
+      "blue": 23081,
+      "red": 225,
+      "black": 566,
+      "white": 978422,
+      "non_white": 101578
+    },
+    "color_ratios": {
+      "green_ratio": 0.004102777777777778,
+      "blue_ratio": 0.021371296296296298,
+      "red_ratio": 0.00020833333333333335,
+      "black_ratio": 0.000524074074074074,
+      "white_ratio": 0.9059462962962963,
+      "non_white_ratio": 0.09405370370370371
+    }
+  },
+  "reference": {
+    "path": "c:\\Users\\Admin\\Desktop\\The-Ultimate-CAD-DXF-File-Processor\\Reference Output Examples\\Final.pdf",
+    "page_count": 1,
+    "width": 900,
+    "height": 1200,
+    "aspect_ratio": 0.7069689336691856,
+    "color_counts": {
+      "green": 2776,
+      "blue": 11969,
+      "red": 125,
+      "black": 2226,
+      "white": 936057,
+      "non_white": 143943
+    },
+    "color_ratios": {
+      "green_ratio": 0.0025703703703703704,
+      "blue_ratio": 0.011082407407407407,
+      "red_ratio": 0.00011574074074074075,
+      "black_ratio": 0.002061111111111111,
+      "white_ratio": 0.8667194444444445,
+      "non_white_ratio": 0.13328055555555557
+    }
+  },
+  "comparison": {
+    "compare_width": 900,
+    "compare_height": 1200,
+    "aspect_ratio_diff": 0.000667570932824546,
+    "red_presence_threshold": 1.736111111111111e-05,
+    "mae": 16.429045061728395,
+    "rmse": 41.73849871151762,
+    "similarity": 0.9355723723069475,
+    "green_ratio_delta": 0.0015324074074074077,
+    "blue_ratio_delta": 0.01028888888888889,
+    "red_ratio_delta": 9.25925925925926e-05,
+    "black_ratio_delta": 0.0015370370370370373,
+    "non_white_ratio_delta": 0.03922685185185186
+  },
+  "structural_checks": {
+    "border_presence": {
+      "pass": true,
+      "required_sides": 3,
+      "sides_detected": 4,
+      "avg_border_green_ratio": 0.039183677900234914,
+      "avg_border_green_min": 0.0006125153071425001,
+      "side_thresholds": {
+        "top": {
+          "non_white_min": 0.03076923076923077
+        },
+        "bottom": {
+          "non_white_min": 0.02994238683127572
+        },
+        "left": {
+          "non_white_min": 0.04636842105263159
+        },
+        "right": {
+          "non_white_min": 0.039433333333333334
+        }
+      },
+      "side_results": {
+        "top": {
+          "pass": true,
+          "generated_non_white_ratio": 0.21047008547008547,
+          "reference_non_white_ratio": 0.07692307692307693,
+          "generated_green_ratio": 0.04465811965811966,
+          "reference_green_ratio": 4.2735042735042735e-05
+        },
+        "bottom": {
+          "pass": true,
+          "generated_non_white_ratio": 0.11905349794238683,
+          "reference_non_white_ratio": 0.0748559670781893,
+          "generated_green_ratio": 0.0024691358024691358,
+          "reference_green_ratio": 0.003580246913580247
+        },
+        "left": {
+          "pass": true,
+          "generated_non_white_ratio": 0.1748684210526316,
+          "reference_non_white_ratio": 0.11592105263157895,
+          "generated_green_ratio": 0.05631578947368421,
+          "reference_green_ratio": 0.0033771929824561405
+        },
+        "right": {
+          "pass": true,
+          "generated_non_white_ratio": 0.15791666666666668,
+          "reference_non_white_ratio": 0.09858333333333333,
+          "generated_green_ratio": 0.05329166666666667,
+          "reference_green_ratio": 0.0
+        }
+      }
+    },
+    "title_block_occupancy": {
+      "pass": false,
+      "generated_non_white_ratio": 0.0,
+      "generated_black_ratio": 0.0,
+      "non_white_min": 0.06647773279352227,
+      "black_min": 0.0017528864897285946
+    },
+    "legend_region_occupancy": {
+      "pass": false,
+      "generated_non_white_ratio": 0.09068189341277723,
+      "generated_black_ratio": 0.0,
+      "non_white_min": 0.05929245283018868,
+      "black_min": 0.00035
+    },
+    "wall_context_presence": {
+      "pass": false,
+      "generated_non_white_ratio": 0.1003525663550964,
+      "generated_black_ratio": 1.4641459929252466e-06,
+      "generated_edge_density": 0.14544544839155898,
+      "non_white_min": 0.07707659826176588,
+      "black_min": 0.0008455443109143298,
+      "edge_density_min": 0.09741943079141772
+    }
+  },
+  "structural_regions": {
+    "title_block": {
+      "bounds": {
+        "x0": 648,
+        "y0": 924,
+        "x1": 895,
+        "y1": 1194,
+        "width": 247,
+        "height": 270,
+        "pixel_count": 66690,
+        "normalized": {
+          "x0": 0.72,
+          "y0": 0.77,
+          "x1": 0.995,
+          "y1": 0.995
+        }
+      },
+      "generated": {
+        "color_counts": {
+          "green": 0,
+          "blue": 0,
+          "red": 0,
+          "black": 0,
+          "white": 66690,
+          "non_white": 0
+        },
+        "color_ratios": {
+          "green_ratio": 0.0,
+          "blue_ratio": 0.0,
+          "red_ratio": 0.0,
+          "black_ratio": 0.0,
+          "white_ratio": 1.0,
+          "non_white_ratio": 0.0
+        },
+        "edge_density": 0.0
+      },
+      "reference": {
+        "color_counts": {
+          "green": 74,
+          "blue": 532,
+          "red": 19,
+          "black": 334,
+          "white": 56838,
+          "non_white": 9852
+        },
+        "color_ratios": {
+          "green_ratio": 0.0011096116359274254,
+          "blue_ratio": 0.007977207977207978,
+          "red_ratio": 0.0002849002849002849,
+          "black_ratio": 0.005008247113510271,
+          "white_ratio": 0.8522717049032839,
+          "non_white_ratio": 0.14772829509671614
+        },
+        "edge_density": 0.220058245358573
+      }
+    },
+    "legend": {
+      "bounds": {
+        "x0": 630,
+        "y0": 240,
+        "x1": 895,
+        "y1": 924,
+        "width": 265,
+        "height": 684,
+        "pixel_count": 181260,
+        "normalized": {
+          "x0": 0.7,
+          "y0": 0.2,
+          "x1": 0.995,
+          "y1": 0.77
+        }
+      },
+      "generated": {
+        "color_counts": {
+          "green": 5,
+          "blue": 4911,
+          "red": 47,
+          "black": 0,
+          "white": 164823,
+          "non_white": 16437
+        },
+        "color_ratios": {
+          "green_ratio": 2.7584684982897496e-05,
+          "blue_ratio": 0.02709367759020192,
+          "red_ratio": 0.00025929603883923647,
+          "black_ratio": 0.0,
+          "white_ratio": 0.9093181065872228,
+          "non_white_ratio": 0.09068189341277723
+        },
+        "edge_density": 0.13320892206522705
+      },
+      "reference": {
+        "color_counts": {
+          "green": 567,
+          "blue": 1944,
+          "red": 5,
+          "black": 108,
+          "white": 157377,
+          "non_white": 23883
+        },
+        "color_ratios": {
+          "green_ratio": 0.003128103277060576,
+          "blue_ratio": 0.010724925521350546,
+          "red_ratio": 2.7584684982897496e-05,
+          "black_ratio": 0.0005958291956305859,
+          "white_ratio": 0.8682389937106918,
+          "non_white_ratio": 0.13176100628930817
+        },
+        "edge_density": 0.2060339465031547
+      }
+    },
+    "drawing_context": {
+      "bounds": {
+        "x0": 18,
+        "y0": 48,
+        "x1": 630,
+        "y1": 1164,
+        "width": 612,
+        "height": 1116,
+        "pixel_count": 682992,
+        "normalized": {
+          "x0": 0.02,
+          "y0": 0.04,
+          "x1": 0.7,
+          "y1": 0.97
+        }
+      },
+      "generated": {
+        "color_counts": {
+          "green": 645,
+          "blue": 18030,
+          "red": 177,
+          "black": 1,
+          "white": 614452,
+          "non_white": 68540
+        },
+        "color_ratios": {
+          "green_ratio": 0.0009443741654367841,
+          "blue_ratio": 0.026398552252442194,
+          "red_ratio": 0.00025915384074776864,
+          "black_ratio": 1.4641459929252466e-06,
+          "white_ratio": 0.8996474336449036,
+          "non_white_ratio": 0.1003525663550964
+        },
+        "edge_density": 0.14544544839155898
+      },
+      "reference": {
+        "color_counts": {
+          "green": 1621,
+          "blue": 9096,
+          "red": 100,
+          "black": 1650,
+          "white": 587278,
+          "non_white": 95714
+        },
+        "color_ratios": {
+          "green_ratio": 0.0023733806545318246,
+          "blue_ratio": 0.013317871951648044,
+          "red_ratio": 0.00014641459929252466,
+          "black_ratio": 0.002415840888326657,
+          "white_ratio": 0.8598607304331529,
+          "non_white_ratio": 0.14013926956684705
+        },
+        "edge_density": 0.21648762398092827
+      }
+    },
+    "border_sides": {
+      "top": {
+        "bounds": {
+          "x0": 0,
+          "y0": 0,
+          "x1": 900,
+          "y1": 26,
+          "width": 900,
+          "height": 26,
+          "pixel_count": 23400,
+          "normalized": {
+            "x0": 0.0,
+            "y0": 0.0,
+            "x1": 1.0,
+            "y1": 0.022
+          }
+        },
+        "generated": {
+          "color_counts": {
+            "green": 1045,
+            "blue": 49,
+            "red": 0,
+            "black": 477,
+            "white": 18475,
+            "non_white": 4925
+          },
+          "color_ratios": {
+            "green_ratio": 0.04465811965811966,
+            "blue_ratio": 0.002094017094017094,
+            "red_ratio": 0.0,
+            "black_ratio": 0.020384615384615383,
+            "white_ratio": 0.7895299145299145,
+            "non_white_ratio": 0.21047008547008547
+          },
+          "edge_density": 0.2615070527097253
+        },
+        "reference": {
+          "color_counts": {
+            "green": 1,
+            "blue": 0,
+            "red": 0,
+            "black": 0,
+            "white": 21600,
+            "non_white": 1800
+          },
+          "color_ratios": {
+            "green_ratio": 4.2735042735042735e-05,
+            "blue_ratio": 0.0,
+            "red_ratio": 0.0,
+            "black_ratio": 0.0,
+            "white_ratio": 0.9230769230769231,
+            "non_white_ratio": 0.07692307692307693
+          },
+          "edge_density": 0.004825538233110616
+        }
+      },
+      "bottom": {
+        "bounds": {
+          "x0": 0,
+          "y0": 1173,
+          "x1": 900,
+          "y1": 1200,
+          "width": 900,
+          "height": 27,
+          "pixel_count": 24300,
+          "normalized": {
+            "x0": 0.0,
+            "y0": 0.978,
+            "x1": 1.0,
+            "y1": 1.0
+          }
+        },
+        "generated": {
+          "color_counts": {
+            "green": 60,
+            "blue": 12,
+            "red": 0,
+            "black": 0,
+            "white": 21407,
+            "non_white": 2893
+          },
+          "color_ratios": {
+            "green_ratio": 0.0024691358024691358,
+            "blue_ratio": 0.0004938271604938272,
+            "red_ratio": 0.0,
+            "black_ratio": 0.0,
+            "white_ratio": 0.8809465020576132,
+            "non_white_ratio": 0.11905349794238683
+          },
+          "edge_density": 0.16446804865513107
+        },
+        "reference": {
+          "color_counts": {
+            "green": 87,
+            "blue": 8,
+            "red": 0,
+            "black": 0,
+            "white": 22481,
+            "non_white": 1819
+          },
+          "color_ratios": {
+            "green_ratio": 0.003580246913580247,
+            "blue_ratio": 0.0003292181069958848,
+            "red_ratio": 0.0,
+            "black_ratio": 0.0,
+            "white_ratio": 0.9251440329218107,
+            "non_white_ratio": 0.0748559670781893
+          },
+          "edge_density": 0.15470275826623264
+        }
+      },
+      "left": {
+        "bounds": {
+          "x0": 0,
+          "y0": 0,
+          "x1": 19,
+          "y1": 1200,
+          "width": 19,
+          "height": 1200,
+          "pixel_count": 22800,
+          "normalized": {
+            "x0": 0.0,
+            "y0": 0.0,
+            "x1": 0.022,
+            "y1": 1.0
+          }
+        },
+        "generated": {
+          "color_counts": {
+            "green": 1284,
+            "blue": 32,
+            "red": 0,
+            "black": 22,
+            "white": 18813,
+            "non_white": 3987
+          },
+          "color_ratios": {
+            "green_ratio": 0.05631578947368421,
+            "blue_ratio": 0.0014035087719298245,
+            "red_ratio": 0.0,
+            "black_ratio": 0.0009649122807017544,
+            "white_ratio": 0.8251315789473684,
+            "non_white_ratio": 0.1748684210526316
+          },
+          "edge_density": 0.2455945093674643
+        },
+        "reference": {
+          "color_counts": {
+            "green": 77,
+            "blue": 0,
+            "red": 0,
+            "black": 0,
+            "white": 20157,
+            "non_white": 2643
+          },
+          "color_ratios": {
+            "green_ratio": 0.0033771929824561405,
+            "blue_ratio": 0.0,
+            "red_ratio": 0.0,
+            "black_ratio": 0.0,
+            "white_ratio": 0.8840789473684211,
+            "non_white_ratio": 0.11592105263157895
+          },
+          "edge_density": 0.015396030421072158
+        }
+      },
+      "right": {
+        "bounds": {
+          "x0": 880,
+          "y0": 0,
+          "x1": 900,
+          "y1": 1200,
+          "width": 20,
+          "height": 1200,
+          "pixel_count": 24000,
+          "normalized": {
+            "x0": 0.978,
+            "y0": 0.0,
+            "x1": 1.0,
+            "y1": 1.0
+          }
+        },
+        "generated": {
+          "color_counts": {
+            "green": 1279,
+            "blue": 0,
+            "red": 0,
+            "black": 0,
+            "white": 20210,
+            "non_white": 3790
+          },
+          "color_ratios": {
+            "green_ratio": 0.05329166666666667,
+            "blue_ratio": 0.0,
+            "red_ratio": 0.0,
+            "black_ratio": 0.0,
+            "white_ratio": 0.8420833333333333,
+            "non_white_ratio": 0.15791666666666668
+          },
+          "edge_density": 0.2287145242070117
+        },
+        "reference": {
+          "color_counts": {
+            "green": 0,
+            "blue": 0,
+            "red": 0,
+            "black": 0,
+            "white": 21634,
+            "non_white": 2366
+          },
+          "color_ratios": {
+            "green_ratio": 0.0,
+            "blue_ratio": 0.0,
+            "red_ratio": 0.0,
+            "black_ratio": 0.0,
+            "white_ratio": 0.9014166666666666,
+            "non_white_ratio": 0.09858333333333333
+          },
+          "edge_density": 0.43609719903542943
+        }
+      }
+    }
+  },
+  "structural_aggregate": {
+    "passed": false,
+    "total": 4,
+    "passed_count": 1,
+    "failed_checks": [
+      "title_block_occupancy",
+      "legend_region_occupancy",
+      "wall_context_presence"
+    ]
+  },
+  "checks": {
+    "page_count_match": true,
+    "aspect_ratio_close": true,
+    "similarity_minimum": true,
+    "mae_within_limit": true,
+    "rmse_within_limit": true,
+    "blue_ratio_delta_within_limit": true,
+    "non_white_ratio_delta_within_limit": true,
+    "has_blue_structure": true,
+    "has_red_radiators": true,
+    "has_green_border": true,
+    "has_nonwhite_content": true,
+    "structural_border_presence": true,
+    "structural_title_block_occupancy": false,
+    "structural_legend_region_occupancy": false,
+    "structural_wall_context_presence": false,
+    "structural_checks_pass": false
+  },
+  "aggregate_decision": {
+    "pixel_and_color_checks_passed": true,
+    "structural_checks_passed": false,
+    "overall_passed": false
+  },
+  "passed": false
+}

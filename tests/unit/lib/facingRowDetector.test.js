@@ -250,14 +250,18 @@ describe('FacingRowDetector', () => {
             expect(result.recommendations.length).toBeGreaterThan(0);
         });
 
-        test('should generate corridors with correct dimensions', () => {
-            const corridorWidth = 2.0;
+        test('should generate corridors with correct dimensions (standard width inside gap)', () => {
+            const corridorWidth = 1.5;
             const detector = new FacingRowDetector(mockIlots);
             const result = detector.generateCorridorRecommendations(corridorWidth);
 
             result.recommendations.forEach(rec => {
-                expect(rec.height).toBeLessThanOrEqual(corridorWidth);
                 expect(rec.height).toBeGreaterThan(0);
+                expect(rec.height).toBeLessThanOrEqual(corridorWidth);
+                expect(rec.width).toBeGreaterThan(0);
+                // Corridor stays between inner edges (y between row1.maxY and row2.minY)
+                expect(rec.y).toBeGreaterThanOrEqual(1);
+                expect(rec.y + rec.height).toBeLessThanOrEqual(5);
             });
         });
 
@@ -292,6 +296,41 @@ describe('FacingRowDetector', () => {
                 rec.polygon.forEach(point => {
                     expect(point.length).toBe(2); // [x, y]
                 });
+            });
+        });
+
+        test('two parallel facing rows should produce exactly one corridor between them', () => {
+            const twoRows = [
+                { x: 1, y: 0, width: 2, height: 1 },
+                { x: 4, y: 0, width: 2, height: 1 },
+                { x: 1, y: 4, width: 2, height: 1 },
+                { x: 4, y: 4, width: 2, height: 1 }
+            ];
+            const detector = new FacingRowDetector(twoRows, { minRowDistance: 1, maxRowDistance: 10, minOverlap: 0.3 });
+            const result = detector.generateCorridorRecommendations(1.5);
+
+            expect(result.recommendations.length).toBe(1);
+            const corr = result.recommendations[0];
+            expect(corr.type).toBe('horizontal');
+            expect(corr.width).toBeGreaterThan(0);
+            expect(corr.height).toBeGreaterThan(0);
+            expect(corr.y).toBeGreaterThanOrEqual(1);
+            expect(corr.y + corr.height).toBeLessThanOrEqual(4);
+        });
+
+        test('corridor between two rows should not overlap ilots', () => {
+            const detector = new FacingRowDetector(mockIlots);
+            const result = detector.generateCorridorRecommendations(1.5);
+            expect(result.recommendations.length).toBeGreaterThan(0);
+
+            const corr = result.recommendations[0];
+            const corrTop = corr.y;
+            const corrBottom = corr.y + corr.height;
+            mockIlots.forEach(ilot => {
+                const ilotTop = ilot.y;
+                const ilotBottom = ilot.y + ilot.height;
+                const yOverlap = corrBottom > ilotTop && corrTop < ilotBottom;
+                expect(yOverlap).toBe(false);
             });
         });
     });

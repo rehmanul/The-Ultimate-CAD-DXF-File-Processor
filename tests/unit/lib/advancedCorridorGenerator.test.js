@@ -129,12 +129,12 @@ describe('AdvancedCorridorGenerator', () => {
     });
 
     describe('generateHorizontalCorridors', () => {
-        test('should generate horizontal corridors between facing rows', () => {
+        test('should generate horizontal corridors between facing rows with type between_facing_rows', () => {
             const generator = new AdvancedCorridorGenerator(mockFloorPlan, mockIlots);
             const corridors = generator.generateHorizontalCorridors();
 
             corridors.forEach(corridor => {
-                expect(corridor.type).toBe('horizontal');
+                expect(corridor.type).toBe('between_facing_rows');
                 expect(corridor.orientation).toBe('horizontal');
             });
         });
@@ -158,6 +158,23 @@ describe('AdvancedCorridorGenerator', () => {
                 expect(corridor).toHaveProperty('connectsRows');
                 expect(corridor).toHaveProperty('metadata');
             });
+        });
+
+        test('two parallel facing rows should yield one corridor between them in full generate', () => {
+            const twoRowIlots = [
+                { x: 1, y: 0, width: 2, height: 1 },
+                { x: 4, y: 0, width: 2, height: 1 },
+                { x: 1, y: 4, width: 2, height: 1 },
+                { x: 4, y: 4, width: 2, height: 1 }
+            ];
+            const floorPlan = { bounds: { minX: 0, minY: 0, maxX: 10, maxY: 6 }, walls: [], forbiddenZones: [], entrances: [] };
+            const generator = new AdvancedCorridorGenerator(floorPlan, twoRowIlots, { generateVertical: false });
+            const result = generator.generate();
+
+            const horizontal = (result.corridors || []).filter(c => c.type === 'between_facing_rows');
+            expect(horizontal.length).toBe(1);
+            expect(horizontal[0].width).toBeGreaterThan(0);
+            expect(horizontal[0].height).toBeGreaterThan(0);
         });
     });
 
