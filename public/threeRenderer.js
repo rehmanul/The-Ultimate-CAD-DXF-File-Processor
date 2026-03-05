@@ -1544,6 +1544,53 @@ export class FloorPlanRenderer {
         }
         this._flowGroup.clear();
 
+        // Build wall obstacle rects for arrow clipping
+        this._wallSegsForArrowClip = [];
+        this._wallObstaclesForArrowClip = [];
+        const fpWalls = (floorPlan && floorPlan.walls) || [];
+        const wallSegsArr = [];
+        for (const w of fpWalls) {
+            if (w.start && w.end) {
+                const s = { x1: +w.start.x, y1: +w.start.y, x2: +w.end.x, y2: +w.end.y };
+                s.len = Math.hypot(s.x2 - s.x1, s.y2 - s.y1);
+                if (s.len > 1.5) wallSegsArr.push(s);
+            }
+        }
+        this._wallSegsForArrowClip = wallSegsArr;
+        // Detect thick wall pairs and create obstacle rects
+        for (let i = 0; i < wallSegsArr.length; i++) {
+            const a = wallSegsArr[i];
+            if (a.len < 2.0) continue;
+            const aH = Math.abs(a.y1 - a.y2) < 0.3;
+            const aV = Math.abs(a.x1 - a.x2) < 0.3;
+            if (!aH && !aV) continue;
+            for (let j = i + 1; j < wallSegsArr.length; j++) {
+                const b = wallSegsArr[j];
+                if (b.len < 2.0) continue;
+                if (aH && Math.abs(b.y1 - b.y2) < 0.3) {
+                    const gap = Math.abs(a.y1 - b.y1);
+                    if (gap < 0.05 || gap > 0.3) continue;
+                    const oL = Math.max(Math.min(a.x1, a.x2), Math.min(b.x1, b.x2));
+                    const oR = Math.min(Math.max(a.x1, a.x2), Math.max(b.x1, b.x2));
+                    if (oR - oL < 0.5) continue;
+                    this._wallObstaclesForArrowClip.push({
+                        x: oL - 0.1, y: Math.min(a.y1, b.y1) - 0.1,
+                        w: (oR - oL) + 0.2, h: gap + 0.2
+                    });
+                } else if (aV && Math.abs(b.x1 - b.x2) < 0.3) {
+                    const gap = Math.abs(a.x1 - b.x1);
+                    if (gap < 0.05 || gap > 0.3) continue;
+                    const oB = Math.max(Math.min(a.y1, a.y2), Math.min(b.y1, b.y2));
+                    const oT = Math.min(Math.max(a.y1, a.y2), Math.max(b.y1, b.y2));
+                    if (oT - oB < 0.5) continue;
+                    this._wallObstaclesForArrowClip.push({
+                        x: Math.min(a.x1, b.x1) - 0.1, y: oB - 0.1,
+                        w: gap + 0.2, h: (oT - oB) + 0.2
+                    });
+                }
+            }
+        }
+
         const allUnits = (units || []).filter(u =>
             Number.isFinite(u.x) && Number.isFinite(u.y) &&
             Number.isFinite(u.width) && Number.isFinite(u.height)
@@ -1660,7 +1707,27 @@ export class FloorPlanRenderer {
         const AH = 0.28;  // arrow height
         const SPACING = 1.5; // distance between arrows
 
+        // Track placed arrow positions to avoid duplicates
+        const placedArrows = [];
+        const DEDUP_DIST = 0.3;
+
         const drawArrow = (x, y, angle) => {
+            // Deduplication: skip if arrow already placed nearby
+            const dup = placedArrows.some(p =>
+                Math.abs(p.x - x) < DEDUP_DIST && Math.abs(p.y - y) < DEDUP_DIST);
+            if (dup) return false;
+
+            // Skip arrows inside wall structures
+            if (this._wallSegsForArrowClip) {
+                const inset = 0.1;
+                for (const fz of this._wallObstaclesForArrowClip || []) {
+                    if (x >= fz.x - inset && x <= fz.x + fz.w + inset &&
+                        y >= fz.y - inset && y <= fz.y + fz.h + inset) {
+                        return false; // inside a wall obstacle
+                    }
+                }
+            }
+
             const shape = new THREE.Shape();
             shape.moveTo(-AH / 2, -AW / 2);
             shape.lineTo(AH / 2, 0);
@@ -1670,6 +1737,8 @@ export class FloorPlanRenderer {
             mesh.position.set(x, y, Z);
             mesh.rotation.z = angle;
             this._flowGroup.add(mesh);
+            placedArrows.push({ x, y });
+            return true;
         };
 
         let totalArrows = 0;
@@ -1687,8 +1756,9 @@ export class FloorPlanRenderer {
                 const n = Math.max(1, Math.floor(segLen / SPACING));
                 for (let a = 0; a < n; a++) {
                     const t = (a + 0.5) / n;
-                    drawArrow(col.cx, seg.y1 + segLen * t, angle);
-                    totalArrows++;
+                    if (drawArrow(col.cx, seg.y1 + segLen * t, angle)) {
+                        totalArrows++;
+                    }
                 }
             }
         }
@@ -1721,8 +1791,9 @@ export class FloorPlanRenderer {
             const n = Math.max(1, Math.floor(hLen / SPACING));
             for (let a = 0; a < n; a++) {
                 const t = (a + 0.5) / n;
-                drawArrow(x1 + hLen * t, linkY, hAngle);
-                totalArrows++;
+                if (drawArrow(x1 + hLen * t, linkY, hAngle)) {
+                    totalArrows++;
+                }
             }
         }
 
