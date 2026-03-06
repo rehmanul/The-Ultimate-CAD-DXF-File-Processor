@@ -1128,14 +1128,25 @@ app.post('/api/costo/generate', async (req, res) => {
     try {
         const { floorPlan, unitMix, options = {} } = req.body || {};
         const rawLayoutMode = typeof options.layoutMode === 'string' ? options.layoutMode.trim() : '';
+        const isArchitecturalGuardrailMode =
+            options.architecturalGuardrails !== false &&
+            options.strictMode === true &&
+            (options.style || 'COSTO') === 'COSTO';
         const hasExplicitLayoutMode = rawLayoutMode === 'rowBased' || rawLayoutMode === 'wallHugging';
-        const requestedLayoutMode = rawLayoutMode === 'wallHugging' ? 'wallHugging' : 'rowBased';
+        const requestedLayoutMode = isArchitecturalGuardrailMode
+            ? 'rowBased'
+            : (rawLayoutMode === 'wallHugging' ? 'wallHugging' : 'rowBased');
+        const forceProfessionalEngine = isArchitecturalGuardrailMode;
         // Engine selection intent:
         // - Explicit boolean toggle always wins (backward-compatible override)
-        // - Otherwise explicit layoutMode => CostoPro, no explicit layoutMode => Professional
-        const useProfessionalEngine = typeof options.useProfessionalEngine === 'boolean'
+        // - `rowBased` favors ProfessionalGridLayoutEngine (parallel, regular rows)
+        // - `wallHugging` favors CostoProLayoutEngine (wall-adaptive packing)
+        // - No explicit layoutMode defaults to ProfessionalGridLayoutEngine
+        const useProfessionalEngine = forceProfessionalEngine
+            ? true
+            : (typeof options.useProfessionalEngine === 'boolean'
             ? options.useProfessionalEngine
-            : !hasExplicitLayoutMode;
+            : (requestedLayoutMode === 'rowBased' || !hasExplicitLayoutMode));
         let effectiveLayoutMode = requestedLayoutMode;
         const requestedWallClearanceMm = Number.isFinite(Number(options.wallClearanceMm))
             ? Math.max(50, Number(options.wallClearanceMm))
@@ -1264,6 +1275,9 @@ app.post('/api/costo/generate', async (req, res) => {
                 `[COSTO Generate] Engine selection: ${useProfessionalEngine ? 'ProfessionalGridLayoutEngine' : 'CostoProLayoutEngine'} ` +
                 `(layoutMode=${requestedLayoutMode}, explicitLayoutMode=${hasExplicitLayoutMode})`
             );
+            if (isArchitecturalGuardrailMode) {
+                console.log('[COSTO Generate] Architectural guardrails: ON (row-based + professional engine + hard QA gate)');
+            }
 
             const costoFloorPlan = {
                 ...normalizedFloorPlan,
@@ -1325,11 +1339,15 @@ app.post('/api/costo/generate', async (req, res) => {
             }
 
             const maximizeFill = options.maximizeFill !== false;
-            const oneWayFlow = options.oneWayFlow === true;
+            const oneWayFlow = isArchitecturalGuardrailMode || options.oneWayFlow === true;
+            const requestedEntranceClearance = Number(options.entranceClearance);
             const requestedCorridorWidth = Number(options.corridorWidth);
             const normalizedCorridorWidth = Number.isFinite(requestedCorridorWidth)
-                ? Math.max(1.0, Math.min(1.8, requestedCorridorWidth))
+                ? Math.max(isArchitecturalGuardrailMode ? 1.2 : 1.0, Math.min(1.8, requestedCorridorWidth))
                 : 1.2;
+            const normalizedEntranceClearance = Number.isFinite(requestedEntranceClearance)
+                ? Math.max(1.0, Number(requestedEntranceClearance))
+                : Math.max(1.2, normalizedCorridorWidth);
             const baseEngineOptions = {
                 corridorWidth: normalizedCorridorWidth,
                 wallClearance: Number.isFinite(options.wallClearance)
@@ -1380,7 +1398,7 @@ app.post('/api/costo/generate', async (req, res) => {
             // Branch is deterministic via normalized toggle/intent computed at route entry.
 
             let layoutResult;
-            if (true) { // ALWAYS use ProfessionalGridLayoutEngine
+            if (useProfessionalEngine) {
                 console.log('[COSTO Generate] Using ProfessionalGridLayoutEngine (corridor-first, wall-flush)...');
                 try {
                     const profEngine = new ProfessionalGridLayoutEngine(costoFloorPlan, {
@@ -1388,6 +1406,7 @@ app.post('/api/costo/generate', async (req, res) => {
                         boxDepth: baseEngineOptions.boxDepth,
                         boxSpacing: baseEngineOptions.boxSpacing,
                         wallClearance: 0,          // wall-flush: zero gap
+                        entranceClearance: normalizedEntranceClearance,
                         minBoxWidth: 0.80,
                         oneWayFlow
                     });
@@ -1601,6 +1620,311 @@ app.post('/api/costo/generate', async (req, res) => {
             circulationPaths = layoutResult.circulationPaths || [];
             const floorPlanOutline = layoutResult.floorPlanOutline || null;
             stats = { placedCount: ilots.length, targetCount, layoutMode: effectiveLayoutMode };
+            const corridorToBounds = (corridor) => {
+                if (!corridor || typeof corridor !== 'object') return null;
+                const x = Number(corridor.x);
+                const y = Number(corridor.y);
+                const w = Number(corridor.width);
+                const h = Number(corridor.height);
+                if ([x, y, w, h].every(Number.isFinite) && w > 0 && h > 0) {
+                    return { x1: x, y1: y, x2: x + w, y2: y + h };
+                }
+                const corners = Array.isArray(corridor.corners) ? corridor.corners : [];
+                if (corners.length >= 2) {
+                    const xs = [];
+                    const ys = [];
+                    for (const pt of corners) {
+                        const px = Number(Array.isArray(pt) ? pt[0] : pt?.x);
+                        const py = Number(Array.isArray(pt) ? pt[1] : pt?.y);
+                        if (!Number.isFinite(px) || !Number.isFinite(py)) continue;
+                        xs.push(px);
+                        ys.push(py);
+                    }
+                    if (xs.length >= 2 && ys.length >= 2) {
+                        const minX = Math.min(...xs);
+                        const maxX = Math.max(...xs);
+                        const minY = Math.min(...ys);
+                        const maxY = Math.max(...ys);
+                        if (maxX > minX && maxY > minY) {
+                            return { x1: minX, y1: minY, x2: maxX, y2: maxY };
+                        }
+                    }
+                }
+                return null;
+            };
+            const corridorBounds = (Array.isArray(corridors) ? corridors : [])
+                .map(corridorToBounds)
+                .filter(Boolean);
+            const overlapArea = (boxRect, corridorRect) => {
+                const ix1 = Math.max(boxRect.x1, corridorRect.x1);
+                const iy1 = Math.max(boxRect.y1, corridorRect.y1);
+                const ix2 = Math.min(boxRect.x2, corridorRect.x2);
+                const iy2 = Math.min(boxRect.y2, corridorRect.y2);
+                if (ix2 <= ix1 || iy2 <= iy1) return 0;
+                return (ix2 - ix1) * (iy2 - iy1);
+            };
+            const boxCorridorOverlapCount = (boxes) => {
+                if (!Array.isArray(boxes) || boxes.length === 0 || corridorBounds.length === 0) return 0;
+                let count = 0;
+                for (const box of boxes) {
+                    const x = Number(box?.x);
+                    const y = Number(box?.y);
+                    const w = Number(box?.width);
+                    const h = Number(box?.height);
+                    if (![x, y, w, h].every(Number.isFinite) || w <= 0 || h <= 0) continue;
+                    const rect = { x1: x + 0.01, y1: y + 0.01, x2: x + w - 0.01, y2: y + h - 0.01 };
+                    if (rect.x2 <= rect.x1 || rect.y2 <= rect.y1) continue;
+                    let overlaps = false;
+                    for (const cb of corridorBounds) {
+                        if (overlapArea(rect, cb) > 0.015) {
+                            overlaps = true;
+                            break;
+                        }
+                    }
+                    if (overlaps) count++;
+                }
+                return count;
+            };
+            let corridorOverlapCount = boxCorridorOverlapCount(ilots);
+
+            if (isArchitecturalGuardrailMode) {
+                const beforeGuardrailCleanup = ilots.length;
+                const cleanedIlots = [];
+                let removedTiny = 0;
+                let removedInvalid = 0;
+                let removedOnCorridorPath = 0;
+                for (const box of ilots) {
+                    const x = Number(box?.x);
+                    const y = Number(box?.y);
+                    const w = Number(box?.width);
+                    const h = Number(box?.height);
+                    if (![x, y, w, h].every(Number.isFinite) || w <= 0 || h <= 0) {
+                        removedInvalid++;
+                        continue;
+                    }
+                    const minDim = Math.min(w, h);
+                    const area = w * h;
+                    if (minDim < 0.55 || area < 0.9) {
+                        removedTiny++;
+                        continue;
+                    }
+                    const rect = { x1: x + 0.01, y1: y + 0.01, x2: x + w - 0.01, y2: y + h - 0.01 };
+                    if (rect.x2 <= rect.x1 || rect.y2 <= rect.y1) {
+                        removedInvalid++;
+                        continue;
+                    }
+                    let overlapsCorridor = false;
+                    for (const cb of corridorBounds) {
+                        if (overlapArea(rect, cb) > 0.015) {
+                            overlapsCorridor = true;
+                            break;
+                        }
+                    }
+                    if (overlapsCorridor) {
+                        removedOnCorridorPath++;
+                        continue;
+                    }
+                    cleanedIlots.push(box);
+                }
+                ilots = cleanedIlots;
+                stats.placedCount = ilots.length;
+                corridorOverlapCount = boxCorridorOverlapCount(ilots);
+                if (removedTiny > 0 || removedInvalid > 0 || removedOnCorridorPath > 0) {
+                    console.log(
+                        `[COSTO Generate] Guardrail box cleanup: removed tiny=${removedTiny}, invalid=${removedInvalid}, ` +
+                        `removedOnCorridorPath=${removedOnCorridorPath}, ` +
+                        `kept=${ilots.length}/${beforeGuardrailCleanup}`
+                    );
+                    results.phases.push({
+                        phase: '2a-cleanup',
+                        name: 'guardrail_box_cleanup',
+                        before: beforeGuardrailCleanup,
+                        removedTiny,
+                        removedInvalid,
+                        removedOnCorridorPath,
+                        remainingCorridorOverlaps: corridorOverlapCount,
+                        after: ilots.length
+                    });
+                }
+            }
+
+            let removedCirculationPathsOnBoxes = 0;
+            if (isArchitecturalGuardrailMode && Array.isArray(circulationPaths) && circulationPaths.length > 0 && Array.isArray(ilots) && ilots.length > 0) {
+                const segmentIntersectsAnyBox = (x1, y1, x2, y2) => {
+                    if (![x1, y1, x2, y2].every(Number.isFinite)) return false;
+                    const segMinX = Math.min(x1, x2);
+                    const segMaxX = Math.max(x1, x2);
+                    const segMinY = Math.min(y1, y2);
+                    const segMaxY = Math.max(y1, y2);
+                    const length = Math.hypot(x2 - x1, y2 - y1);
+                    const samples = Math.max(6, Math.ceil(length / 0.08));
+                    for (const box of ilots) {
+                        const bx = Number(box?.x);
+                        const by = Number(box?.y);
+                        const bw = Number(box?.width);
+                        const bh = Number(box?.height);
+                        if (![bx, by, bw, bh].every(Number.isFinite) || bw <= 0 || bh <= 0) continue;
+                        const inset = 0.03;
+                        const rx1 = bx + inset;
+                        const ry1 = by + inset;
+                        const rx2 = bx + bw - inset;
+                        const ry2 = by + bh - inset;
+                        if (rx2 <= rx1 || ry2 <= ry1) continue;
+                        if (segMaxX < rx1 || segMinX > rx2 || segMaxY < ry1 || segMinY > ry2) continue;
+                        for (let i = 0; i <= samples; i++) {
+                            const t = i / samples;
+                            const px = x1 + (x2 - x1) * t;
+                            const py = y1 + (y2 - y1) * t;
+                            if (px > rx1 && px < rx2 && py > ry1 && py < ry2) return true;
+                        }
+                    }
+                    return false;
+                };
+                const toPoint = (p) => {
+                    if (Array.isArray(p)) return { x: Number(p[0]), y: Number(p[1]) };
+                    return { x: Number(p?.x), y: Number(p?.y) };
+                };
+                const filteredPaths = [];
+                for (const cp of circulationPaths) {
+                    const path = Array.isArray(cp?.path)
+                        ? cp.path
+                        : (Array.isArray(cp?.points) ? cp.points : null);
+                    if (!Array.isArray(path) || path.length < 2) {
+                        filteredPaths.push(cp);
+                        continue;
+                    }
+                    let blocked = false;
+                    for (let i = 0; i < path.length - 1; i++) {
+                        const p1 = toPoint(path[i]);
+                        const p2 = toPoint(path[i + 1]);
+                        if (segmentIntersectsAnyBox(p1.x, p1.y, p2.x, p2.y)) {
+                            blocked = true;
+                            break;
+                        }
+                    }
+                    if (blocked) {
+                        removedCirculationPathsOnBoxes++;
+                        continue;
+                    }
+                    filteredPaths.push(cp);
+                }
+                if (removedCirculationPathsOnBoxes > 0) {
+                    circulationPaths = filteredPaths;
+                    results.phases.push({
+                        phase: '2a-cleanup',
+                        name: 'guardrail_circulation_cleanup',
+                        removedPathsOnBoxes: removedCirculationPathsOnBoxes,
+                        remainingPaths: circulationPaths.length
+                    });
+                    console.log(
+                        `[COSTO Generate] Guardrail circulation cleanup: removed ${removedCirculationPathsOnBoxes} path(s) crossing boxes, ` +
+                        `remaining=${circulationPaths.length}`
+                    );
+                }
+            }
+
+            // Optional surgical override: remove user-targeted box(es) only.
+            // Supports:
+            // - options.surgicalRemoveBoxId (single id/displayNumber)
+            // - options.surgicalRemoveBoxIds (array or comma string of ids/displayNumbers)
+            // - options.surgicalRemoveBox = { x, y, radius? } (remove nearest center within radius)
+            if (Array.isArray(ilots) && ilots.length > 0) {
+                let surgicalRemoved = null;
+                const normalizeToken = (value) => {
+                    if (value === null || value === undefined) return null;
+                    const token = String(value).trim();
+                    return token.length > 0 ? token : null;
+                };
+                const requestedIdTokens = [];
+                if (Array.isArray(options.surgicalRemoveBoxIds)) {
+                    for (const token of options.surgicalRemoveBoxIds) {
+                        const normalized = normalizeToken(token);
+                        if (normalized) requestedIdTokens.push(normalized);
+                    }
+                } else if (typeof options.surgicalRemoveBoxIds === 'string') {
+                    for (const token of options.surgicalRemoveBoxIds.split(',')) {
+                        const normalized = normalizeToken(token);
+                        if (normalized) requestedIdTokens.push(normalized);
+                    }
+                }
+                const singleToken = normalizeToken(options.surgicalRemoveBoxId);
+                if (singleToken) requestedIdTokens.push(singleToken);
+                const targetIds = Array.from(new Set(requestedIdTokens));
+
+                if (targetIds.length > 0) {
+                    const targetSet = new Set(targetIds);
+                    const kept = [];
+                    const removedList = [];
+                    for (const box of ilots) {
+                        const id = normalizeToken(box?.id);
+                        const dn = normalizeToken(box?.displayNumber);
+                        const hit = (id && targetSet.has(id)) || (dn && targetSet.has(dn));
+                        if (hit) {
+                            removedList.push({
+                                removedId: box?.id ?? null,
+                                removedDisplayNumber: box?.displayNumber ?? null
+                            });
+                        } else {
+                            kept.push(box);
+                        }
+                    }
+                    if (removedList.length > 0) {
+                        ilots.splice(0, ilots.length, ...kept);
+                        surgicalRemoved = {
+                            mode: 'by_ids',
+                            targetIds,
+                            removedCount: removedList.length,
+                            removed: removedList
+                        };
+                    }
+                } else if (options.surgicalRemoveBox && typeof options.surgicalRemoveBox === 'object') {
+                    const sx = Number(options.surgicalRemoveBox.x);
+                    const sy = Number(options.surgicalRemoveBox.y);
+                    const sr = Number.isFinite(Number(options.surgicalRemoveBox.radius))
+                        ? Math.max(0.2, Number(options.surgicalRemoveBox.radius))
+                        : 1.5;
+                    if (Number.isFinite(sx) && Number.isFinite(sy)) {
+                        let bestIndex = -1;
+                        let bestDist = Infinity;
+                        for (let i = 0; i < ilots.length; i++) {
+                            const b = ilots[i];
+                            const bx = Number(b?.x);
+                            const by = Number(b?.y);
+                            const bw = Number(b?.width);
+                            const bh = Number(b?.height);
+                            if (![bx, by, bw, bh].every(Number.isFinite) || bw <= 0 || bh <= 0) continue;
+                            const cx = bx + bw / 2;
+                            const cy = by + bh / 2;
+                            const d = Math.hypot(cx - sx, cy - sy);
+                            if (d < bestDist) {
+                                bestDist = d;
+                                bestIndex = i;
+                            }
+                        }
+                        if (bestIndex >= 0 && bestDist <= sr) {
+                            const removed = ilots[bestIndex];
+                            ilots.splice(bestIndex, 1);
+                            surgicalRemoved = {
+                                mode: 'by_point',
+                                target: { x: sx, y: sy, radius: sr },
+                                distance: Number(bestDist.toFixed(4)),
+                                removedId: removed?.id ?? null,
+                                removedDisplayNumber: removed?.displayNumber ?? null
+                            };
+                        }
+                    }
+                }
+                if (surgicalRemoved) {
+                    stats.placedCount = ilots.length;
+                    results.phases.push({
+                        phase: '2a-cleanup',
+                        name: 'surgical_box_removal',
+                        ...surgicalRemoved,
+                        remainingBoxes: ilots.length
+                    });
+                    console.log('[COSTO Generate] Surgical box removal applied:', surgicalRemoved);
+                }
+            }
 
             results.phases.push({
                 phase: '2a', name: 'production_layout',
@@ -1610,6 +1934,84 @@ app.post('/api/costo/generate', async (req, res) => {
             });
 
             console.log(`[COSTO Generate] Layout complete: ${ilots.length} units, ${corridors.length} corridors`);
+
+            // Hard architect-quality gate: reject unstable/invalid layout early in strict production mode.
+            if (isArchitecturalGuardrailMode) {
+                const qualityIssues = [];
+                if (!Array.isArray(ilots) || ilots.length < 80) {
+                    qualityIssues.push(`box_count_too_low:${Array.isArray(ilots) ? ilots.length : 0}`);
+                }
+                if (!Array.isArray(corridors) || corridors.length < 12) {
+                    qualityIssues.push(`corridor_count_too_low:${Array.isArray(corridors) ? corridors.length : 0}`);
+                }
+                if (Array.isArray(ilots) && ilots.length > 0) {
+                    let tinyBoxes = 0;
+                    for (const box of ilots) {
+                        const w = Number(box?.width);
+                        const h = Number(box?.height);
+                        if (![w, h].every(Number.isFinite) || w <= 0 || h <= 0) continue;
+                        if (Math.min(w, h) < 0.55 || (w * h) < 0.9) tinyBoxes++;
+                    }
+                    const tinyRatio = tinyBoxes / ilots.length;
+                    if (tinyRatio > 0.01) {
+                        qualityIssues.push(`tiny_boxes:${tinyBoxes}/${ilots.length}(${(tinyRatio * 100).toFixed(1)}%)`);
+                    }
+                }
+                if (Array.isArray(corridors)) {
+                    let majorCorridors = 0;
+                    let narrowMajorCorridors = 0;
+                    for (const c of corridors) {
+                        const w = Number(c?.width);
+                        const h = Number(c?.height);
+                        if (!Number.isFinite(w) || !Number.isFinite(h) || w <= 0 || h <= 0) continue;
+                        const length = Math.max(w, h);
+                        const corridorType = String(c?.type || '').toLowerCase();
+                        const isConnector = corridorType === 'connector';
+                        const isMajor = !isConnector && length >= 3.0;
+                        if (!isMajor) continue;
+                        majorCorridors++;
+                        const minDim = Math.min(w, h);
+                        if (minDim < 1.15) narrowMajorCorridors++;
+                    }
+                    const narrowRatio = majorCorridors > 0 ? (narrowMajorCorridors / majorCorridors) : 0;
+                    if (majorCorridors > 0 && narrowRatio > 0.35) {
+                        qualityIssues.push(
+                            `narrow_major_corridors:${narrowMajorCorridors}/${majorCorridors}(${(narrowRatio * 100).toFixed(1)}%)`
+                        );
+                    }
+                }
+                if (corridorOverlapCount > 0) {
+                    qualityIssues.push(`boxes_on_corridor_path:${corridorOverlapCount}`);
+                }
+                if (removedCirculationPathsOnBoxes > 0) {
+                    qualityIssues.push(`circulation_paths_through_boxes:${removedCirculationPathsOnBoxes}`);
+                }
+                const validFlowCount = Array.isArray(circulationPaths)
+                    ? circulationPaths.filter((cp) => {
+                        const p = cp?.path || cp?.points || cp;
+                        return Array.isArray(p) && p.length >= 2;
+                    }).length
+                    : 0;
+                const minFlowRequired = Math.max(8, Math.floor((Array.isArray(corridors) ? corridors.length : 0) * 0.35));
+                if (validFlowCount < minFlowRequired) {
+                    qualityIssues.push(`circulation_paths_too_low:${validFlowCount}/${minFlowRequired}`);
+                }
+
+                if (qualityIssues.length > 0) {
+                    console.error('[COSTO Generate] Architectural guardrail failed:', qualityIssues);
+                    return res.status(422).json({
+                        success: false,
+                        error: 'Architectural quality gate failed. Layout was not exported.',
+                        issues: qualityIssues,
+                        snapshot: {
+                            layoutMode: effectiveLayoutMode,
+                            boxes: Array.isArray(ilots) ? ilots.length : 0,
+                            corridors: Array.isArray(corridors) ? corridors.length : 0,
+                            circulationPaths: validFlowCount
+                        }
+                    });
+                }
+            }
 
             // Flag to skip old placer code below
             results.productionLayoutComplete = true;

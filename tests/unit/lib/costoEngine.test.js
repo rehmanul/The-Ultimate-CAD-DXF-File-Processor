@@ -323,3 +323,81 @@ describe('Corridor quality: continuity and no box in corridor', () => {
         });
     });
 });
+
+describe('CostoProLayoutEngine regressions: connector overlap and bay tail recovery', () => {
+    test('connector linking does not force corridor overlap with units', () => {
+        const floorPlan = makeFloorPlan({
+            bounds: { minX: 0, minY: 0, maxX: 30, maxY: 20 },
+            walls: []
+        });
+        const engine = new CostoProLayoutEngine(floorPlan, defaultOptions());
+
+        const corridors = [
+            { x: 2, y: 2, width: 1.2, height: 4, direction: 'vertical', type: 'ACCESS' },
+            { x: 18, y: 2, width: 1.2, height: 4, direction: 'vertical', type: 'ACCESS' }
+        ];
+        const units = [
+            { x: 9.5, y: 0.5, width: 2.5, height: 9 }
+        ];
+
+        const linked = engine._linkDisconnectedCorridors(corridors, units);
+        const tol = 0.02;
+        const hasOverlap = linked.some((c) =>
+            units.some((u) =>
+                c.x < u.x + u.width - tol &&
+                c.x + c.width > u.x + tol &&
+                c.y < u.y + u.height - tol &&
+                c.y + c.height > u.y + tol
+            )
+        );
+
+        expect(hasOverlap).toBe(false);
+    });
+
+    test('bay strip planner recovers row-tail space with smaller fallback size', () => {
+        const floorPlan = makeFloorPlan({
+            bounds: { minX: 0, minY: 0, maxX: 14, maxY: 10 },
+            walls: []
+        });
+        const engine = new CostoProLayoutEngine(floorPlan, {
+            ...defaultOptions(),
+            wallClearance: 0.05,
+            boxDepth: 2.5,
+            boxSpacing: 0.02
+        });
+
+        // Keep geometry clear so _isBoxValid only depends on bounds.
+        engine.wallSegments = [];
+        engine.forbiddenRects = [];
+        engine.entranceRects = [];
+        engine._boxHitsWall = () => false;
+        engine._boxHitsObstacle = () => false;
+
+        const bay = {
+            id: 'bay_tail_test',
+            orientation: 'horizontal',
+            minX: 0,
+            maxX: 11.5,
+            minY: 0,
+            maxY: 8,
+            wallMinY: 0,
+            wallMaxY: 8
+        };
+
+        // Preferred width is too large near tail; fallback should place 0.8/0.9/1.0, etc.
+        const sizes = [{ type: 'XL', width: 3.49, area: 3.49 * engine.boxDepth }];
+        const result = engine._planBayStrips(bay, 1, sizes, 0);
+
+        expect(result.units.length).toBeGreaterThan(2);
+
+        const minWidth = 0.8;
+        const hasTailFallback = result.units.some((u) => {
+            if (!Number.isFinite(u.x) || !Number.isFinite(u.width)) return false;
+            const right = u.x + u.width;
+            const nearTail = right > (bay.maxX - engine.wallClearance - 1.35);
+            return nearTail && u.width < 3.49 && u.width >= minWidth - 1e-6;
+        });
+
+        expect(hasTailFallback).toBe(true);
+    });
+});

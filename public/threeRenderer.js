@@ -282,7 +282,7 @@ export class FloorPlanRenderer {
             doorRed: new THREE.LineBasicMaterial({ color: 0xff0000 }),
             doorBlue: new THREE.LineBasicMaterial({ color: 0x3b82f6 }),
             arrowGreen: new THREE.MeshBasicMaterial({ color: 0x800000, side: THREE.DoubleSide }),
-            arrowCirculation: new THREE.MeshBasicMaterial({ color: 0x4caf50, side: THREE.DoubleSide }),
+            arrowCirculation: new THREE.MeshBasicMaterial({ color: 0xcc0000, side: THREE.DoubleSide }),
             radiatorLightBlue: new THREE.LineBasicMaterial({ color: 0xcc0000 }),
             waveRed: new THREE.LineBasicMaterial({ color: 0xcc0000 })
         };
@@ -388,7 +388,7 @@ export class FloorPlanRenderer {
         }
     }
 
-    // â”€â”€ COSTO CAD-style helpers (drop-in from spec) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // Ã¢â€â‚¬Ã¢â€â‚¬ COSTO CAD-style helpers (drop-in from spec) Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 
     _getDoorColorForUnit(unit) {
         const row = (unit.row || '').toLowerCase();
@@ -515,7 +515,7 @@ export class FloorPlanRenderer {
     }
 
     /**
-     * — CORRIDOR-FACING SIDE DETECTION HELPERS (shared by door/radiator renderers) —
+     * â€” CORRIDOR-FACING SIDE DETECTION HELPERS (shared by door/radiator renderers) â€”
      */
     _buildCorridorSegments(corridors) {
         const segs = [];
@@ -586,7 +586,7 @@ export class FloorPlanRenderer {
             const edgeLen = isH ? unit.width : unit.height;
             if (edgeLen < 0.3) return;
 
-            // Door arc parameters — constrained INSIDE the box
+            // Door arc parameters â€” constrained INSIDE the box
             const doorR = Math.min(isH ? unit.width * 0.18 : unit.height * 0.18, 0.35);
             if (doorR < 0.04) return;
 
@@ -618,7 +618,7 @@ export class FloorPlanRenderer {
     }
 
     /**
-     * Draw circular-loop coil symbols ┤○○○○○├ on PERIMETER boxes only,
+     * Draw circular-loop coil symbols â”¤â—‹â—‹â—‹â—‹â—‹â”œ on PERIMETER boxes only,
      * on their WALL-FACING edge (opposite to corridor).
      * Only boxes within 0.5m of the building envelope get radiators.
      */
@@ -663,7 +663,7 @@ export class FloorPlanRenderer {
             const edgeLen = isH ? unit.width : unit.height;
             if (edgeLen < 0.3) return;
 
-            // Coil parameters — drawn INSIDE the box boundary to avoid wall overlap
+            // Coil parameters â€” drawn INSIDE the box boundary to avoid wall overlap
             const coilLen = edgeLen * 0.85;
             const loopR = Math.max(0.03, Math.min(0.10, Math.min(unit.width, unit.height) * 0.06));
             const numCircles = Math.max(3, Math.round(coilLen / (loopR * 2.2)));
@@ -697,7 +697,7 @@ export class FloorPlanRenderer {
             const [br1, br2] = bpts(coilStart + coilLen);
             this.ilotsGroup.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints([br1, br2]), mat));
 
-            // Circular loops ○○○○○
+            // Circular loops â—‹â—‹â—‹â—‹â—‹
             for (let ci = 0; ci < numCircles; ci++) {
                 const along = coilStart + spacing * (ci + 0.5);
                 const pts = [];
@@ -803,7 +803,7 @@ export class FloorPlanRenderer {
         const areaTextSize = shortSide < 1.2 ? 4 : 5;
         const primaryIsVertical = h >= w;
 
-        // Unit ID label (e.g. unit_01) — match reference image and PDF
+        // Unit ID label (e.g. unit_01) â€” match reference image and PDF
         const unitId = String(unit.displayNumber != null ? unit.displayNumber : unit.id || '');
         if (unitId) {
             const idSprite = this.createTextSprite(unitId, {
@@ -821,7 +821,7 @@ export class FloorPlanRenderer {
         }
 
         const area = Number.isFinite(unit.area) ? unit.area : (w * h);
-        const areaSprite = this.createTextSprite(`${area.toFixed(2)}m²`, {
+        const areaSprite = this.createTextSprite(`${area.toFixed(2)}mÂ²`, {
             fontSize: areaTextSize,
             fontColor: '#6b7280',
             fontWeight: 'normal',
@@ -884,7 +884,7 @@ export class FloorPlanRenderer {
         }
     }
 
-    // â”€â”€ Global flow (Entry â†’ Visit all â†’ Exit) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // Ã¢â€â‚¬Ã¢â€â‚¬ Global flow (Entry Ã¢â€ â€™ Visit all Ã¢â€ â€™ Exit) Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 
     _getEntrancePoints(floorPlan) {
         const bounds = floorPlan?.bounds;
@@ -975,21 +975,60 @@ export class FloorPlanRenderer {
         const list = Array.isArray(corridors) ? corridors : [];
         const minLen = 0.5;
         const out = [];
+        const seen = new Set();
+        const q = (n) => Number((Math.round((Number(n) || 0) / 0.05) * 0.05).toFixed(3));
+        const bounds = this.currentFloorPlan?.bounds || null;
+
         for (const c of list) {
-            const rect = this._extractCorridorRect(c) || (c?.x != null && c?.y != null && c?.width != null && c?.height != null ? { x: c.x, y: c.y, width: c.width, height: c.height } : null);
+            const rawType = String(c?.type || '').toUpperCase();
+            const rect = this._extractCorridorRect(c) || (
+                c?.x != null && c?.y != null && c?.width != null && c?.height != null
+                    ? { x: c.x, y: c.y, width: c.width, height: c.height }
+                    : null
+            );
             if (!rect) continue;
+
             const seg = this._corridorCenterlineEndpoints(rect);
             if (!seg || seg.len < minLen) continue;
+
+            const ax = q(seg.a.x);
+            const ay = q(seg.a.y);
+            const bx = q(seg.b.x);
+            const by = q(seg.b.y);
+            const k1 = `${ax},${ay}|${bx},${by}`;
+            const k2 = `${bx},${by}|${ax},${ay}`;
+            const key = k1 < k2 ? k1 : k2;
+            if (seen.has(key)) continue;
+            seen.add(key);
+
+            const isVertical = Math.abs(seg.b.y - seg.a.y) > Math.abs(seg.b.x - seg.a.x);
+            const touchesBottomEdge = bounds && rect.y <= (Number(bounds.minY) + 0.35);
+            const touchesTopEdge = bounds && (rect.y + rect.height) >= (Number(bounds.maxY) - 0.35);
+            const touchesLeftEdge = bounds && rect.x <= (Number(bounds.minX) + 0.35);
+            const touchesRightEdge = bounds && (rect.x + rect.width) >= (Number(bounds.maxX) - 0.35);
+            const isBoundaryAnchoredSpine =
+                rawType === 'SPINE' &&
+                (
+                    (isVertical && (touchesBottomEdge || touchesTopEdge)) ||
+                    (!isVertical && (touchesLeftEdge || touchesRightEdge))
+                );
+            // These long engine spines are useful for packing logic but create
+            // noisy comb-like overlays at the sheet edges. Keep the real access
+            // corridors visible and suppress boundary-anchored spines in the UI.
+            if (isBoundaryAnchoredSpine) continue;
+            const isMainRoute = seg.len >= (isVertical ? 3.2 : 4.0);
             out.push({
-                type: 'CORRIDOR',
-                onMainRoute: true,
+                type: rawType || 'CORRIDOR',
+                onMainRoute: isMainRoute,
                 flowValid: true,
                 path: [seg.a, seg.b],
                 arrows: [],
                 allowOffCorridor: false,
-                bidirectional: false
+                bidirectional: false,
+                forceDraw: true
             });
         }
+
         return out;
     }
 
@@ -1342,7 +1381,7 @@ export class FloorPlanRenderer {
             }
         }
 
-        // Convert nodes â†’ polyline
+        // Convert nodes Ã¢â€ â€™ polyline
         const idToNode = new Map(nodeList.map(n => [n.id, n]));
         const poly = routeNodes.map(id => {
             const n = idToNode.get(id);
@@ -1366,7 +1405,7 @@ export class FloorPlanRenderer {
         this.corridorsGroup.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), mat));
     }
 
-    // â”€â”€ Wave (scallop) point generator â€” sine-based curve along an edge â”€â”€
+    // Ã¢â€â‚¬Ã¢â€â‚¬ Wave (scallop) point generator Ã¢â‚¬â€ sine-based curve along an edge Ã¢â€â‚¬Ã¢â€â‚¬
     _makeWavePoints(x1, y1, x2, y2, {
         offset = 0.10,
         amp = 0.08,
@@ -1399,7 +1438,7 @@ export class FloorPlanRenderer {
         return pts;
     }
 
-    // â”€â”€ Blue/cyan wave perimeters on every unit's door edge â”€â”€
+    // Ã¢â€â‚¬Ã¢â€â‚¬ Blue/cyan wave perimeters on every unit's door edge Ã¢â€â‚¬Ã¢â€â‚¬
     // Normal always points OUTWARD from the box center
     _renderUnitDoorWaves(units) {
         return; // DISABLED: no blue waves
@@ -1434,7 +1473,7 @@ export class FloorPlanRenderer {
             const ux = dx / len, uy = dy / len;
             let nx = -uy, ny = ux;
 
-            // choose normal that points OUT of the unit (from unit center â†’ edge mid)
+            // choose normal that points OUT of the unit (from unit center Ã¢â€ â€™ edge mid)
             const cx = u.x + u.width / 2, cy = u.y + u.height / 2;
             const mx = (e.x1 + e.x2) / 2, my = (e.y1 + e.y2) / 2;
             const vx = mx - cx, vy = my - cy;
@@ -1463,12 +1502,12 @@ export class FloorPlanRenderer {
         }
     }
 
-    // â”€â”€ Red radiator waves on envelope/perimeter (NOT corridors) â”€â”€
+    // Ã¢â€â‚¬Ã¢â€â‚¬ Red radiator waves on envelope/perimeter (NOT corridors) Ã¢â€â‚¬Ã¢â€â‚¬
     _renderRadiatorWavesFromEnvelope(floorPlan) {
         return; // DISABLED: no red radiator waves
     }
 
-    // â”€â”€ Corridor â†’ centerline segments â”€â”€
+    // Ã¢â€â‚¬Ã¢â€â‚¬ Corridor Ã¢â€ â€™ centerline segments Ã¢â€â‚¬Ã¢â€â‚¬
     _buildSegmentsFromCorridors(corridors) {
         const segs = [];
         for (const c of corridors) {
@@ -1482,7 +1521,7 @@ export class FloorPlanRenderer {
         return segs;
     }
 
-    // â”€â”€ Split segments at HÃ—V intersections â”€â”€
+    // Ã¢â€â‚¬Ã¢â€â‚¬ Split segments at HÃƒâ€”V intersections Ã¢â€â‚¬Ã¢â€â‚¬
     _splitAtIntersections(segs, eps = 1e-6) {
         const horiz = [], vert = [];
         for (const s of segs) {
@@ -1597,7 +1636,7 @@ export class FloorPlanRenderer {
         );
         if (allUnits.length < 2) return;
 
-        // ── 1. Group units into vertical columns by X center ──
+        // â”€â”€ 1. Group units into vertical columns by X center â”€â”€
         const SNAP = 0.8; // group units within 0.8m of same X
         const unitCols = [];
 
@@ -1628,7 +1667,7 @@ export class FloorPlanRenderer {
 
         if (unitCols.length < 2) return;
 
-        // ── 2. Find aisles: gaps between adjacent unit columns ──
+        // â”€â”€ 2. Find aisles: gaps between adjacent unit columns â”€â”€
         const aisles = [];
         for (let i = 0; i < unitCols.length - 1; i++) {
             const left = unitCols[i];
@@ -1665,7 +1704,7 @@ export class FloorPlanRenderer {
 
         if (aisles.length === 0) return;
 
-        // ── 3. Merge aisles at same X into columns ──
+        // â”€â”€ 3. Merge aisles at same X into columns â”€â”€
         const COL_SNAP = 1.5;
         const aisleCols = [];
         for (const a of aisles) {
@@ -1694,7 +1733,7 @@ export class FloorPlanRenderer {
             col.segs = merged;
         }
 
-        // ── 4. Arrow rendering ──
+        // â”€â”€ 4. Arrow rendering â”€â”€
         const BLUE = 0x1565C0;
         const arrowMat = new THREE.MeshBasicMaterial({
             color: BLUE, side: THREE.DoubleSide,
@@ -1763,7 +1802,7 @@ export class FloorPlanRenderer {
             }
         }
 
-        // ── 5. Horizontal connecting arrows at top/bottom ──
+        // â”€â”€ 5. Horizontal connecting arrows at top/bottom â”€â”€
         for (let ci = 0; ci < aisleCols.length - 1; ci++) {
             const col = aisleCols[ci];
             const next = aisleCols[ci + 1];
@@ -2067,7 +2106,7 @@ export class FloorPlanRenderer {
                         new THREE.Vector3(line.end.x, line.end.y, 0)
                     ]);
                     const material = new THREE.LineBasicMaterial({
-                        color: 0x6B7280, // Thin gray - matching reference "TÃ´le Blanche"
+                        color: 0x6B7280, // Thin gray - matching reference "TÃƒÂ´le Blanche"
                         linewidth: 2
                     });
                     this.wallsGroup.add(new THREE.Line(geometry, material));
@@ -2085,7 +2124,7 @@ export class FloorPlanRenderer {
                     { start: { x: minX, y: maxY }, end: { x: minX, y: minY } }
                 ];
                 const envelopeMaterial = new THREE.LineBasicMaterial({
-                    color: 0x6B7280, // Thin gray - matching reference "TÃ´le Blanche"
+                    color: 0x6B7280, // Thin gray - matching reference "TÃƒÂ´le Blanche"
                     linewidth: 2
                 });
                 envelopeLines.forEach(line => {
@@ -2435,7 +2474,7 @@ export class FloorPlanRenderer {
         this.selectedIlots = [];
 
         // Render storage units: blue outlines only, NO white fill (per user: remove white layer)
-        const outlineColor = 0x0000ff; // Blue outlines like reference "TÃ´le Grise"
+        const outlineColor = 0x0000ff; // Blue outlines like reference "TÃƒÂ´le Grise"
         const showLabels = ilots.length <= 900; // Keep full CAD annotation visible on dense plans
 
         if (!ilots || ilots.length === 0) {
@@ -2508,7 +2547,7 @@ export class FloorPlanRenderer {
                 new THREE.Vector3(0, ilot.height, 0),
                 new THREE.Vector3(0, 0, 0)
             ];
-            // Draw blue outline (thicker like reference "TÃ´le Grise")
+            // Draw blue outline (thicker like reference "TÃƒÂ´le Grise")
             const line = new THREE.Line(
                 new THREE.BufferGeometry().setFromPoints(linePoints),
                 new THREE.LineBasicMaterial({
@@ -2566,7 +2605,7 @@ export class FloorPlanRenderer {
             this.selectedIlots = [mesh];
             this.outlinePass.selectedObjects = this.selectedIlots;
 
-            // Restore visual state â€” highlight selected, keep others at original
+            // Restore visual state Ã¢â‚¬â€ highlight selected, keep others at original
             this.ilotMeshes.forEach(m => {
                 if (m === mesh) {
                     m.material.color.set(0xd0e8ff);
@@ -2860,59 +2899,123 @@ export class FloorPlanRenderer {
         return fallback;
     }
 
-    _prepareDirectedCirculationPaths(circulationPaths, corridors, floorPlan) {
-        const output = [];
+    _flowSegmentKey(a, b, quantum = 0.05) {
+        const q = (n) => {
+            const v = Math.round((Number(n) || 0) / quantum) * quantum;
+            return Number(v.toFixed(3));
+        };
+        const ax = q(a?.x), ay = q(a?.y);
+        const bx = q(b?.x), by = q(b?.y);
+        const k1 = `${ax},${ay}|${bx},${by}`;
+        const k2 = `${bx},${by}|${ax},${ay}`;
+        return k1 < k2 ? k1 : k2;
+    }
 
-        // CRITICAL FIX: Use the circulationPaths from the API if available
-        // These paths include the connectivity fix (gap bridging) from the backend
-        if (Array.isArray(circulationPaths) && circulationPaths.length > 0) {
-            console.log(`[Circulation] Using ${circulationPaths.length} paths from API (with connectivity fix)`);
-            for (const cp of circulationPaths) {
-                if (!cp || !Array.isArray(cp.points) || cp.points.length < 2) continue;
+    _sanitizeApiDirectedPaths(circulationPaths) {
+        const result = [];
+        if (!Array.isArray(circulationPaths) || circulationPaths.length === 0) return result;
 
-                output.push({
-                    type: cp.type || 'ACCESS',
-                    onMainRoute: cp.type === 'SPINE' || cp.direction === 'vertical',
-                    flowValid: true,
-                    path: cp.points.map(p => ({ x: p.x, y: p.y })),
-                    arrows: [],
-                    allowOffCorridor: true,
-                    bidirectional: false,
-                    forceDraw: true
-                });
+        const unitRects = this._extractUnitRects ? this._extractUnitRects() : [];
+        const seen = new Set();
+
+        for (const cp of circulationPaths) {
+            if (!cp) continue;
+            const rawPath = Array.isArray(cp.points) && cp.points.length >= 2
+                ? cp.points
+                : (Array.isArray(cp.path) && cp.path.length >= 2 ? cp.path : null);
+            if (!rawPath) continue;
+
+            const normalizedPath = this._normalizePathPoints(rawPath.map((p) => ({
+                x: Number(p?.x ?? (Array.isArray(p) ? p[0] : NaN)),
+                y: Number(p?.y ?? (Array.isArray(p) ? p[1] : NaN))
+            })));
+            if (!normalizedPath || normalizedPath.length < 2) continue;
+
+            const cleaned = [normalizedPath[0]];
+            for (let i = 1; i < normalizedPath.length; i++) {
+                const a = cleaned[cleaned.length - 1];
+                const b = normalizedPath[i];
+                const len = Math.hypot((b?.x || 0) - (a?.x || 0), (b?.y || 0) - (a?.y || 0));
+                if (len < 0.08) continue;
+
+                let hitsUnit = false;
+                for (const r of unitRects) {
+                    if (this._segmentIntersectsRect(a.x, a.y, b.x, b.y, r, 0.05)) {
+                        hitsUnit = true;
+                        break;
+                    }
+                }
+                if (hitsUnit) continue;
+                cleaned.push(b);
             }
-            return output;
-        }
 
-        // Fallback: Generate paths from corridor rectangles if no circulationPaths provided
-        console.log(`[Circulation] Fallback: generating ${corridors?.length || 0} paths from corridor rectangles`);
-        for (const c of (corridors || [])) {
-            if (![c?.x, c?.y, c?.width, c?.height].every(Number.isFinite)) continue;
+            if (cleaned.length < 2) continue;
+            const segKeys = [];
+            for (let i = 0; i < cleaned.length - 1; i++) {
+                segKeys.push(this._flowSegmentKey(cleaned[i], cleaned[i + 1]));
+            }
+            if (segKeys.length === 0) continue;
+            const signature = segKeys.join('>');
+            if (seen.has(signature)) continue;
+            seen.add(signature);
 
-            // Aisles are usually E-W (horizontal), Spines are N-S (vertical).
-            const isH = c.direction === 'horizontal' || c.width >= c.height;
-
-            // Draw clean path continuously down the exact center of the bay empty space.
-            const cx = c.x + c.width / 2;
-            const cy = c.y + c.height / 2;
-
-            const path = isH
-                ? [{ x: c.x + 0.1, y: cy }, { x: c.x + c.width - 0.1, y: cy }]
-                : [{ x: cx, y: c.y + 0.1 }, { x: cx, y: c.y + c.height - 0.1 }];
-
-            output.push({
-                type: c.type || (isH ? 'ACCESS' : 'SPINE'),
-                onMainRoute: c.type === 'SPINE' || c.isSpine || !isH,
-                flowValid: true,
-                path: path,
-                arrows: [],
-                // This ensures renderer doesn't falsely filter out endpoints due to margin snapping bugs
-                allowOffCorridor: true,
-                bidirectional: false,
-                forceDraw: true
+            const rawType = String(cp.type || '').toUpperCase();
+            const rawDirection = String(cp.direction || '').toLowerCase();
+            result.push({
+                type: cp.type || 'ACCESS',
+                onMainRoute: cp.onMainRoute === true || rawType === 'SPINE' || rawDirection === 'vertical',
+                flowValid: cp.flowValid !== false,
+                path: cleaned,
+                arrows: Array.isArray(cp.arrows) ? cp.arrows : [],
+                allowOffCorridor: cp.allowOffCorridor === true,
+                bidirectional: cp.bidirectional === true,
+                forceDraw: cp.forceDraw === true
             });
         }
-        return output;
+        return result;
+    }
+
+    _prepareDirectedCirculationPaths(circulationPaths, corridors, floorPlan) {
+        const corridorCenterlines = this._getSimpleCorridorCenterlinePaths(corridors || []);
+        if (Array.isArray(circulationPaths) && circulationPaths.length > 0) {
+            const cleanedApi = this._sanitizeApiDirectedPaths(circulationPaths);
+            const segmentCount = cleanedApi.reduce((sum, p) => sum + Math.max(0, (p?.path?.length || 1) - 1), 0);
+            const corridorCount = Math.max(1, corridorCenterlines.length);
+            // Keep flow readable: when API graph is very dense, fallback to one centerline per corridor.
+            // This avoids local "red mesh" clusters while preserving hallway topology.
+            const denseByPathCount = cleanedApi.length > Math.max(320, corridorCount * 6);
+            const denseBySegmentCount = segmentCount > Math.max(520, corridorCount * 11);
+
+            if ((denseByPathCount || denseBySegmentCount) && corridorCenterlines.length > 0) {
+                console.log(
+                    `[Circulation] API paths too dense (${circulationPaths.length} raw / ${cleanedApi.length} cleaned, segments=${segmentCount}); using ${corridorCenterlines.length} corridor centerlines`
+                );
+                return corridorCenterlines;
+            }
+
+            if (cleanedApi.length > 0) {
+                console.log(`[Circulation] Using ${cleanedApi.length} cleaned paths from API`);
+                return cleanedApi;
+            }
+
+            if (corridorCenterlines.length > 0) {
+                console.log(`[Circulation] API paths invalid after cleanup; using ${corridorCenterlines.length} corridor centerlines`);
+                return corridorCenterlines;
+            }
+
+            return this._fallbackDirectedPathFromCorridors(corridors || [], floorPlan || {});
+        }
+
+        if (corridorCenterlines.length > 0) {
+            console.log(`[Circulation] Fallback: using ${corridorCenterlines.length} corridor centerlines`);
+            return corridorCenterlines;
+        }
+
+        const fallback = this._fallbackDirectedPathFromCorridors(corridors || [], floorPlan || {});
+        if (fallback.length > 0) {
+            console.log(`[Circulation] Fallback: using visit route (${fallback.length} path${fallback.length === 1 ? '' : 's'})`);
+        }
+        return fallback;
     }
 
     _renderDirectedCirculation(flowPaths, floorPlan, unitRects = [], corridors = []) {
@@ -2933,28 +3036,29 @@ export class FloorPlanRenderer {
             return;
         }
 
-        const simplifyForReference = !!(this.referenceRenderMode?.enabled && this.referenceRenderMode?.simplifyCirculation !== false);
+        // Keep circulation simplified by default to avoid dense arrow clutter.
+        const simplifyForReference = this.referenceRenderMode?.simplifyCirculation !== false;
 
-        // Clean solid light green line — matches reference PDF circulation rendering
-        const flowLineMaterial = new THREE.LineBasicMaterial({
-            color: 0x4caf50,   // light green matching reference
+        // Reference circulation style: red dashed lines.
+        const flowLineMaterial = new THREE.LineDashedMaterial({
+            color: 0xcc0000,
             transparent: true,
-            opacity: 0.75,
-            linewidth: 1
+            opacity: 0.8,
+            linewidth: 1,
+            dashSize: 0.42,
+            gapSize: 0.28
         });
         const bounds = floorPlan?.bounds || this.currentFloorPlan?.bounds || null;
         const spanX = bounds ? Math.abs(Number(bounds.maxX) - Number(bounds.minX)) : 40;
         const spanY = bounds ? Math.abs(Number(bounds.maxY) - Number(bounds.minY)) : 40;
         const planSpan = Number.isFinite(spanX) && Number.isFinite(spanY) ? Math.max(spanX, spanY) : 40;
-        const arrowSize = Math.max(0.15, Math.min(0.30, planSpan * 0.0075));
+        const arrowSize = Math.max(0.10, Math.min(0.20, planSpan * 0.0048));
         const arrowGeometry = new THREE.BufferGeometry();
         arrowGeometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array([
             -arrowSize * 0.70, -arrowSize * 0.42, 0,
             -arrowSize * 0.70, arrowSize * 0.42, 0,
             arrowSize * 0.78, 0, 0
         ]), 3));
-        const anchorRadius = Math.max(0.09, arrowSize * 0.85);
-        const anchorSegments = 20;
         const arrowOccupancy = new Set();
         const arrowKeySize = Math.max(0.10, arrowSize * 1.2);
         const renderedSegmentKeys = new Set();
@@ -2988,33 +3092,6 @@ export class FloorPlanRenderer {
             this._flowGroup.add(mesh);
             return true;
         };
-        const addAnchor = (pt, fillColor) => {
-            if (!pt || !Number.isFinite(pt.x) || !Number.isFinite(pt.y)) return false;
-
-            const disk = new THREE.Mesh(
-                new THREE.CircleGeometry(anchorRadius, anchorSegments),
-                new THREE.MeshBasicMaterial({ color: fillColor, transparent: true, opacity: 0.9, side: THREE.DoubleSide })
-            );
-            disk.position.set(pt.x, pt.y, 0.205);
-            this._flowGroup.add(disk);
-
-            const ringPts = [];
-            for (let i = 0; i <= anchorSegments; i++) {
-                const t = (Math.PI * 2 * i) / anchorSegments;
-                ringPts.push(new THREE.Vector3(
-                    pt.x + Math.cos(t) * (anchorRadius * 1.12),
-                    pt.y + Math.sin(t) * (anchorRadius * 1.12),
-                    0.207
-                ));
-            }
-            const ring = new THREE.Line(
-                new THREE.BufferGeometry().setFromPoints(ringPts),
-                new THREE.LineBasicMaterial({ color: 0x1f2937, transparent: true, opacity: 0.85 })
-            );
-            this._flowGroup.add(ring);
-            return true;
-        };
-
         const segmentPasses = (a, b, allowOffCorridor = false, forceDraw = false) => {
             if (forceDraw) return true;
             const len = Math.hypot(b.x - a.x, b.y - a.y);
@@ -3107,7 +3184,7 @@ export class FloorPlanRenderer {
                 if (len < 0.06) continue;
                 const ux = dx / len;
                 const uy = dy / len;
-                const extend = Math.min(0.08, len * 0.15);
+                const extend = Math.min(0.03, len * 0.08);
                 const line = new THREE.Line(
                     new THREE.BufferGeometry().setFromPoints([
                         new THREE.Vector3(a.x - ux * extend, a.y - uy * extend, 0.17),
@@ -3115,7 +3192,7 @@ export class FloorPlanRenderer {
                     ]),
                     flowLineMaterial
                 );
-                // No computeLineDistances needed — using solid LineBasicMaterial
+                line.computeLineDistances();
                 this._flowGroup.add(line);
                 renderedSegmentCount += 1;
             }
@@ -3147,7 +3224,7 @@ export class FloorPlanRenderer {
                 continue;
             }
 
-            const spacing = flow.onMainRoute ? 0.90 : 1.20;
+            const spacing = flow.onMainRoute ? 2.20 : 3.40;
             const isBidirectional = flow?.bidirectional === true;
             const laneOffset = isBidirectional ? 0.06 : 0;
             let carry = 0;
@@ -3173,7 +3250,7 @@ export class FloorPlanRenderer {
                     continue;
                 }
                 const dualAllowed = isBidirectional && segLen >= spacing * 1.35;
-                const maxArrowsPerSegment = flow.onMainRoute ? 5 : 2;
+                const maxArrowsPerSegment = flow.onMainRoute ? 2 : 1;
 
                 // Short segments get one clear center marker.
                 if (segLen <= spacing * 1.05) {
@@ -3228,12 +3305,6 @@ export class FloorPlanRenderer {
             }
         }
 
-        if (!simplifyForReference) {
-            const anchors = this._getEntrancePoints(floorPlan || {});
-            addAnchor(anchors?.entry, 0x1f2937);
-            addAnchor(anchors?.exit, 0x1f2937);
-        }
-
         this._flowStats = {
             paths: flowPaths.length,
             segments: renderedSegmentCount,
@@ -3260,6 +3331,21 @@ export class FloorPlanRenderer {
             if (child.geometry) child.geometry.dispose();
             this._disposeMaterial(child.material);
         }
+
+        // Single-pass circulation rendering to avoid duplicate overlays and arrow clusters.
+        const flowPaths = this._prepareDirectedCirculationPaths?.(
+            this.currentCirculationPaths,
+            corridorList,
+            activePlan
+        ) || [];
+        if (flowPaths.length > 0) {
+            const unitR = this._extractUnitRects ? this._extractUnitRects() : [];
+            this._renderDirectedCirculation(flowPaths, activePlan, unitR, corridorList);
+            console.log(`[Corridors] Rendered directed circulation only (${flowPaths.length} paths)`);
+            this.render();
+            return;
+        }
+        this._renderDirectedCirculation([], activePlan, [], corridorList);
 
         // Helper: clip a point to building bounds
         const clampToBounds = (x, y) => {
@@ -3306,7 +3392,7 @@ export class FloorPlanRenderer {
             }
         }
 
-        // ── Build obstacle rects for arrow/line clipping ──
+        // â”€â”€ Build obstacle rects for arrow/line clipping â”€â”€
         const obstacleRects = [];
         // Source 1: wall polygon bounding boxes (thick structural walls)
         for (const w of fpWalls) {
@@ -3462,17 +3548,6 @@ export class FloorPlanRenderer {
             }
         }
 
-        // Also render directed circulation if available
-        const flowPaths = this._prepareDirectedCirculationPaths?.(
-            this.currentCirculationPaths,
-            corridorList,
-            activePlan
-        );
-        if (flowPaths && flowPaths.length > 0) {
-            const unitR = this._extractUnitRects ? this._extractUnitRects() : [];
-            this._renderDirectedCirculation(flowPaths, activePlan, unitR, corridorList);
-        }
-
         console.log(`[Corridors] Rendered ${corridorList.length} corridors with clipped lines + arrows`);
         this.render();
     }
@@ -3556,7 +3631,7 @@ export class FloorPlanRenderer {
         }
         // Do not draw synthetic coverage square from bounds.
         // Only real envelope/wall geometry should define the outer boundary.
-        // â”€â”€ Wall/obstacle collision helper for arrows â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        // Ã¢â€â‚¬Ã¢â€â‚¬ Wall/obstacle collision helper for arrows Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
         const walls = floorPlan.walls || [];
         const forbiddenZones = floorPlan.forbiddenZones || [];
         const arrowWallTolerance = 0.4; // min distance from wall center to allow arrow
@@ -3588,10 +3663,10 @@ export class FloorPlanRenderer {
             return false;
         };
 
-        // (Dashed corridor centerlines removed â€” Final.pdf uses wave perimeters instead)
+        // (Dashed corridor centerlines removed Ã¢â‚¬â€ Final.pdf uses wave perimeters instead)
 
 
-        // â”€â”€ 8. RADIATOR GROUP (init for door blocks) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        // Ã¢â€â‚¬Ã¢â€â‚¬ 8. RADIATOR GROUP (init for door blocks) Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
         if (!this.radiatorsGroup) {
             this.radiatorsGroup = new THREE.Group();
             this.radiatorsGroup.name = 'radiators';
@@ -3604,7 +3679,7 @@ export class FloorPlanRenderer {
             this._disposeMaterial(child.material);
         }
 
-        // â”€â”€ 4. BOXES (white fills + partitions + door blocks) â”€â”€
+        // Ã¢â€â‚¬Ã¢â€â‚¬ 4. BOXES (white fills + partitions + door blocks) Ã¢â€â‚¬Ã¢â€â‚¬
         const showLabels = units.length <= 900;
 
         units.forEach((ilot, index) => {
@@ -3632,7 +3707,7 @@ export class FloorPlanRenderer {
             // Per-edge partition outlines (blue door-side, dark other sides)
             this._drawUnitPartitions(ilot, 0.07);
 
-            // Door blocks disabled — visual clutter at scale
+            // Door blocks disabled â€” visual clutter at scale
             // this._drawDoorBlocksForUnit(ilot, 0.14);
 
             // Professional CAD dimensions + area on every box
@@ -3641,13 +3716,13 @@ export class FloorPlanRenderer {
             }
         });
 
-        // ── 5. WALLS / ARCHITECTURAL CONTEXT ─────────────────────────────
+        // â”€â”€ 5. WALLS / ARCHITECTURAL CONTEXT â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         // Preserve default clean rendering; restore context only in explicit reference mode.
         if (showArchitectureContext) {
             this._renderCostoArchitecturalContext(floorPlan);
         }
 
-        // ── 6. FORBIDDEN ZONES ──────────────────────────────────────────
+        // â”€â”€ 6. FORBIDDEN ZONES â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         // Disabled: reference PDF shows clean white, no colored fills.
         // if (floorPlan.forbiddenZones && Array.isArray(floorPlan.forbiddenZones)) {
         //     floorPlan.forbiddenZones.forEach(fz => {
@@ -3666,16 +3741,16 @@ export class FloorPlanRenderer {
         //     });
         // }
 
-        // â”€â”€ 7. ENTRANCES (removed bright red markers to match PDF wall gaps) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        // Ã¢â€â‚¬Ã¢â€â‚¬ 7. ENTRANCES (removed bright red markers to match PDF wall gaps) Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
         // Intentionally skipping colored entrance lines to conform to PDF output style.
 
-        // ── 8. DOOR SYMBOLS on corridor-facing edges of each unit box ──────
+        // â”€â”€ 8. DOOR SYMBOLS on corridor-facing edges of each unit box â”€â”€â”€â”€â”€â”€
         this._renderDoorSymbols(units, corridors);
 
-        // ── 8b. RADIATOR COILS — DISABLED per user request ──
+        // â”€â”€ 8b. RADIATOR COILS â€” DISABLED per user request â”€â”€
         // this._renderPerimeterRadiators(units, floorPlan, corridors);
 
-        // ── 9. CORRIDOR PATHS (green arrows only, no dashed lines) ──
+        // â”€â”€ 9. CORRIDOR PATHS (reference-style red dashed circulation) â”€â”€
         this.renderCorridors(corridors, floorPlan);
 
         // -- Force PURE WHITE background: kill CSS gradients, grid pseudo-elements, and Three.js scene bg --
@@ -3712,7 +3787,7 @@ export class FloorPlanRenderer {
             this._removeSheetOverlay();
         }
 
-        // â”€â”€ FIT & RENDER â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        // Ã¢â€â‚¬Ã¢â€â‚¬ FIT & RENDER Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
         if (bounds) this.fitToBounds(bounds);
 
         console.log(`[COSTO Layout] Complete: ${units.length} boxes, ${corridors.length} corridors, ${radiators.length} radiators, ${circulationPaths.length} circulation`);
@@ -3724,8 +3799,8 @@ export class FloorPlanRenderer {
     }
 
     /**
-     * _drawNavigationOverlay â€” fire-map style global navigation overlay.
-     * Draws: ENTREE/SORTIE badges at doors, thick orange spine from entryâ†’exit,
+     * _drawNavigationOverlay Ã¢â‚¬â€ fire-map style global navigation overlay.
+     * Draws: ENTREE/SORTIE badges at doors, thick orange spine from entryÃ¢â€ â€™exit,
      * large orange chevron arrows along the spine.
      */
     _drawNavigationOverlay(floorPlan, layoutData) {
@@ -3835,7 +3910,7 @@ export class FloorPlanRenderer {
             exitPos = { x: bounds.maxX, y: bounds.maxY };
         }
 
-        // No ENTREE/SORTIE badges â€” not needed on canvas view
+        // No ENTREE/SORTIE badges Ã¢â‚¬â€ not needed on canvas view
         const planSpanNav = Math.max((bounds.maxX - bounds.minX), (bounds.maxY - bounds.minY), 10);
 
         // Reference: red dashed circulation (ligne circulation)
@@ -3891,7 +3966,7 @@ export class FloorPlanRenderer {
      * Matches "Expected output MUST.jpg" exactly.
      */
     _drawCostoSheetOverlay(bounds, units, config = {}) {
-        // DISABLED: No PDF sheet overlay on the UI — clean grid view only
+        // DISABLED: No PDF sheet overlay on the UI â€” clean grid view only
         return;
 
         const cfg = {
@@ -3913,7 +3988,7 @@ export class FloorPlanRenderer {
         const maxY = bounds.maxY + margin;
         const W = maxX - minX;
 
-        // â”€â”€ Green double border â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        // Ã¢â€â‚¬Ã¢â€â‚¬ Green double border Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
         const greenMat = new THREE.LineBasicMaterial({ color: 0x2e7d32 });
         const drawRect = (x1, y1, x2, y2, mat, grp) => {
             const pts = [
@@ -3926,7 +4001,7 @@ export class FloorPlanRenderer {
         drawRect(minX, minY, maxX, maxY, greenMat, overlay);
         drawRect(minX + 0.3, minY + 0.3, maxX - 0.3, maxY - 0.3, greenMat, overlay);
 
-        // â”€â”€ Horizontal title bar separator â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        // Ã¢â€â‚¬Ã¢â€â‚¬ Horizontal title bar separator Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
         const barH = 5.0;
         const barTopY = minY + barH;
         overlay.add(new THREE.Line(
@@ -3936,7 +4011,7 @@ export class FloorPlanRenderer {
             ]), greenMat
         ));
 
-        // â”€â”€ Page number box (bottom-left) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        // Ã¢â€â‚¬Ã¢â€â‚¬ Page number box (bottom-left) Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
         const pageBoxW = 5;
         overlay.add(new THREE.Line(
             new THREE.BufferGeometry().setFromPoints([
@@ -3949,20 +4024,20 @@ export class FloorPlanRenderer {
         pageNum.scale.set(1.5, 1.5, 1);
         overlay.add(pageNum);
 
-        // â”€â”€ PLAN ETAGE 01 label (bottom bar, left) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        // Ã¢â€â‚¬Ã¢â€â‚¬ PLAN ETAGE 01 label (bottom bar, left) Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
         const pe1 = this.createTextSprite(primaryTitle, { fontSize: 22, fontColor: '#000000', backgroundColor: 'transparent' });
         pe1.position.set(minX + pageBoxW + 14, minY + barH / 2, 0.25);
         pe1.scale.set(2.2, 1.2, 1);
         overlay.add(pe1);
 
-        // â”€â”€ "SURFACES DES BOX" center label â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        // Ã¢â€â‚¬Ã¢â€â‚¬ "SURFACES DES BOX" center label Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
         const total_area = units.reduce((s, u) => s + (u.area || u.width * u.height || 0), 0);
         const surfLabel = this.createTextSprite(footerLabel, { fontSize: 26, fontColor: '#000000', backgroundColor: 'transparent' });
         surfLabel.position.set((minX + maxX) / 2, minY + barH / 2, 0.25);
         surfLabel.scale.set(2.5, 1.4, 1);
         overlay.add(surfLabel);
 
-        // â”€â”€ PLAN ETAGE 02 label (right-center of bar) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        // Ã¢â€â‚¬Ã¢â€â‚¬ PLAN ETAGE 02 label (right-center of bar) Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
         const rightSepX = maxX - 22;
         overlay.add(new THREE.Line(
             new THREE.BufferGeometry().setFromPoints([
@@ -3975,7 +4050,7 @@ export class FloorPlanRenderer {
         pe2.scale.set(2.0, 1.1, 1);
         overlay.add(pe2);
 
-        // â”€â”€ Company info (bottom-right) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        // Ã¢â€â‚¬Ã¢â€â‚¬ Company info (bottom-right) Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
         const coSepX = maxX - 18;
         overlay.add(new THREE.Line(
             new THREE.BufferGeometry().setFromPoints([
@@ -3990,19 +4065,19 @@ export class FloorPlanRenderer {
             overlay.add(lbl);
         });
 
-        // â”€â”€ PLAN ETAGE 02 title at top-right â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        // Ã¢â€â‚¬Ã¢â€â‚¬ PLAN ETAGE 02 title at top-right Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
         const pe2Top = this.createTextSprite(secondaryTitle, { fontSize: 22, fontColor: '#000000', backgroundColor: 'transparent' });
         pe2Top.position.set(bounds.maxX + 8, maxY - 2.5, 0.25);
         pe2Top.scale.set(2.2, 1.2, 1);
         overlay.add(pe2Top);
 
-        // â”€â”€ SP Area label â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-        const spLabel = this.createTextSprite(`SP : ${total_area.toFixed(2)}mÂ²`, { fontSize: 18, fontColor: '#1565c0', backgroundColor: 'transparent' });
+        // Ã¢â€â‚¬Ã¢â€â‚¬ SP Area label Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+        const spLabel = this.createTextSprite(`SP : ${total_area.toFixed(2)}mÃ‚Â²`, { fontSize: 18, fontColor: '#1565c0', backgroundColor: 'transparent' });
         spLabel.position.set(bounds.maxX + 8, maxY - 20, 0.25);
         spLabel.scale.set(1.8, 1.0, 1);
         overlay.add(spLabel);
 
-        // â”€â”€ Legend (top-left of plan) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        // Ã¢â€â‚¬Ã¢â€â‚¬ Legend (top-left of plan) Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
         const legX = bounds.minX + 2, legY = maxY - 3;
         // Compass rose (simplified N arrow)
         const compMat = new THREE.LineBasicMaterial({ color: 0x000000 });
@@ -4044,7 +4119,7 @@ export class FloorPlanRenderer {
         const tg = this.createTextSprite('Ligne circulation', { fontSize: 13, fontColor: '#374151', backgroundColor: 'transparent' });
         tg.position.set(legX + 7, entryLegY - 1.4, 0.25); tg.scale.set(1.8, 0.7, 1); overlay.add(tg);
 
-        // Radiateur (circular coil sample ┤○○○○○├ matching reference legend)
+        // Radiateur (circular coil sample â”¤â—‹â—‹â—‹â—‹â—‹â”œ matching reference legend)
         const radMat = new THREE.LineBasicMaterial({ color: 0xd90014 });
         // Bracket end-caps
         overlay.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints([
@@ -4053,7 +4128,7 @@ export class FloorPlanRenderer {
         overlay.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints([
             new THREE.Vector3(legX + 3, entryLegY - 2.55, 0.2), new THREE.Vector3(legX + 3, entryLegY - 3.05, 0.2)
         ]), radMat));
-        // Circular loops ○○○○○
+        // Circular loops â—‹â—‹â—‹â—‹â—‹
         const coilR = 0.22;
         for (let ci = 0; ci < 5; ci++) {
             const cx = legX + 0.3 + ci * 0.55;
@@ -4079,7 +4154,7 @@ export class FloorPlanRenderer {
 
     /**
      * COSTO-style perimeter circulation: clean dashed outlines around row clusters
-     * NO ZIGZAG â€” matches reference style with clean lines
+     * NO ZIGZAG Ã¢â‚¬â€ matches reference style with clean lines
      */
     renderPerimeterCirculation(ilots, bounds) {
         if (!ilots || ilots.length === 0) return;
@@ -4713,7 +4788,7 @@ export class FloorPlanRenderer {
         ctx.fillStyle = 'black';
         ctx.font = '24px Arial';
         ctx.textAlign = 'center';
-        ctx.fillText(`${area.toFixed(2)}mÂ²`, 128, 40);
+        ctx.fillText(`${area.toFixed(2)}mÃ‚Â²`, 128, 40);
 
         const texture = new THREE.CanvasTexture(canvas);
         const spriteMaterial = new THREE.SpriteMaterial({ map: texture });
@@ -4751,7 +4826,7 @@ export class FloorPlanRenderer {
         ctx.fillStyle = 'black';
         ctx.font = '24px Arial';
         ctx.textAlign = 'center';
-        ctx.fillText(`${angle.toFixed(1)}Â°`, 128, 40);
+        ctx.fillText(`${angle.toFixed(1)}Ã‚Â°`, 128, 40);
 
         const texture = new THREE.CanvasTexture(canvas);
         const spriteMaterial = new THREE.SpriteMaterial({ map: texture });
@@ -4818,7 +4893,7 @@ export class FloorPlanRenderer {
         const startAngle = Math.atan2(p1.y - vertex.y, p1.x - vertex.x);
         const endAngle = Math.atan2(p2.y - vertex.y, p2.x - vertex.x);
         const arcAngle = endAngle - startAngle;
-        const numPoints = Math.max(10, Math.floor(Math.abs(arcAngle) / (Math.PI / 18))); // 10Â° segments
+        const numPoints = Math.max(10, Math.floor(Math.abs(arcAngle) / (Math.PI / 18))); // 10Ã‚Â° segments
 
         for (let i = 0; i <= numPoints; i++) {
             const t = i / numPoints;
@@ -5134,7 +5209,7 @@ export class FloorPlanRenderer {
         if (!group || !floorPlan) return;
 
         // Match reference style: black walls, red entrances, blue forbidden zones
-        const wallColor = options.color || 0x000000; // Black walls like reference "TÃ´le Blanche"
+        const wallColor = options.color || 0x000000; // Black walls like reference "TÃƒÂ´le Blanche"
         const highlight = !!options.highlight;
         const entranceColor = options.entranceColor || 0xff0000; // Red entrances
         const forbiddenColor = options.forbiddenColor || 0x0000ff; // Blue forbidden zones

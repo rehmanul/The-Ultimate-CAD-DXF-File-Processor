@@ -1,0 +1,397 @@
+{
+  "bounds": {
+    "minX": 0,
+    "minY": 0,
+    "maxX": 41.67216376225731,
+    "maxY": 41.67434118508788,
+    "width": 41.67216376225731,
+    "height": 41.67434118508788,
+    "area": 1736.6599705491667
+  },
+  "corridors": [
+    {
+      "type": "ACCESS",
+      "direction": "horizontal",
+      "x": 0.06,
+      "y": 1.96,
+      "width": 14.31428551825474,
+      "height": 1.2,
+      "id": "corridor_0"
+    },
+    {
+      "type": "ACCESS",
+      "direction": "horizontal",
+      "x": 14.588285518255729,
+      "y": 1.96,
+      "width": 21.160522506047386,
+      "height": 1.2,
+      "id": "corridor_1"
+    },
+    {
+      "type": "ACCESS",
+      "direction": "horizontal",
+      "x": 35.937024741305244,
+      "y": 1.96,
+      "width": 3.195999999998854,
+      "height": 1.2,
+      "id": "corridor_2"
+    },
+    {
+      "type": "ACCESS",
+      "direction": "horizontal",
+      "x": 39.37280803701375,
+      "y": 1.96,
+      "width": 1.6209999999995048,
+      "height": 1.2,
+      "id": "corridor_3"
+    },
+    {
+      "type": "ACCESS",
+      "direction": "horizontal",
+      "isMainHallway": true,
+      "x": 14.84928551825533,
+      "y": 0.24,
+      "width": 20.638522506047792,
+      "height": 1.2,
+      "id": "corridor_4"
+    },
+    {
+      "type": "ACCESS",
+      "direction": "horizontal",
+      "isMainHallway": true,
+      "x": 14.84928551825573,
+      "y": 0.96,
+      "width": 6.01899999999906,
+      "height": 1.2,
+      "id": "corridor_5"
+    },
+    {
+      "type": "ACCESS",
+      "direction": "horizontal",
+      "isMainHallway": true,
+      "x": 21.60498359686602,
+      "y": 0.96,
+      "width": 13.8828244274371,
+      "height": 1.2,
+      "id": "corridor_6"
+    },
+    {
+      "type": "ACCESS",
+      "direction": "horizontal",
+      "isMainHallway": true,
+      "x": 9.7,
+      "y": 12.480000000000002,
+      "width": 5.290000000000001,
+      "height": 1.2,
+      "id": "corridor_7"
+    },
+    {
+      "type": "ACCESS",
+      "direction": "vertical",
+      "isMainHallway": true,
+      "x": 2.4,
+      "y": 0.24,
+      "width": 1.2,
+      "height": 2.95,
+      "id": "corridor_8"
+    },
+    {
+      "type": "ACCESS",
+      "direction": "vertical",
+      "isMainHallway": true,
+      "x": 14.640000000000004,
+      "y": 0.24,
+      "width": 1.2,
+      "height": 2.95,
+      "id": "corridor_9"
+    },
+    {
+      "type": "ACCESS",
+      "direction": "vertical",
+      "isMainHallway": true,
+      "x": 15.360000000000005,
+      "y": 0.24,
+      "width": 1.2,
+      "height": 2.95,
+      "id": "corridor_10"
+    },
+    {
+      "type": "ACCESS",
+      "direction": "vertical",
+      "isMainHallway": true,
+      "x": 16.080000000000005,
+      "y": 0.24,
+      "width": 1.2,
+      "height": 2.95,
+      "id": "corridor_11"
+    },
+    {
+      "type": "ACCESS",
+      "direction": "vertical",
+      "isMainHallway": true,
+      "x": 16.800000000000004,
+      "y": 0.24,
+      "width": 1.2,
+      "height": 2.95,
+      "id": "corridor_12"
+    },
+    {
+      "type": "ACCESS",
+      "direction": "vertical",
+      "isMainHallway": true,
+      "x": 17.520000000000003,
+      "y": 0.24,
+      "width": 1.2,
+      "height": 2.95,
+      "id": "corridor_13"
+    },
+    {
+      "type": "ACCESS",
+      "direction": "vertical",
+      "isMainHallway": true,
+      "x": 18.240000000000002,
+      "y": 0.24,
+      "width": 1.2,
+      "height": 2.95,
+      "id": "corridor_14"
+    },
+    {
+      "type": "ACCESS",
+      "direction": "vertical",
+      "isMainHallway": true,
+      "x": 18.96,
+      "y": 0.24,
+      "width": 1.2,
+      "height": 2.95,
+      "id": "corridor_15"
+    },
+    {
+      "type": "ACCESS",
+      "direction": "vertical",
+      "isMainHallway": true,
+      "x": 19.68,
+      "y": 0.24,
+      "width": 1.2,
+      "height": 2.95,
+      "id": "corridor_16"
+    },
+    {
+      "type": "ACCESS",
+      "direction": "vertical",
+      "isMainHallway": true,
+      "x": 21.839999999999996,
+      "y": 0.24,
+      "width": 1.2,
+      "height": 2.95,
+      "id": "corridor_17"
+    },
+    {
+      "type": "ACCESS",
+      "direction": "vertical",
+      "isMainHallway": true,
+      "x": 22.559999999999995,
+      "y": 0.24,
+      "width": 1.2,
+      "height": 2.95,
+      "id": "corridor_18"
+    },
+    {
+      "type": "ACCESS",
+      "direction": "vertical",
+      "isMainHallway": true,
+      "x": 23.279999999999994,
+      "y": 0.24,
+      "width": 1.2,
+      "height": 2.95,
+      "id": "corridor_19"
+    },
+    {
+      "type": "ACCESS",
+      "direction": "vertical",
+      "isMainHallway": true,
+      "x": 23.999999999999993,
+      "y": 0.24,
+      "width": 1.2,
+      "height": 2.95,
+      "id": "corridor_20"
+    },
+    {
+      "type": "ACCESS",
+      "direction": "vertical",
+      "isMainHallway": true,
+      "x": 24.71999999999999,
+      "y": 0.24,
+      "width": 1.2,
+      "height": 2.95,
+      "id": "corridor_21"
+    },
+    {
+      "type": "ACCESS",
+      "direction": "vertical",
+      "isMainHallway": true,
+      "x": 25.43999999999999,
+      "y": 0.24,
+      "width": 1.2,
+      "height": 2.95,
+      "id": "corridor_22"
+    },
+    {
+      "type": "ACCESS",
+      "direction": "vertical",
+      "isMainHallway": true,
+      "x": 26.15999999999999,
+      "y": 0.24,
+      "width": 1.2,
+      "height": 2.95,
+      "id": "corridor_23"
+    },
+    {
+      "type": "ACCESS",
+      "direction": "vertical",
+      "isMainHallway": true,
+      "x": 26.87999999999999,
+      "y": 0.24,
+      "width": 1.2,
+      "height": 2.95,
+      "id": "corridor_24"
+    },
+    {
+      "type": "ACCESS",
+      "direction": "vertical",
+      "isMainHallway": true,
+      "x": 27.599999999999987,
+      "y": 0.24,
+      "width": 1.2,
+      "height": 2.95,
+      "id": "corridor_25"
+    },
+    {
+      "type": "ACCESS",
+      "direction": "vertical",
+      "isMainHallway": true,
+      "x": 28.319999999999986,
+      "y": 0.24,
+      "width": 1.2,
+      "height": 2.95,
+      "id": "corridor_26"
+    },
+    {
+      "type": "ACCESS",
+      "direction": "vertical",
+      "isMainHallway": true,
+      "x": 29.039999999999985,
+      "y": 0.24,
+      "width": 1.2,
+      "height": 2.95,
+      "id": "corridor_27"
+    },
+    {
+      "type": "ACCESS",
+      "direction": "vertical",
+      "isMainHallway": true,
+      "x": 29.759999999999984,
+      "y": 0.24,
+      "width": 1.2,
+      "height": 2.95,
+      "id": "corridor_28"
+    },
+    {
+      "type": "ACCESS",
+      "direction": "vertical",
+      "isMainHallway": true,
+      "x": 30.479999999999983,
+      "y": 0.24,
+      "width": 1.2,
+      "height": 2.95,
+      "id": "corridor_29"
+    },
+    {
+      "type": "ACCESS",
+      "direction": "vertical",
+      "isMainHallway": true,
+      "x": 31.19999999999998,
+      "y": 0.24,
+      "width": 1.2,
+      "height": 2.95,
+      "id": "corridor_30"
+    },
+    {
+      "type": "ACCESS",
+      "direction": "vertical",
+      "isMainHallway": true,
+      "x": 31.91999999999998,
+      "y": 0.24,
+      "width": 1.2,
+      "height": 2.95,
+      "id": "corridor_31"
+    },
+    {
+      "type": "ACCESS",
+      "direction": "vertical",
+      "isMainHallway": true,
+      "x": 32.63999999999998,
+      "y": 0.24,
+      "width": 1.2,
+      "height": 2.95,
+      "id": "corridor_32"
+    },
+    {
+      "type": "ACCESS",
+      "direction": "vertical",
+      "isMainHallway": true,
+      "x": 33.35999999999998,
+      "y": 0.24,
+      "width": 1.2,
+      "height": 2.95,
+      "id": "corridor_33"
+    },
+    {
+      "type": "ACCESS",
+      "direction": "vertical",
+      "isMainHallway": true,
+      "x": 34.07999999999998,
+      "y": 0.24,
+      "width": 1.2,
+      "height": 2.95,
+      "id": "corridor_34"
+    },
+    {
+      "type": "ACCESS",
+      "direction": "vertical",
+      "isMainHallway": true,
+      "x": 36.239999999999974,
+      "y": 0.24,
+      "width": 1.2,
+      "height": 2.95,
+      "id": "corridor_35"
+    },
+    {
+      "type": "ACCESS",
+      "direction": "vertical",
+      "x": 36.86,
+      "y": 0,
+      "width": 1.2,
+      "height": 3.056,
+      "isGapFiller": true,
+      "id": "corridor_36"
+    },
+    {
+      "x": 33.67,
+      "y": 34.2,
+      "width": 5.650000000000006,
+      "height": 1.2,
+      "direction": "horizontal",
+      "type": "supplemental_gap_grid",
+      "id": "corridor_37"
+    },
+    {
+      "x": 12.825000000000001,
+      "y": 26.012399416823378,
+      "width": 1.2,
+      "height": 2.1076005831766267,
+      "direction": "vertical",
+      "type": "supplemental_gap_grid",
+      "id": "corridor_38"
+    }
+  ]
+}
