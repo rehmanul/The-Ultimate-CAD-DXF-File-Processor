@@ -1,6 +1,6 @@
 {
   "inputFile": "Test2.dxf",
-  "fileSizeMB": "0.57",
+  "fileSizeMB": "0.52",
   "walls": 1060,
   "rooms": 21,
   "boxes": 292,
@@ -8,5 +8,5 @@
   "radiators": 197,
   "circulationPaths": 1093,
   "totalArea": 1039.014999999998,
-  "generatedAt": "2026-03-06T11:34:15.127Z"
+  "generatedAt": "2026-03-15T14:15:08.051Z"
 }
