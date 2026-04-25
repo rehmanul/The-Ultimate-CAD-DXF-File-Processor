@@ -246,6 +246,7 @@ function initializeModules() {
     // Initialize Edit Tools (requires renderer)
     if (hasRenderer) {
         initializeEditTools();
+        initializeCorridorEditTools();
         initializeLayerToggles();
         initializeAutosave();
     }
@@ -2619,7 +2620,7 @@ async function generateAllCosto() {
                 renderer.setReferenceRenderMode(true, {
                     showArchitectureContext: true,
                     simplifyCirculation: true,
-                    showLayoutOverlay: true
+                    showLayoutOverlay: false
                 }, false); // Pass false to skip immediate re-render
             }
             if (typeof renderer.setLayoutOverlayConfig === 'function') {
@@ -2633,7 +2634,7 @@ async function generateAllCosto() {
                 }, false); // Pass false to skip immediate re-render
             }
             if (typeof renderer.setLayoutOverlayVisible === 'function') {
-                renderer.setLayoutOverlayVisible(true, false); // Pass false to skip immediate re-render
+                renderer.setLayoutOverlayVisible(false, false); // Pass false to skip immediate re-render
             }
 
             // Now render once with all configurations applied
@@ -2898,6 +2899,16 @@ async function generateIlots() {
 
             // Draw the COMPLETE professional plan in one shot
             if (renderer && typeof renderer.renderCostoLayout === 'function') {
+                if (typeof renderer.setReferenceRenderMode === 'function') {
+                    renderer.setReferenceRenderMode(true, {
+                        showArchitectureContext: true,
+                        simplifyCirculation: true,
+                        showLayoutOverlay: false
+                    }, false);
+                }
+                if (typeof renderer.setLayoutOverlayVisible === 'function') {
+                    renderer.setLayoutOverlayVisible(false, false);
+                }
                 renderer.renderCostoLayout(currentFloorPlan, {
                     units: generatedIlots,
                     corridors: corridorNetwork,
@@ -4352,6 +4363,625 @@ function initializeEditTools() {
                 }
             }
         }
+    });
+
+    // ── Advanced Edit Tools ──
+
+    // Add Box button
+    const addBoxBtn = document.getElementById('addBoxBtn');
+    if (addBoxBtn && editor) {
+        addBoxBtn.addEventListener('click', () => {
+            const wasActive = editor._addMode;
+            editor.setAddMode(!wasActive);
+            addBoxBtn.classList.toggle('active', !wasActive);
+            showNotification(!wasActive ? 'Add Box mode: click on canvas to place' : 'Add Box mode disabled', 'info');
+        });
+        // Wire up onIlotAdded callback
+        editor.onIlotAdded = (newIlot) => {
+            generatedIlots.push(newIlot);
+            renderer.renderIlots(generatedIlots);
+            updateLegendTable();
+            updateStats();
+            addBoxBtn.classList.remove('active');
+            showNotification('New box placed', 'success');
+        };
+    }
+
+    // Duplicate button
+    const dupBtn = document.getElementById('duplicateBoxBtn');
+    if (dupBtn && editor) {
+        dupBtn.addEventListener('click', () => {
+            if (!renderer?.selectedIlots?.length) {
+                showNotification('Select a unit to duplicate', 'warning');
+                return;
+            }
+            const dup = editor.duplicateSelected();
+            if (dup) {
+                generatedIlots.push(dup);
+                renderer.renderIlots(generatedIlots);
+                updateLegendTable();
+                updateStats();
+                showNotification('Unit duplicated', 'success');
+            }
+        });
+    }
+
+    // Delete button
+    const deleteBtn = document.getElementById('deleteBoxBtn');
+    if (deleteBtn) {
+        deleteBtn.addEventListener('click', () => {
+            if (!renderer?.selectedIlots?.length) {
+                showNotification('Select a unit to delete', 'warning');
+                return;
+            }
+            const mesh = renderer.selectedIlots[0];
+            const ilot = mesh?.userData?.ilot;
+            const idx = mesh?.userData?.index;
+            if (ilot?.locked) {
+                showNotification('Cannot delete locked unit', 'warning');
+                return;
+            }
+            if (typeof idx === 'number' && idx >= 0) {
+                generatedIlots.splice(idx, 1);
+                renderer.renderIlots(generatedIlots);
+                updateLegendTable();
+                updateStats();
+                showNotification('Unit deleted', 'success');
+            }
+        });
+    }
+
+    // Resize Mode button
+    const resizeBtn = document.getElementById('resizeModeBtn');
+    if (resizeBtn && editor) {
+        resizeBtn.addEventListener('click', () => {
+            const isResize = editor.editMode !== 'resize';
+            editor.setMode(isResize ? 'resize' : 'translate');
+            resizeBtn.classList.toggle('active', isResize);
+            showNotification(isResize ? 'Resize mode: drag box edges' : 'Translate mode', 'info');
+        });
+    }
+
+    // Copy button
+    const copyBtn = document.getElementById('copyBoxBtn');
+    if (copyBtn && editor) {
+        copyBtn.addEventListener('click', () => {
+            if (!renderer?.selectedIlots?.length) {
+                showNotification('Select a unit to copy', 'warning');
+                return;
+            }
+            editor._copyToClipboard();
+            showNotification('Unit copied to clipboard', 'info');
+        });
+    }
+
+    // Paste button
+    const pasteBtn = document.getElementById('pasteBoxBtn');
+    if (pasteBtn && editor) {
+        pasteBtn.addEventListener('click', () => {
+            if (!editor._clipboard) {
+                showNotification('Nothing to paste — copy a unit first', 'warning');
+                return;
+            }
+            editor._pasteFromClipboard();
+            showNotification('Unit pasted', 'success');
+        });
+    }
+
+    // Alignment buttons
+    ['Left','Right','Top','Bottom'].forEach(dir => {
+        const btn = document.getElementById(`align${dir}Btn`);
+        if (btn && editor) {
+            btn.addEventListener('click', () => {
+                editor.alignSelected(dir.toLowerCase());
+                showNotification(`Aligned ${dir.toLowerCase()}`, 'info');
+            });
+        }
+    });
+
+    // ── ADVANCED TOOLS WIRING ──
+
+    // Rotate 90°
+    const rotate90Btn = document.getElementById('rotate90Btn');
+    if (rotate90Btn && editor) {
+        rotate90Btn.addEventListener('click', () => {
+            const count = editor.rotate90();
+            if (count) {
+                renderer.renderIlots(generatedIlots);
+                updateStats();
+                showNotification(`Rotated ${count} box(es) 90°`, 'success');
+            } else {
+                showNotification('Select a box to rotate', 'warning');
+            }
+        });
+    }
+
+    // Mirror Horizontal
+    const flipHBtn = document.getElementById('flipHBtn');
+    if (flipHBtn && editor) {
+        flipHBtn.addEventListener('click', () => {
+            const count = editor.mirrorHorizontal(generatedIlots);
+            if (count) {
+                renderer.renderIlots(generatedIlots);
+                showNotification(`Mirrored ${count} box(es)`, 'success');
+            } else {
+                showNotification('Select boxes to mirror', 'warning');
+            }
+        });
+    }
+
+    // Wall Snap toggle
+    const wallSnapBtn = document.getElementById('wallSnapBtn');
+    if (wallSnapBtn && editor) {
+        wallSnapBtn.addEventListener('click', () => {
+            editor.wallSnapping = !editor.wallSnapping;
+            wallSnapBtn.classList.toggle('active', editor.wallSnapping);
+            showNotification(editor.wallSnapping ? 'Wall snap ON' : 'Wall snap OFF', 'info');
+        });
+    }
+
+    // Rubber-band select
+    const rubberBandBtn = document.getElementById('rubberBandBtn');
+    if (rubberBandBtn && editor) {
+        rubberBandBtn.addEventListener('click', () => {
+            const active = !editor._rbMode;
+            editor.setRubberBandMode(active);
+            rubberBandBtn.classList.toggle('active', active);
+            showNotification(active ? 'Rectangle select ON — drag on canvas' : 'Rectangle select OFF', 'info');
+        });
+    }
+
+    // Select Row
+    const selectRowBtn = document.getElementById('selectRowBtn');
+    if (selectRowBtn && editor) {
+        selectRowBtn.addEventListener('click', () => {
+            if (!renderer?.selectedIlots?.length) {
+                showNotification('Select a box first, then click Select Row', 'warning');
+                return;
+            }
+            editor.selectedMesh = renderer.selectedIlots[0];
+            const selected = editor.selectRow(renderer.ilotMeshes || []);
+            showNotification(`Selected ${selected.length} boxes in row`, 'info');
+        });
+    }
+
+    // Select All
+    const selectAllBtn = document.getElementById('selectAllBtn');
+    if (selectAllBtn && editor) {
+        selectAllBtn.addEventListener('click', () => {
+            editor.selectedMeshes = [...(renderer.ilotMeshes || [])];
+            if (editor.selectedMeshes.length) editor.selectedMesh = editor.selectedMeshes[0];
+            showNotification(`Selected ${editor.selectedMeshes.length} boxes`, 'info');
+        });
+    }
+
+    // Delete Selected (multiple)
+    const deleteSelectedBtn = document.getElementById('deleteSelectedBtn');
+    if (deleteSelectedBtn && editor) {
+        deleteSelectedBtn.addEventListener('click', () => {
+            const result = editor.deleteMultiple(generatedIlots);
+            if (result.deletedCount) {
+                generatedIlots.length = 0;
+                generatedIlots.push(...result.remaining);
+                renderer.renderIlots(generatedIlots);
+                updateLegendTable();
+                updateStats();
+                showNotification(`Deleted ${result.deletedCount} boxes`, 'success');
+            } else {
+                showNotification('Select boxes to delete', 'warning');
+            }
+        });
+    }
+
+    // Helper to read gen params
+    function _getGenParams() {
+        return {
+            boxW: parseFloat(document.getElementById('genBoxW')?.value) || 2.90,
+            boxH: parseFloat(document.getElementById('genBoxH')?.value) || 1.20,
+            corrW: parseFloat(document.getElementById('genCorrW')?.value) || 1.20,
+            gap: parseFloat(document.getElementById('genGap')?.value) || 0
+        };
+    }
+
+    // Fill Row
+    const fillRowBtn = document.getElementById('fillRowBtn');
+    if (fillRowBtn && editor) {
+        fillRowBtn.addEventListener('click', () => {
+            if (!currentFloorPlan?.bounds) { showNotification('Upload a floor plan first', 'warning'); return; }
+            const b = currentFloorPlan.bounds;
+            const p = _getGenParams();
+            let y = b.minY;
+            if (renderer?.selectedIlots?.length) {
+                y = renderer.selectedIlots[0].userData?.ilot?.y ?? b.minY;
+            }
+            const row = editor.generateRow(b.minX, b.maxX, y, p.boxW, p.boxH, p.gap);
+            generatedIlots.push(...row);
+            renderer.renderIlots(generatedIlots);
+            updateStats();
+            showNotification(`Row: ${row.length} boxes at Y=${y.toFixed(1)}`, 'success');
+        });
+    }
+
+    // Fill Gaps
+    const fillGapsBtn = document.getElementById('fillGapsBtn');
+    if (fillGapsBtn && editor) {
+        fillGapsBtn.addEventListener('click', () => {
+            if (!currentFloorPlan?.bounds || !generatedIlots.length) {
+                showNotification('Need floor plan and existing boxes', 'warning'); return;
+            }
+            const p = _getGenParams();
+            const newBoxes = editor.fillGaps(generatedIlots, p.boxW, p.boxH, currentFloorPlan.bounds);
+            generatedIlots.push(...newBoxes);
+            renderer.renderIlots(generatedIlots);
+            updateStats();
+            showNotification(`Filled ${newBoxes.length} gap boxes`, 'success');
+        });
+    }
+
+    // Clear Area (click two corners)
+    let _clearAreaState = null;
+    const clearAreaBtn = document.getElementById('clearAreaBtn');
+    if (clearAreaBtn && editor) {
+        clearAreaBtn.addEventListener('click', () => {
+            if (_clearAreaState) {
+                _clearAreaState = null;
+                clearAreaBtn.classList.remove('active');
+                showNotification('Clear area cancelled', 'info');
+                return;
+            }
+            _clearAreaState = { step: 0 };
+            clearAreaBtn.classList.add('active');
+            showNotification('Click first corner on canvas...', 'info');
+            const canvas = renderer._canvas;
+            const handler = (evt) => {
+                const cam = renderer.camera;
+                const rect = canvas.getBoundingClientRect();
+                const vw = cam.orthoRight - cam.orthoLeft;
+                const vh = cam.orthoTop - cam.orthoBottom;
+                const wx = cam.orthoLeft + ((evt.clientX - rect.left) / rect.width) * vw;
+                const wy = cam.orthoTop - ((evt.clientY - rect.top) / rect.height) * vh;
+
+                if (_clearAreaState.step === 0) {
+                    _clearAreaState.x1 = wx;
+                    _clearAreaState.y1 = wy;
+                    _clearAreaState.step = 1;
+                    showNotification('Click second corner...', 'info');
+                } else {
+                    const result = editor.clearArea(generatedIlots, _clearAreaState.x1, _clearAreaState.y1, wx, wy);
+                    generatedIlots.length = 0;
+                    generatedIlots.push(...result.kept);
+                    renderer.renderIlots(generatedIlots);
+                    updateStats();
+                    showNotification(`Cleared ${result.removedCount} boxes`, 'success');
+                    _clearAreaState = null;
+                    clearAreaBtn.classList.remove('active');
+                    canvas.removeEventListener('click', handler);
+                }
+            };
+            canvas.addEventListener('click', handler);
+        });
+    }
+
+    // Generate Row at cursor Y
+    const genRowBtn = document.getElementById('genRowBtn');
+    if (genRowBtn && editor) {
+        genRowBtn.addEventListener('click', () => {
+            if (!currentFloorPlan?.bounds) { showNotification('Upload floor plan first', 'warning'); return; }
+            const b = currentFloorPlan.bounds;
+            const p = _getGenParams();
+            let y = (b.minY + b.maxY) / 2;
+            if (renderer?.selectedIlots?.length) {
+                y = renderer.selectedIlots[0].userData?.ilot?.y ?? y;
+            }
+            const row = editor.generateRow(b.minX, b.maxX, y, p.boxW, p.boxH, p.gap);
+            generatedIlots.push(...row);
+            renderer.renderIlots(generatedIlots);
+            updateStats();
+            showNotification(`Generated row: ${row.length} boxes`, 'success');
+        });
+    }
+
+    // Generate Pair
+    const genPairBtn = document.getElementById('genPairBtn');
+    if (genPairBtn && editor) {
+        genPairBtn.addEventListener('click', () => {
+            if (!currentFloorPlan?.bounds) { showNotification('Upload floor plan first', 'warning'); return; }
+            const b = currentFloorPlan.bounds;
+            const p = _getGenParams();
+            let y = (b.minY + b.maxY) / 2 - p.boxH;
+            if (renderer?.selectedIlots?.length) {
+                y = renderer.selectedIlots[0].userData?.ilot?.y ?? y;
+            }
+            const pair = editor.generateCorridorPair(b.minX, b.maxX, y, p.boxW, p.boxH, p.corrW, p.gap);
+            generatedIlots.push(...pair.boxes);
+            corridorNetwork.push(pair.corridor);
+            renderer.renderIlots(generatedIlots);
+            renderCurrentState();
+            updateStats();
+            showNotification(`Pair: ${pair.boxes.length} boxes + 1 corridor`, 'success');
+        });
+    }
+
+    // Fill Building
+    const genFillBtn = document.getElementById('genFillBuildingBtn');
+    if (genFillBtn && editor) {
+        genFillBtn.addEventListener('click', () => {
+            if (!currentFloorPlan?.bounds) { showNotification('Upload floor plan first', 'warning'); return; }
+            const p = _getGenParams();
+            // Collect exclude zones from rooms
+            const excludeZones = (currentFloorPlan.rooms || []).map(r => ({
+                x: r.x || r.bounds?.minX || 0, y: r.y || r.bounds?.minY || 0,
+                w: r.width || r.w || (r.bounds ? r.bounds.maxX - r.bounds.minX : 0),
+                h: r.height || r.h || (r.bounds ? r.bounds.maxY - r.bounds.minY : 0)
+            })).filter(z => z.w > 1 && z.h > 1);
+            const result = editor.fillBuilding(currentFloorPlan.bounds, p.boxW, p.boxH, p.corrW, p.gap, excludeZones);
+            generatedIlots.length = 0;
+            generatedIlots.push(...result.boxes);
+            corridorNetwork.length = 0;
+            corridorNetwork.push(...result.corridors);
+            renderer.renderIlots(generatedIlots);
+            renderCurrentState();
+            updateStats();
+            showNotification(`Building filled: ${result.boxes.length} boxes, ${result.corridors.length} corridors`, 'success');
+        });
+    }
+
+    // Apply Box Properties
+    function _getBoxProps() {
+        return {
+            type: document.getElementById('boxTypeSelect')?.value || 'M',
+            partitionType: document.getElementById('partitionTypeSelect')?.value || 'toleGrise',
+            doorSide: document.getElementById('doorSideSelect')?.value || 'bottom'
+        };
+    }
+
+    const applyBoxPropsBtn = document.getElementById('applyBoxPropsBtn');
+    if (applyBoxPropsBtn && editor) {
+        applyBoxPropsBtn.addEventListener('click', () => {
+            const count = editor.applyBoxProps(generatedIlots, _getBoxProps(), 'selected');
+            renderer.renderIlots(generatedIlots);
+            showNotification(`Applied to ${count} box(es)`, 'success');
+        });
+    }
+
+    const applyToRowBtn = document.getElementById('applyToRowBtn');
+    if (applyToRowBtn && editor) {
+        applyToRowBtn.addEventListener('click', () => {
+            const count = editor.applyBoxProps(generatedIlots, _getBoxProps(), 'row');
+            renderer.renderIlots(generatedIlots);
+            showNotification(`Applied to ${count} boxes in row`, 'success');
+        });
+    }
+
+    const applyToAllBtn = document.getElementById('applyToAllBtn');
+    if (applyToAllBtn && editor) {
+        applyToAllBtn.addEventListener('click', () => {
+            const count = editor.applyBoxProps(generatedIlots, _getBoxProps(), 'all');
+            renderer.renderIlots(generatedIlots);
+            showNotification(`Applied to all ${count} boxes`, 'success');
+        });
+    }
+
+    // Corridor Pair + Fill (in corridor section)
+    const corridorPairFillBtn = document.getElementById('corridorPairFillBtn');
+    if (corridorPairFillBtn && editor) {
+        corridorPairFillBtn.addEventListener('click', () => {
+            if (!currentFloorPlan?.bounds) { showNotification('Upload floor plan first', 'warning'); return; }
+            const b = currentFloorPlan.bounds;
+            const p = _getGenParams();
+            let y = b.minY;
+            // Find the lowest empty Y position
+            if (generatedIlots.length) {
+                const maxY = Math.max(...generatedIlots.map(i => i.y + i.height));
+                y = maxY;
+            }
+            if (y + p.boxH + p.corrW + p.boxH > b.maxY) {
+                showNotification('No room for another corridor pair', 'warning');
+                return;
+            }
+            const pair = editor.generateCorridorPair(b.minX, b.maxX, y, p.boxW, p.boxH, p.corrW, p.gap);
+            generatedIlots.push(...pair.boxes);
+            corridorNetwork.push(pair.corridor);
+            renderer.renderIlots(generatedIlots);
+            renderCurrentState();
+            updateStats();
+            showNotification(`Added pair: ${pair.boxes.length} boxes + corridor at Y=${y.toFixed(1)}`, 'success');
+        });
+    }
+}
+
+function initializeCorridorEditTools() {
+    function _findNearestCorridor(refIlot) {
+        if (!corridorNetwork || !corridorNetwork.length) return { idx: -1, corridor: null };
+        let cx, cy;
+        if (refIlot) { cx = refIlot.x + refIlot.width / 2; cy = refIlot.y + refIlot.height / 2; }
+        else if (currentFloorPlan && currentFloorPlan.bounds) {
+            cx = (currentFloorPlan.bounds.minX + currentFloorPlan.bounds.maxX) / 2;
+            cy = (currentFloorPlan.bounds.minY + currentFloorPlan.bounds.maxY) / 2;
+        } else { return { idx: 0, corridor: corridorNetwork[0] }; }
+        let bestIdx = 0, bestDist = Infinity;
+        corridorNetwork.forEach((c, i) => {
+            if (![c.x, c.y, c.width, c.height].every(Number.isFinite)) return;
+            const d = Math.hypot(c.x + c.width / 2 - cx, c.y + c.height / 2 - cy);
+            if (d < bestDist) { bestDist = d; bestIdx = i; }
+        });
+        return { idx: bestIdx, corridor: corridorNetwork[bestIdx] };
+    }
+    function _getRef() {
+        if (renderer && renderer.selectedIlots && renderer.selectedIlots.length) {
+            const ud = renderer.selectedIlots[0].userData;
+            if (ud && ud.ilot) return ud.ilot;
+        }
+        return null;
+    }
+    function _rerender() {
+        renderCurrentState();
+        updateStats();
+        if (typeof updateCorridorStatistics === 'function') updateCorridorStatistics(corridorNetwork);
+    }
+
+    // ── Path Add mode (click to add serpentine/zigzag path points) ──
+    let _addActive = false, _pts = [], _handler = null, _timer = null;
+    const addBtn = document.getElementById('addCorridorBtn');
+    if (addBtn) {
+        addBtn.addEventListener('click', () => {
+            _addActive = !_addActive;
+            addBtn.classList.toggle('active', _addActive);
+            const canvas = renderer && renderer._canvas;
+            if (_addActive) {
+                _pts = [];
+                showNotification('Path Draw ON – click canvas to place points. Click ⊕ again to finish.', 'info');
+                if (canvas) {
+                    canvas.style.cursor = 'crosshair';
+                    _handler = (evt) => {
+                        if (!_addActive) return;
+                        evt.stopPropagation();
+                        const cam = renderer.camera;
+                        const rect = canvas.getBoundingClientRect();
+                        const nx = (evt.clientX - rect.left) / rect.width;
+                        const ny = (evt.clientY - rect.top) / rect.height;
+                        const vw = cam.orthoRight - cam.orthoLeft;
+                        const vh = cam.orthoTop - cam.orthoBottom;
+                        const cx = (cam.orthoLeft + cam.orthoRight) / 2;
+                        const cy = (cam.orthoTop + cam.orthoBottom) / 2;
+                        const wx = cam.orthoLeft + nx * vw + cam.position.x - cx;
+                        const wy = cam.orthoTop - ny * vh + cam.position.y - cy;
+                        _pts.push({ x: wx, y: wy });
+                        showNotification('Point ' + _pts.length + ': (' + wx.toFixed(1) + ', ' + wy.toFixed(1) + ')', 'info');
+                    };
+                    canvas.addEventListener('click', _handler, true);
+                    _timer = setInterval(() => {
+                        if (!_addActive) {
+                            clearInterval(_timer);
+                            if (canvas && _handler) { canvas.removeEventListener('click', _handler, true); canvas.style.cursor = 'default'; }
+                            if (_pts.length >= 2) {
+                                const cw = parseFloat(document.getElementById('corridorWidthSlider')?.value) || 1.2;
+                                for (let i = 0; i < _pts.length - 1; i++) {
+                                    const a = _pts[i], b = _pts[i + 1];
+                                    const isH = Math.abs(b.x - a.x) >= Math.abs(b.y - a.y);
+                                    corridorNetwork.push({
+                                        x: Math.min(a.x, b.x) - (isH ? 0 : cw / 2),
+                                        y: Math.min(a.y, b.y) - (isH ? cw / 2 : 0),
+                                        width: isH ? Math.max(0.5, Math.abs(b.x - a.x)) : cw,
+                                        height: isH ? cw : Math.max(0.5, Math.abs(b.y - a.y)),
+                                        type: isH ? 'access' : 'main',
+                                        direction: isH ? 'horizontal' : 'vertical',
+                                        id: 'manual_' + Date.now() + '_' + i
+                                    });
+                                }
+                                _rerender();
+                                showNotification('Added ' + (_pts.length - 1) + ' corridor segment(s)', 'success');
+                            } else if (_pts.length === 1) { showNotification('Need >= 2 points', 'warning'); }
+                            _pts = [];
+                        }
+                    }, 200);
+                }
+            } else { showNotification('Path Draw OFF', 'info'); }
+        });
+    }
+
+    // Delete nearest corridor
+    document.getElementById('deleteCorridorBtn')?.addEventListener('click', () => {
+        if (!corridorNetwork.length) { showNotification('No corridors', 'warning'); return; }
+        const { idx } = _findNearestCorridor(_getRef());
+        if (idx >= 0) { corridorNetwork.splice(idx, 1); _rerender(); showNotification('Corridor deleted', 'success'); }
+    });
+
+    // Widen nearest corridor (+0.2m)
+    document.getElementById('widenCorridorBtn')?.addEventListener('click', () => {
+        if (!corridorNetwork.length) { showNotification('No corridors', 'warning'); return; }
+        const { corridor } = _findNearestCorridor(_getRef());
+        if (!corridor) return;
+        const isH = corridor.direction === 'horizontal' || corridor.width > corridor.height;
+        if (isH) { corridor.height += 0.2; corridor.y -= 0.1; } else { corridor.width += 0.2; corridor.x -= 0.1; }
+        _rerender(); showNotification('Corridor widened', 'success');
+    });
+
+    // Narrow nearest corridor (-0.2m)
+    document.getElementById('narrowCorridorBtn')?.addEventListener('click', () => {
+        if (!corridorNetwork.length) { showNotification('No corridors', 'warning'); return; }
+        const { corridor } = _findNearestCorridor(_getRef());
+        if (!corridor) return;
+        const isH = corridor.direction === 'horizontal' || corridor.width > corridor.height;
+        if (isH) { const n = Math.max(0.4, corridor.height - 0.2); corridor.y += (corridor.height - n) / 2; corridor.height = n; }
+        else { const n = Math.max(0.4, corridor.width - 0.2); corridor.x += (corridor.width - n) / 2; corridor.width = n; }
+        _rerender(); showNotification('Corridor narrowed', 'success');
+    });
+
+    // Extend nearest corridor (+1m)
+    document.getElementById('extendCorridorBtn')?.addEventListener('click', () => {
+        if (!corridorNetwork.length) { showNotification('No corridors', 'warning'); return; }
+        const { corridor } = _findNearestCorridor(_getRef());
+        if (!corridor) return;
+        if (corridor.direction === 'horizontal' || corridor.width > corridor.height) corridor.width += 1.0;
+        else corridor.height += 1.0;
+        _rerender(); showNotification('Corridor extended +1m', 'success');
+    });
+
+    // Split corridor into two at midpoint
+    document.getElementById('splitCorridorBtn')?.addEventListener('click', () => {
+        if (!corridorNetwork.length) { showNotification('No corridors', 'warning'); return; }
+        const { idx, corridor } = _findNearestCorridor(_getRef());
+        if (!corridor) return;
+        const isH = corridor.direction === 'horizontal' || corridor.width > corridor.height;
+        const c1 = JSON.parse(JSON.stringify(corridor));
+        const c2 = JSON.parse(JSON.stringify(corridor));
+        c1.id = (corridor.id || '') + '_A'; c2.id = (corridor.id || '') + '_B';
+        if (isH) { c1.width = corridor.width / 2; c2.x = corridor.x + corridor.width / 2; c2.width = corridor.width / 2; }
+        else { c1.height = corridor.height / 2; c2.y = corridor.y + corridor.height / 2; c2.height = corridor.height / 2; }
+        corridorNetwork.splice(idx, 1, c1, c2);
+        _rerender(); showNotification('Corridor split', 'success');
+    });
+
+    // Apply corridor type from dropdown
+    document.getElementById('applyCorridorPropsBtn')?.addEventListener('click', () => {
+        if (!corridorNetwork.length) { showNotification('No corridors', 'warning'); return; }
+        const { corridor } = _findNearestCorridor(_getRef());
+        if (!corridor) return;
+        const sel = document.getElementById('corridorTypeSelect');
+        if (sel) corridor.type = sel.value;
+        _rerender(); showNotification('Type set to ' + corridor.type, 'success');
+    });
+
+    // Re-generate corridors from scratch
+    document.getElementById('regenerateCorridorsBtn')?.addEventListener('click', async () => {
+        if (!currentFloorPlan || !generatedIlots.length) { showNotification('Generate ilots first', 'warning'); return; }
+        showNotification('Re-generating corridors...', 'info');
+        try { await generateCorridors(); showNotification('Corridors re-generated', 'success'); }
+        catch (e) { showNotification('Failed: ' + e.message, 'error'); }
+    });
+
+    // Move corridor up (+0.5m)
+    document.getElementById('moveCorridorUpBtn')?.addEventListener('click', () => {
+        if (!corridorNetwork.length) { showNotification('No corridors', 'warning'); return; }
+        const { corridor } = _findNearestCorridor(_getRef());
+        if (!corridor) return;
+        corridor.y += 0.5;
+        if (corridor.corners) corridor.corners.forEach(c => { c.y += 0.5; });
+        _rerender(); showNotification('Corridor moved up +0.5m', 'success');
+    });
+
+    // Move corridor down (-0.5m)
+    document.getElementById('moveCorridorDownBtn')?.addEventListener('click', () => {
+        if (!corridorNetwork.length) { showNotification('No corridors', 'warning'); return; }
+        const { corridor } = _findNearestCorridor(_getRef());
+        if (!corridor) return;
+        corridor.y -= 0.5;
+        if (corridor.corners) corridor.corners.forEach(c => { c.y -= 0.5; });
+        _rerender(); showNotification('Corridor moved down -0.5m', 'success');
+    });
+
+    // Shift+Arrow = move nearest corridor by 0.25m
+    document.addEventListener('keydown', (e) => {
+        if (e.target.matches('input, textarea, select') || !e.shiftKey || !corridorNetwork.length) return;
+        const deltas = { ArrowUp: [0, 0.25], ArrowDown: [0, -0.25], ArrowLeft: [-0.25, 0], ArrowRight: [0.25, 0] };
+        if (!deltas[e.key]) return;
+        e.preventDefault();
+        const { corridor } = _findNearestCorridor(_getRef());
+        if (!corridor) return;
+        corridor.x += deltas[e.key][0]; corridor.y += deltas[e.key][1];
+        if (corridor.corners) corridor.corners.forEach(c => { c.x += deltas[e.key][0]; c.y += deltas[e.key][1]; });
+        _rerender();
     });
 }
 

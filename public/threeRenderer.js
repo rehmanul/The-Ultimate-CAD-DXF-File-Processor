@@ -2436,7 +2436,7 @@ export class FloorPlanRenderer {
 
         // Render storage units: blue outlines only, NO white fill (per user: remove white layer)
         const outlineColor = 0x0000ff; // Blue outlines like reference "TÃ´le Grise"
-        const showLabels = ilots.length <= 900; // Keep full CAD annotation visible on dense plans
+        const showLabels = !this.referenceRenderMode?.enabled && ilots.length <= 900;
 
         if (!ilots || ilots.length === 0) {
             this.render();
@@ -3605,7 +3605,7 @@ export class FloorPlanRenderer {
         }
 
         // â”€â”€ 4. BOXES (white fills + partitions + door blocks) â”€â”€
-        const showLabels = units.length <= 900;
+        const showLabels = !referenceModeEnabled && units.length <= 900;
 
         units.forEach((ilot, index) => {
             if (![ilot.x, ilot.y, ilot.width, ilot.height].every(n => Number.isFinite(n))) return;
@@ -3624,6 +3624,9 @@ export class FloorPlanRenderer {
                     side: THREE.DoubleSide, depthWrite: false
                 })
             );
+            if (referenceModeEnabled) {
+                fillMesh.material.opacity = 0;
+            }
             fillMesh.position.set(ilot.x, ilot.y, 0.02);
             fillMesh.userData = { ilot, index, type: 'ilot', _origColor: 0xffffff, _origOpacity: 0.85 };
             this.ilotsGroup.add(fillMesh);

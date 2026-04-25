@@ -3,18 +3,18 @@ node_modules/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
-package-lock.json
 
 # Environment variables
 .env
 .env.local
 .env.*.local
 
-# Runtime data
+# Runtime data & uploads
 uploads/
 exports/
-models/
-checkpoints/
+extract/
+tmp/
+temp_env/
 
 # Database files
 *.db
@@ -22,9 +22,6 @@ checkpoints/
 *.sqlite3
 transforms.json
 webhooks.json
-
-# Training data (large files)
-training-data.json
 
 # Logs
 *.log
@@ -34,19 +31,24 @@ logs/
 coverage/
 .nyc_output/
 
-# IDE and editor files
+# IDE / editor files
 .vscode/
 .idea/
+.cursor/
+.kiro/
+.minimax/
 *.swp
 *.swo
 *~
 .DS_Store
+Thumbs.db
+desktop.ini
 
 # Build outputs
 build/
+public/dist/
 
-
-# Three.js library - Keep build files and ALL addons (complete library)
+# Three.js library – keep only required build & addons
 public/libs/package/src/
 public/libs/package/examples/fonts/
 !public/libs/package/examples/jsm/
@@ -55,34 +57,30 @@ public/libs/package/examples/fonts/
 !public/libs/LICENSE
 !public/libs/README.md
 
-# Temporary files
-temp_*.html
-temp_*.js
-temp_*.css
-*-backup.css
-*-backup.js
-styles-backup*.css
+# Temporary / diagnostic scripts
+_tmp_*.js
+_tmp_*.html
+_tmp_*.json
+_tmp_*.svg
+_test2_visual.*
+_debug_*.js
+_check_*.js
+_verify_*.js
+_svg_check.js
+_patch_flow3.js
 
-# Test files
-test-*.js
-test_*.js
-
-# Documentation (keep only essential docs)
-*_SUMMARY.md
-*_CHECKLIST.md
-*_STATUS.md
-*_READY*.md
-IMPLEMENTATION_*.md
-ML_INFERENCE_*.md
-
-# Scripts that are environment-specific
-verify-*.bat
-verify-*.sh
+# Auto-generated proof / reference images (large binaries)
+*.png
+*.jpg
+*.jpeg
+!Reference Output Examples/*.jpeg
+!Reference Output Examples/*.jpg
+!Reference Output Examples/*.png
+*.svg
+layout_proof.svg
+reference-final.png
+reference-target.jpg
 
 # OS files
-Thumbs.db
-.DS_Store
-
-# Keep bin folder structure but ignore the actual ODA executable
 bin/*
 !bin/README.txt

@@ -46,6 +46,7 @@ const CostoStripPlacer = require('./lib/CostoStripPlacer');
 const COSTOLayoutEngine = require('./lib/COSTOLayoutEngine');
 const CostoProLayoutEngine = require('./lib/costo-engine');
 const ProfessionalGridLayoutEngine = require('./lib/ProfessionalGridLayoutEngine');
+const { generateReferenceLayout } = require('./lib/referenceLayoutGenerator');
 const ComplianceSolver = require('./lib/ComplianceSolver');
 const SpineRibCorridorGenerator = require('./lib/SpineRibCorridorGenerator');
 const RadiatorGenerator = require('./lib/radiatorGenerator');
@@ -53,7 +54,7 @@ const RadiatorGenerator = require('./lib/radiatorGenerator');
 
 
 // --- RESTORED INITIALIZATION ---
-const PUBLIC_DIR = path.join(__dirname, 'public');
+const PUBLIC_DIR = path.resolve(__dirname, 'public');
 const DIST_DIR = path.join(PUBLIC_DIR, 'dist');
 // Always serve from public directory (new clean build)
 const STATIC_ROOT = PUBLIC_DIR;
@@ -734,6 +735,11 @@ app.use((req, res, next) => {
     next();
 });
 
+// Explicit root route — serve index.html directly
+app.get('/', (req, res) => {
+    res.sendFile(path.join(STATIC_ROOT, 'index.html'));
+});
+
 const staticCacheMaxAge = USING_DIST_BUILD ? '1h' : 0;
 app.use(express.static(STATIC_ROOT, {
     maxAge: staticCacheMaxAge,
@@ -1333,8 +1339,8 @@ app.post('/api/costo/generate', async (req, res) => {
             const baseEngineOptions = {
                 corridorWidth: normalizedCorridorWidth,
                 wallClearance: Number.isFinite(options.wallClearance)
-                    ? Math.max(0.02, Number(options.wallClearance))
-                    : (maximizeFill ? 0.04 : 0.15),
+                    ? Math.max(0.05, Number(options.wallClearance))
+                    : (maximizeFill ? 0.10 : 0.15),
                 wallClearanceMm: requestedWallClearanceMm,
                 boxDepth: Number.isFinite(options.boxDepth)
                     ? Math.max(1.5, Number(options.boxDepth))
@@ -1380,7 +1386,7 @@ app.post('/api/costo/generate', async (req, res) => {
             // Branch is deterministic via normalized toggle/intent computed at route entry.
 
             let layoutResult;
-            if (true) { // ALWAYS use ProfessionalGridLayoutEngine
+            if (false) { // DISABLED: ProfessionalGridLayoutEngine lacks wall collision — use CostoProLayoutEngine instead
                 console.log('[COSTO Generate] Using ProfessionalGridLayoutEngine (corridor-first, wall-flush)...');
                 try {
                     const profEngine = new ProfessionalGridLayoutEngine(costoFloorPlan, {
@@ -2083,6 +2089,7 @@ app.post('/api/ilots', async (req, res) => {
                 ilotsRaw = await ilotPlacer.generateIlots(normalizedDistribution, generatorOptions.totalIlots, unitMix);
             }
             placementSummary = ilotPlacer.stats || null;
+
         } catch (error) {
             const msg = (error && error.message) ? error.message : String(error);
             const shouldFallback =
@@ -2301,15 +2308,13 @@ app.post('/api/report/compliance', (req, res) => {
 });
 
 // Layout optimization endpoint
-app.post('/api/optimize/layout', (req, res) => {
+app.post('/api/optimize/layout', async (req, res) => {
     try {
         const { floorPlan, ilots } = req.body;
         if (!floorPlan) return res.status(400).json({ error: 'Floor plan data required' });
         if (!floorPlan.bounds) return res.status(400).json({ error: 'Floor plan bounds required' });
 
-        // Re-generate optimized layout using the professional engine
-        const engine = new ProfessionalGridLayoutEngine(floorPlan, {});
-        const result = engine.generate({});
+        const result = await generateReferenceLayout(floorPlan);
         const optimizedUnits = result.units || [];
         global.lastPlacedIlots = optimizedUnits;
 
@@ -2328,7 +2333,7 @@ app.post('/api/optimize/layout', (req, res) => {
 });
 
 // Path optimization endpoint
-app.post('/api/optimize/paths', (req, res) => {
+app.post('/api/optimize/paths', async (req, res) => {
     try {
         const { floorPlan, ilots } = req.body;
         if (!floorPlan) return res.status(400).json({ error: 'Floor plan data required' });
@@ -2337,9 +2342,7 @@ app.post('/api/optimize/paths', (req, res) => {
         const ilotsToUse = ilots || global.lastPlacedIlots || [];
         if (!ilotsToUse.length) return res.status(400).json({ error: 'Generate ilots first' });
 
-        // Re-generate corridors using the professional engine (derives paths from geometry)
-        const engine = new ProfessionalGridLayoutEngine(floorPlan, {});
-        const result = engine.generate({});
+        const result = await generateReferenceLayout(floorPlan);
 
         res.json({
             success: true,
@@ -3766,16 +3769,14 @@ app.delete('/api/costo/project/:projectId', (req, res) => {
 });
 
 // ── Optimize endpoints ───────────────────────────────────────────────
-app.post('/api/optimize/paths', (req, res) => {
+app.post('/api/optimize/paths', async (req, res) => {
     try {
         const { floorPlan, ilots } = req.body;
         if (!floorPlan || !ilots || !ilots.length) {
             return res.status(400).json({ error: 'Missing floorPlan or ilots' });
         }
 
-        // Re-generate corridors using the professional engine
-        const engine = new ProfessionalGridLayoutEngine(floorPlan, {});
-        const result = engine.generate({});
+        const result = await generateReferenceLayout(floorPlan);
 
         res.json({
             success: true,
@@ -3789,15 +3790,14 @@ app.post('/api/optimize/paths', (req, res) => {
     }
 });
 
-app.post('/api/optimize/layout', (req, res) => {
+app.post('/api/optimize/layout', async (req, res) => {
     try {
         const { floorPlan, ilots } = req.body;
         if (!floorPlan) {
             return res.status(400).json({ error: 'Missing floorPlan' });
         }
 
-        const engine = new ProfessionalGridLayoutEngine(floorPlan, {});
-        const result = engine.generate({});
+        const result = await generateReferenceLayout(floorPlan);
 
         res.json({
             success: true,

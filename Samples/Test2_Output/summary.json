@@ -1,0 +1,12 @@
+{
+  "inputFile": "Test2.dxf",
+  "fileSizeMB": "0.57",
+  "walls": 1060,
+  "rooms": 21,
+  "boxes": 372,
+  "corridors": 6,
+  "radiators": 0,
+  "circulationPaths": 6,
+  "totalArea": 1286.2708000000048,
+  "generatedAt": "2026-04-08T09:16:28.924Z"
+}

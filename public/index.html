@@ -342,12 +342,14 @@
             </div>
 
             <!-- Edit & Undo Controls -->
-            <div class="sidebar-section collapsed">
+            <div class="sidebar-section">
                 <h3>
                     <i class="fas fa-edit"></i> Edit Tools
                     <i class="fas fa-chevron-down collapse-icon"></i>
                 </h3>
                 <div class="section-content">
+                    <!-- Primary Edit Actions -->
+                    <p class="config-help" style="margin-bottom:6px">Core editing — select a box first</p>
                     <div class="button-grid">
                         <button class="btn btn-sm" id="undoBtn" title="Undo (Ctrl+Z)">
                             <i class="fas fa-undo"></i>
@@ -361,12 +363,158 @@
                         <button class="btn btn-sm" id="snapGridBtn" title="Snap to Grid">
                             <i class="fas fa-magnet"></i>
                         </button>
+                        <button class="btn btn-sm" id="wallSnapBtn" title="Snap to Walls" style="color:#f7768e">
+                            <i class="fas fa-border-all"></i>
+                        </button>
+                        <button class="btn btn-sm" id="rubberBandBtn" title="Rectangle Select (R)" style="color:#bb9af7">
+                            <i class="fas fa-object-ungroup"></i>
+                        </button>
+                    </div>
+
+                    <!-- Box Operations -->
+                    <p class="config-help" style="margin-top:10px;margin-bottom:6px">Box operations</p>
+                    <div class="button-grid">
+                        <button class="btn btn-sm btn-success" id="addBoxBtn" title="Add new box (A)">
+                            <i class="fas fa-plus-square"></i>
+                        </button>
+                        <button class="btn btn-sm" id="duplicateBoxBtn" title="Duplicate (Ctrl+D)">
+                            <i class="fas fa-clone"></i>
+                        </button>
+                        <button class="btn btn-sm btn-danger" id="deleteBoxBtn" title="Delete (Del)">
+                            <i class="fas fa-trash-alt"></i>
+                        </button>
+                        <button class="btn btn-sm" id="resizeModeBtn" title="Resize mode — drag edges">
+                            <i class="fas fa-expand"></i>
+                        </button>
                         <button class="btn btn-sm" id="splitIlotBtn" title="Split selected unit">
                             <i class="fas fa-cut"></i>
                         </button>
                         <button class="btn btn-sm" id="mergeIlotBtn" title="Merge with adjacent">
                             <i class="fas fa-object-group"></i>
                         </button>
+                        <button class="btn btn-sm" id="copyBoxBtn" title="Copy (Ctrl+C)">
+                            <i class="fas fa-copy"></i>
+                        </button>
+                        <button class="btn btn-sm" id="pasteBoxBtn" title="Paste (Ctrl+V)">
+                            <i class="fas fa-paste"></i>
+                        </button>
+                        <button class="btn btn-sm" id="rotate90Btn" title="Rotate 90° (swap W↔H)">
+                            <i class="fas fa-sync-alt"></i>
+                        </button>
+                        <button class="btn btn-sm" id="flipHBtn" title="Mirror Horizontal">
+                            <i class="fas fa-arrows-alt-h"></i>
+                        </button>
+                    </div>
+
+                    <!-- Advanced Tools -->
+                    <p class="config-help" style="margin-top:10px;margin-bottom:6px"><strong>⚡ Advanced Tools</strong></p>
+                    <div class="button-grid">
+                        <button class="btn btn-sm btn-info" id="fillRowBtn" title="Fill Row — auto-fill boxes along current Y">
+                            <i class="fas fa-fill-drip"></i>
+                        </button>
+                        <button class="btn btn-sm btn-info" id="fillGapsBtn" title="Fill Gaps — place boxes in empty spaces between existing">
+                            <i class="fas fa-fill"></i>
+                        </button>
+                        <button class="btn btn-sm btn-warning" id="clearAreaBtn" title="Clear Area — remove boxes in region (click two corners)">
+                            <i class="fas fa-eraser"></i>
+                        </button>
+                        <button class="btn btn-sm" id="selectRowBtn" title="Select all boxes in same row">
+                            <i class="fas fa-grip-horizontal"></i>
+                        </button>
+                        <button class="btn btn-sm" id="selectAllBtn" title="Select All (Ctrl+A)">
+                            <i class="fas fa-check-double"></i>
+                        </button>
+                        <button class="btn btn-sm btn-danger" id="deleteSelectedBtn" title="Delete all selected boxes">
+                            <i class="fas fa-dumpster-fire"></i>
+                        </button>
+                    </div>
+
+                    <!-- Row/Pair Generator -->
+                    <p class="config-help" style="margin-top:10px;margin-bottom:6px"><strong>🏗️ Row & Pair Generator</strong></p>
+                    <div style="display:flex;flex-direction:column;gap:4px;">
+                        <div style="display:flex;gap:4px;align-items:center;">
+                            <label style="font-size:10px;min-width:30px">W:</label>
+                            <input type="number" id="genBoxW" value="2.90" step="0.1" min="0.5" style="width:55px;padding:2px 4px;font-size:10px;background:var(--gray-100);border:1px solid var(--gray-300);border-radius:3px;">
+                            <label style="font-size:10px;min-width:30px">H:</label>
+                            <input type="number" id="genBoxH" value="1.20" step="0.1" min="0.5" style="width:55px;padding:2px 4px;font-size:10px;background:var(--gray-100);border:1px solid var(--gray-300);border-radius:3px;">
+                        </div>
+                        <div style="display:flex;gap:4px;align-items:center;">
+                            <label style="font-size:10px;min-width:55px">Corr W:</label>
+                            <input type="number" id="genCorrW" value="1.20" step="0.1" min="0.6" style="width:55px;padding:2px 4px;font-size:10px;background:var(--gray-100);border:1px solid var(--gray-300);border-radius:3px;">
+                            <label style="font-size:10px;min-width:30px">Gap:</label>
+                            <input type="number" id="genGap" value="0.00" step="0.01" min="0" style="width:55px;padding:2px 4px;font-size:10px;background:var(--gray-100);border:1px solid var(--gray-300);border-radius:3px;">
+                        </div>
+                    </div>
+                    <div class="button-grid" style="margin-top:6px;">
+                        <button class="btn btn-sm btn-success" id="genRowBtn" title="Generate single row of boxes at Y position">
+                            <i class="fas fa-grip-horizontal"></i> Row
+                        </button>
+                        <button class="btn btn-sm btn-success" id="genPairBtn" title="Generate corridor pair (two facing rows + corridor)">
+                            <i class="fas fa-columns"></i> Pair
+                        </button>
+                        <button class="btn btn-sm btn-info" id="genFillBuildingBtn" title="Auto-fill entire building with corridor pairs">
+                            <i class="fas fa-building"></i> Fill
+                        </button>
+                    </div>
+
+                    <!-- Box Type Assignment -->
+                    <p class="config-help" style="margin-top:10px;margin-bottom:6px"><strong>🏷️ Box Properties</strong></p>
+                    <div style="display:flex;gap:4px;align-items:center;flex-wrap:wrap;">
+                        <label style="font-size:10px">Type:
+                            <select id="boxTypeSelect" style="padding:2px 4px;font-size:10px;background:var(--gray-100);border:1px solid var(--gray-300);border-radius:3px;">
+                                <option value="S">S (0-3m²)</option>
+                                <option value="M" selected>M (3-5m²)</option>
+                                <option value="L">L (5-10m²)</option>
+                                <option value="XL">XL (10+m²)</option>
+                            </select>
+                        </label>
+                        <label style="font-size:10px">Partition:
+                            <select id="partitionTypeSelect" style="padding:2px 4px;font-size:10px;background:var(--gray-100);border:1px solid var(--gray-300);border-radius:3px;">
+                                <option value="toleBlanche">Tole Blanche</option>
+                                <option value="toleGrise">Tole Grise</option>
+                            </select>
+                        </label>
+                    </div>
+                    <div style="display:flex;gap:4px;align-items:center;flex-wrap:wrap;margin-top:4px;">
+                        <label style="font-size:10px">Door:
+                            <select id="doorSideSelect" style="padding:2px 4px;font-size:10px;background:var(--gray-100);border:1px solid var(--gray-300);border-radius:3px;">
+                                <option value="bottom">Bottom</option>
+                                <option value="top">Top</option>
+                                <option value="left">Left</option>
+                                <option value="right">Right</option>
+                            </select>
+                        </label>
+                        <button class="btn btn-sm btn-info" id="applyBoxPropsBtn" title="Apply type/partition to selected" style="font-size:9px;padding:2px 6px">Apply</button>
+                        <button class="btn btn-sm" id="applyToRowBtn" title="Apply to entire row" style="font-size:9px;padding:2px 6px">Row</button>
+                        <button class="btn btn-sm" id="applyToAllBtn" title="Apply to all boxes" style="font-size:9px;padding:2px 6px">All</button>
+                    </div>
+
+                    <!-- Alignment Tools -->
+                    <p class="config-help" style="margin-top:10px;margin-bottom:6px">Align & distribute (multi-select)</p>
+                    <div class="button-grid">
+                        <button class="btn btn-sm" id="alignLeftBtn" title="Align Left">
+                            <i class="fas fa-align-left"></i>
+                        </button>
+                        <button class="btn btn-sm" id="alignRightBtn" title="Align Right">
+                            <i class="fas fa-align-right"></i>
+                        </button>
+                        <button class="btn btn-sm" id="alignTopBtn" title="Align Top">
+                            <i class="fas fa-arrow-up"></i>
+                        </button>
+                        <button class="btn btn-sm" id="alignBottomBtn" title="Align Bottom">
+                            <i class="fas fa-arrow-down"></i>
+                        </button>
+                        <button class="btn btn-sm" id="distributeHBtn" title="Distribute Horizontally">
+                            <i class="fas fa-grip-lines-vertical"></i>
+                        </button>
+                        <button class="btn btn-sm" id="distributeVBtn" title="Distribute Vertically">
+                            <i class="fas fa-grip-lines"></i>
+                        </button>
+                    </div>
+
+                    <!-- Lock/Unlock -->
+                    <p class="config-help" style="margin-top:10px;margin-bottom:6px">Lock / unlock rows</p>
+                    <div class="button-grid">
                         <button class="btn btn-sm" id="lockRowBtn" title="Lock row">
                             <i class="fas fa-lock"></i>
                         </button>
@@ -374,6 +522,64 @@
                             <i class="fas fa-lock-open"></i>
                         </button>
                     </div>
+                </div>
+            </div>
+
+            <!-- Corridor Edit Tools -->
+            <div class="sidebar-section collapsed">
+                <h3>
+                    <i class="fas fa-route"></i> Corridor Tools
+                    <i class="fas fa-chevron-down collapse-icon"></i>
+                </h3>
+                <div class="section-content">
+                    <p class="config-help" style="margin-bottom:6px">Add, move, resize, delete corridors</p>
+                    <div class="button-grid">
+                        <button class="btn btn-sm btn-success" id="addCorridorBtn" title="Draw corridor path">
+                            <i class="fas fa-plus"></i>
+                        </button>
+                        <button class="btn btn-sm btn-danger" id="deleteCorridorBtn" title="Delete nearest corridor">
+                            <i class="fas fa-trash"></i>
+                        </button>
+                        <button class="btn btn-sm" id="widenCorridorBtn" title="Widen (+0.2m)">
+                            <i class="fas fa-arrows-alt-h"></i>
+                        </button>
+                        <button class="btn btn-sm" id="narrowCorridorBtn" title="Narrow (-0.2m)">
+                            <i class="fas fa-compress-arrows-alt"></i>
+                        </button>
+                        <button class="btn btn-sm" id="extendCorridorBtn" title="Extend (+1m)">
+                            <i class="fas fa-arrow-right"></i>
+                        </button>
+                        <button class="btn btn-sm" id="splitCorridorBtn" title="Split corridor">
+                            <i class="fas fa-cut"></i>
+                        </button>
+                        <button class="btn btn-sm" id="moveCorridorUpBtn" title="Move corridor up (+0.5m)">
+                            <i class="fas fa-chevron-up"></i>
+                        </button>
+                        <button class="btn btn-sm" id="moveCorridorDownBtn" title="Move corridor down (-0.5m)">
+                            <i class="fas fa-chevron-down"></i>
+                        </button>
+                    </div>
+                    <p class="config-help" style="margin-top:8px;margin-bottom:4px">Corridor props</p>
+                    <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
+                        <label style="font-size:10px">Type:
+                            <select id="corridorTypeSelect" style="padding:2px 4px;font-size:10px;background:var(--gray-100);border:1px solid var(--gray-300);border-radius:3px;">
+                                <option value="main">Main</option>
+                                <option value="access">Access</option>
+                                <option value="vertical_spine">Spine</option>
+                                <option value="entrance">Entrance</option>
+                            </select>
+                        </label>
+                        <button class="btn btn-sm btn-info" id="applyCorridorPropsBtn" title="Apply to nearest corridor" style="font-size:9px;padding:2px 6px">Apply</button>
+                    </div>
+
+                    <!-- Corridor Pair Auto-Creator -->
+                    <p class="config-help" style="margin-top:8px;margin-bottom:4px"><strong>🔄 Auto Corridor + Fill</strong></p>
+                    <button class="btn btn-block btn-sm btn-success" id="corridorPairFillBtn" style="margin-bottom:4px">
+                        <i class="fas fa-columns"></i> Create Pair + Fill Boxes
+                    </button>
+                    <button class="btn btn-block btn-sm btn-info" id="regenerateCorridorsBtn" style="margin-top:4px">
+                        <i class="fas fa-sync"></i> Re-generate Corridors
+                    </button>
                 </div>
             </div>
 
@@ -791,7 +997,7 @@
             }
         });
     </script>
-    <script type="module" src="app.js?v=1772570000"></script>
+    <script type="module" src="app.js?v=1775000000"></script>
     <script src="presetSelector.js?v=1772570000"></script>
 </body>
 

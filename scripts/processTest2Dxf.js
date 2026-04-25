@@ -177,27 +177,16 @@ async function run() {
                 totalBoxes: ilots.length
             },
             options: {
-                showCorridorPathways: true,
-                pageSize: 'A1',
+                presetMode: 'strictReference',
+                strictReference: true,
+                layoutMode: 'rowBased',
                 title: 'PLAN ETAGE 01 1-200',
                 scale: '1:200',
-                showLegend: true,
-                showTitleBlock: true,
                 drawingNumber: '[01]',
                 sheetNumber: '3',
                 documentId: '[01]',
                 companyName: 'COSTO',
-                companyAddress: '5 chemin de la dime 95700 Roissy FRANCE',
-                includeCompass: true,
-                legendMode: 'reference',
-                layoutMode: 'rowBased',
-                showScaleInfo: true,
-                orientation: 'landscape',
-                fitFactor: 0.99,
-                showDimensions: true,
-                showUnitLabels: true,
-                showAreas: true,
-                showBoxNumbers: true
+                companyAddress: '5 chemin de la dime 95700 Roissy FRANCE'
             }
         });
 
@@ -208,8 +197,10 @@ async function run() {
     const pdfFilename = exportRes.body.filename;
     const pdfServerPath = path.join(__dirname, '..', 'exports', pdfFilename);
     const pdfOutputPath = path.join(OUTPUT_DIR, 'Test2_layout_from_dxf.pdf');
+    const canonicalPdfPath = path.join(__dirname, '..', 'exports', 'Test2_FULL_CIRCULATION.pdf');
 
     fs.copyFileSync(pdfServerPath, pdfOutputPath);
+    fs.copyFileSync(pdfServerPath, canonicalPdfPath);
     console.log(`   ✓ Saved: Test2_layout_from_dxf.pdf`);
 
     // Step 5: Save JSON summaries
