@@ -36,6 +36,14 @@ export class FloorPlanRenderer {
         this.camera.position.set(0, 0, 100);
         this.camera.lookAt(0, 0, 0);
 
+        // Babylon.js compat: editor/app.js reference cam.orthoLeft/Right/Top/Bottom
+        Object.defineProperties(this.camera, {
+            orthoLeft:   { get() { return this.left; },   set(v) { this.left = v; } },
+            orthoRight:  { get() { return this.right; },  set(v) { this.right = v; } },
+            orthoTop:    { get() { return this.top; },    set(v) { this.top = v; } },
+            orthoBottom: { get() { return this.bottom; }, set(v) { this.bottom = v; } }
+        });
+
         this.perspectiveCamera = new THREE.PerspectiveCamera(60, aspect, 0.1, 10000);
         this.perspectiveCamera.position.set(0, 0, 200); // Top-down view
         this.perspectiveCamera.lookAt(0, 0, 0);
@@ -110,6 +118,9 @@ export class FloorPlanRenderer {
         }
         container.appendChild(this.renderer.domElement);
 
+        // Babylon.js compatibility: InteractiveEditor & app.js tools reference _canvas
+        this._canvas = this.renderer.domElement;
+
         this.controls = new OrbitControls(this.camera, this.renderer.domElement);
         this.controls.enableRotate = false;
         this.controls.mouseButtons = { LEFT: THREE.MOUSE.PAN, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: THREE.MOUSE.PAN };
@@ -171,6 +182,8 @@ export class FloorPlanRenderer {
         this.stackGroup = new THREE.Group();
         this.crossFloorPathsGroup = new THREE.Group();
         this.doorsGroup = new THREE.Group();
+        this.radiatorsGroup = new THREE.Group();
+        this.radiatorsGroup.name = 'radiators';
         this.stackGroup.visible = false;
         this.currentConnectors = [];
         this.currentConnectorOptions = {};
@@ -225,7 +238,8 @@ export class FloorPlanRenderer {
             this.connectorHighlights,
             this.stackGroup,
             this.crossFloorPathsGroup,
-            this.doorsGroup
+            this.doorsGroup,
+            this.radiatorsGroup
         );
 
         // Advanced lighting setup

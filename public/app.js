@@ -1,5 +1,5 @@
 // FloorPlan Pro Clean - Complete Production System
-import { FloorPlanRenderer } from './threeRenderer.js?v=1772590000';
+import { FloorPlanRenderer } from './threeRenderer.js?v=1778000000';
 import { InteractiveEditor } from './interactiveEditor.js';
 import { AdvancedEffects } from './advancedEffects.js';
 import { KeyboardShortcuts } from './keyboardShortcuts.js';
