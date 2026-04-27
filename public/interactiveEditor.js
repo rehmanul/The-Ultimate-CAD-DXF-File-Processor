@@ -56,8 +56,13 @@ export class InteractiveEditor {
                 return;
             }
 
-            const pick = this.renderer.scene.pick(e.offsetX, e.offsetY, m => m === this.selectedMesh);
-            if (!pick.hit) return;
+            // Three.js raycaster hit-test (replaces Babylon scene.pick)
+            const rect = canvas.getBoundingClientRect();
+            this.renderer.mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+            this.renderer.mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+            this.renderer.raycaster.setFromCamera(this.renderer.mouse, this.renderer.camera);
+            const hits = this.renderer.raycaster.intersectObject(this.selectedMesh, false);
+            if (!hits || hits.length === 0) return;
             this.isDragging = true;
             this._dragStartPointer = { x: e.clientX, y: e.clientY };
             this.onDragStart();
@@ -231,8 +236,8 @@ export class InteractiveEditor {
         ilot.x = x; ilot.y = y; ilot.width = w; ilot.height = h;
         ilot.area = w * h;
         this.selectedMesh.position.set(x + w/2, y + h/2, this.selectedMesh.position.z);
-        this.selectedMesh.scaling.x = w / this.dragStartSize.width;
-        this.selectedMesh.scaling.y = h / this.dragStartSize.height;
+        this.selectedMesh.scale.x = w / this.dragStartSize.width;
+        this.selectedMesh.scale.y = h / this.dragStartSize.height;
     }
 
     _endResize() {
@@ -504,7 +509,10 @@ export class InteractiveEditor {
     deleteSelected() {
         if (!this.selectedMesh) return null;
         const index = this.selectedMesh.userData.index;
-        this.selectedMesh.dispose();
+        // Three.js: remove from scene and clean up
+        if (this.selectedMesh.parent) this.selectedMesh.parent.remove(this.selectedMesh);
+        if (this.selectedMesh.geometry) this.selectedMesh.geometry.dispose();
+        if (this.selectedMesh.material && typeof this.selectedMesh.material.dispose === 'function') this.selectedMesh.material.dispose();
         this.renderer.ilotMeshes.splice(index, 1);
         const deletedMesh = this.selectedMesh;
         this.selectedMesh = null;
