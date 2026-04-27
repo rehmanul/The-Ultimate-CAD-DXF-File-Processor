@@ -21,6 +21,7 @@ export class FloorPlanRenderer {
         this.is3DMode = false;
         this.selectedIlots = [];
         this.ilotMeshes = [];
+        this.corridorMeshes = [];
         this.measurementMode = false;
         this.measurementPoints = [];
         this.measurementType = 'distance'; // 'distance', 'area', 'angle'
