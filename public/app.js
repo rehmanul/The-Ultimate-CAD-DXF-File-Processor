@@ -744,10 +744,16 @@ function initializeModules() {
         container.addEventListener('click', (e) => {
             if (!doorPlacementMode || !currentFloorPlan) return;
 
-            // Get mouse position in world coordinates via Babylon.js pick
-            const pick = renderer.scene.pick(renderer.scene.pointerX, renderer.scene.pointerY);
-            if (!pick.hit) return;
-            const mousePoint = pick.pickedPoint;
+            // Get mouse position in world coordinates via Three.js ortho projection
+            const canvas = renderer._canvas;
+            if (!canvas) return;
+            const rect = canvas.getBoundingClientRect();
+            const cam = renderer.camera;
+            const vw = cam.orthoRight - cam.orthoLeft;
+            const vh = cam.orthoTop - cam.orthoBottom;
+            const wx = cam.orthoLeft + ((e.clientX - rect.left) / rect.width) * vw;
+            const wy = cam.orthoTop - ((e.clientY - rect.top) / rect.height) * vh;
+            const mousePoint = { x: wx, y: wy };
 
             // Find nearest wall using plain JS vector math
             const walls = currentFloorPlan.walls || [];
